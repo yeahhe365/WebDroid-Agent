@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:pages": "npm run build && wrangler pages deploy dist --project-name webadb-autoglm-demo --branch main"
   },
   "dependencies": {
     "@yume-chan/adb": "^2.6.0",

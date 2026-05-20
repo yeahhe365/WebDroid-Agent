@@ -115,6 +115,19 @@ npm run lint
 npm run build
 ```
 
+## 部署到 Cloudflare Pages
+
+项目已创建在 Cloudflare Pages：
+
+- 生产域名：https://webadb-autoglm-demo.pages.dev/
+- 部署方式：Wrangler Direct Upload
+
+重新部署：
+
+```bash
+npm run deploy:pages
+```
+
 ## 友链
 
 - Linux.do：也称 L 站，是一个活跃的中文技术社区，围绕 AI、软件开发、资源分享与前沿资讯展开讨论；社区愿景是“新的理想型社区”，社区文化是“真诚、友善、团结、专业，共建你我引以为荣之社区”。
