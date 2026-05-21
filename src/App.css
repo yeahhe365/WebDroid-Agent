@@ -12,6 +12,14 @@
   max-width: 1520px;
 }
 
+.topbar-actions {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .eyebrow {
   color: #5b6f7c;
   font-size: 13px;
@@ -74,6 +82,119 @@ button {
   background: #fff4dc;
   border-color: #f0d49d;
   color: #8b5c10;
+}
+
+.about-button {
+  background: #172026;
+  border-color: #172026;
+  color: #ffffff;
+}
+
+.about-button:hover:not(:disabled) {
+  background: #24323b;
+}
+
+.about-page {
+  align-items: flex-start;
+  background: rgba(17, 24, 29, 0.62);
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  left: 0;
+  padding: 24px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 40;
+}
+
+.about-panel {
+  background: #ffffff;
+  border: 1px solid #d9e1e5;
+  border-radius: 8px;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.28);
+  display: grid;
+  gap: 16px;
+  max-width: 520px;
+  padding: 20px;
+  width: min(100%, 520px);
+}
+
+.about-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.about-header h2 {
+  font-size: 24px;
+}
+
+.about-close {
+  flex: 0 0 auto;
+}
+
+.about-copy {
+  color: #42515c;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.repository-link {
+  align-items: center;
+  background: #f8fafb;
+  border: 1px solid #d9e1e5;
+  border-radius: 8px;
+  color: #172026;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  text-decoration: none;
+}
+
+.repository-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-stats {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.repository-stats div {
+  background: #f8fafb;
+  border: 1px solid #d9e1e5;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  min-height: 104px;
+  padding: 12px;
+}
+
+.repository-stats svg {
+  color: #2f74b5;
+}
+
+.repository-stats strong {
+  color: #172026;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.repository-stats span,
+.about-error {
+  color: #6d7c86;
+  font-size: 13px;
+}
+
+.about-error {
+  margin: 0;
 }
 
 .alert {
@@ -174,7 +295,8 @@ textarea:focus {
   width: 18px;
 }
 
-.device-box {
+.device-box,
+.model-box {
   background: #f8fafb;
   border: 1px solid #d9e1e5;
   border-radius: 8px;
@@ -183,9 +305,25 @@ textarea:focus {
   padding: 12px;
 }
 
-.device-box span {
+.device-box span,
+.model-box > span {
   color: #172026;
   font-weight: 800;
+}
+
+.device-details,
+.model-details {
+  display: grid;
+  gap: 4px;
+}
+
+.device-details summary,
+.model-details summary {
+  color: #5b6f7c;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  list-style-position: inside;
 }
 
 .device-box small,
@@ -383,6 +521,60 @@ button.danger {
   padding: 11px;
 }
 
+.conversation-list {
+  background: #f8fafb;
+  border: 1px solid #d9e1e5;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  min-height: 160px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.conversation-list .muted {
+  align-self: center;
+  justify-self: center;
+  margin: 0;
+}
+
+.chat-message {
+  border: 1px solid #d9e1e5;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+}
+
+.chat-message.user {
+  background: #eef6fb;
+  border-color: #cfe2ee;
+}
+
+.chat-message.assistant {
+  background: #ffffff;
+}
+
+.chat-message.observation {
+  background: #f2f5f6;
+  border-color: #dfe7eb;
+}
+
+.chat-message span {
+  color: #5b6f7c;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.chat-message p {
+  color: #172026;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .log-section {
   margin: 18px auto 0;
   max-width: 1520px;
@@ -400,6 +592,28 @@ button.danger {
   display: grid;
   gap: 5px;
   padding: 10px 12px;
+}
+
+.log-entry.with-screenshot {
+  gap: 7px;
+}
+
+.log-entry-content {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.log-entry-body {
+  align-items: start;
+  column-gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.log-entry-media {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .log-entry.ok {
@@ -436,20 +650,18 @@ button.danger {
 }
 
 .log-screenshot-button {
-  background: transparent;
+  background: #11181d;
   border: 0;
   border-radius: 6px;
   cursor: zoom-in;
-  height: 120px;
-  justify-content: stretch;
+  height: 144px;
   overflow: hidden;
   padding: 0;
   position: relative;
-  width: 100%;
+  width: 108px;
 }
 
 .log-screenshot-button img {
-  background: #11181d;
   display: block;
   height: 100%;
   object-fit: contain;
@@ -474,6 +686,17 @@ button.danger {
 .log-screenshot-button:hover .log-screenshot-overlay,
 .log-screenshot-button:focus-visible .log-screenshot-overlay {
   opacity: 1;
+}
+
+@media (max-width: 720px) {
+  .log-entry-body {
+    grid-template-columns: 1fr;
+    row-gap: 8px;
+  }
+
+  .log-entry-media {
+    justify-content: flex-start;
+  }
 }
 
 .screenshot-modal {
@@ -529,12 +752,20 @@ button.danger {
   width: 36px;
 }
 
-.screenshot-modal-panel img {
+.screenshot-modal-viewport {
+  height: calc(92vh - 92px);
+  overflow: auto;
+  text-align: center;
+}
+
+.screenshot-modal-viewport img {
   background: #0c1115;
   display: block;
-  max-height: calc(92vh - 92px);
+  margin: 0 auto;
+  max-width: none;
   object-fit: contain;
-  width: 100%;
+  transition: height 80ms ease-out;
+  width: auto;
 }
 
 .spin {
@@ -561,6 +792,10 @@ button.danger {
     justify-content: flex-start;
   }
 
+  .topbar-actions {
+    justify-content: flex-start;
+  }
+
   .timing-grid {
     grid-template-columns: 1fr;
   }
@@ -576,6 +811,16 @@ button.danger {
 
 @media (max-width: 940px) {
   .workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .about-page {
+    padding: 12px;
+  }
+
+  .repository-stats {
     grid-template-columns: 1fr;
   }
 }

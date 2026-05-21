@@ -3,13 +3,21 @@ import {
   AlertTriangle,
   Check,
   CircleStop,
+  Code2,
   Download,
+  ExternalLink,
+  GitFork,
+  Info,
   KeyRound,
   Link,
   Loader2,
+  MessageSquare,
+  Plus,
   Play,
   RotateCcw,
   ScanEye,
+  Send,
+  Star,
   StepForward,
   Usb,
 } from 'lucide-react'
@@ -20,8 +28,10 @@ import { WebAdbDeviceBackend, isWebUsbSupported } from './adapters/webAdbBackend
 import type { AgentAction } from './lib/actions'
 import { buildActionPreview } from './lib/actions'
 import {
+  addUserMessage,
   createAgentRunner,
   createAgentSession,
+  queueUserMessage,
   recordAgentStep,
   runAgentStep,
   type AgentSession,
@@ -34,14 +44,38 @@ import { loadSettings, saveSettings } from './lib/settings'
 import { RunLog, type LogEntry, type LogScreenshot } from './components/RunLog'
 import { ScreenshotLightbox } from './components/ScreenshotLightbox'
 
+const REPOSITORY_URL = 'https://github.com/yeahhe365/webadb-autoglm'
+const REPOSITORY_API_URL = 'https://api.github.com/repos/yeahhe365/webadb-autoglm'
+
+type RepositoryStats = {
+  stars: number
+  forks: number
+  openIssues: number
+}
+
+function readNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function readRepositoryStats(value: unknown): RepositoryStats {
+  const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  return {
+    stars: readNumber(record.stargazers_count),
+    forks: readNumber(record.forks_count),
+    openIssues: readNumber(record.open_issues_count),
+  }
+}
+
 function App() {
   const abortRef = useRef<AbortController | null>(null)
   const settings = useMemo(() => loadSettings(), [])
   const sessionRef = useRef<AgentSession>(createAgentSession(settings.task))
+  const [conversation, setConversation] = useState(() => [...sessionRef.current.messages])
   const [backend] = useState(() => new WebAdbDeviceBackend())
   const client = useMemo(() => createOpenAiClient(), [])
   const [modelConfig, setModelConfig] = useState<ModelConfig>(settings.modelConfig)
   const [task, setTask] = useState(settings.task)
+  const [chatInput, setChatInput] = useState('')
   const [maxSteps, setMaxSteps] = useState(settings.maxSteps)
   const [autoExecute, setAutoExecute] = useState(settings.autoExecute)
   const [preferAdbKeyboard, setPreferAdbKeyboard] = useState(settings.preferAdbKeyboard)
@@ -61,9 +95,16 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [aboutOpen, setAboutOpen] = useState(false)
+  const [repositoryStats, setRepositoryStats] = useState<RepositoryStats | null>(null)
+  const [repositoryStatsStatus, setRepositoryStatsStatus] = useState<'idle' | 'loading' | 'done' | 'error'>(
+    'idle',
+  )
 
   const connected = deviceInfo !== null
-  const canRun = connected && !busy && Boolean(modelConfig.baseUrl && modelConfig.apiKey && modelConfig.model && task)
+  const hasModelConfig = Boolean(modelConfig.baseUrl && modelConfig.apiKey && modelConfig.model)
+  const hasConversation = conversation.some((message) => message.role === 'user')
+  const canRun = connected && !busy && hasModelConfig && hasConversation
   const displayedScreenshot = screenshot ? modelScreenshotView(screenshot) : null
   const pendingButtonLabel =
     pendingStep?.action.action === 'take_over'
@@ -118,16 +159,38 @@ function App() {
     })
   }, [actionSettleMs, backend, doubleTapIntervalMs, keyboardStepMs])
 
+  useEffect(() => {
+    if (!aboutOpen || repositoryStatsStatus !== 'idle') {
+      return
+    }
+
+    async function loadRepositoryStats() {
+      if (typeof fetch !== 'function') {
+        setRepositoryStatsStatus('error')
+        return
+      }
+
+      setRepositoryStatsStatus('loading')
+      try {
+        const response = await fetch(REPOSITORY_API_URL)
+        if (!response.ok) {
+          throw new Error(`GitHub responded with ${response.status}`)
+        }
+        const payload = await response.json()
+        setRepositoryStats(readRepositoryStats(payload))
+        setRepositoryStatsStatus('done')
+      } catch {
+        setRepositoryStatsStatus('error')
+      }
+    }
+
+    void loadRepositoryStats()
+  }, [aboutOpen, repositoryStatsStatus])
+
   function updateConfig<Key extends keyof ModelConfig>(key: Key, value: ModelConfig[Key]) {
     setModelConfig((current) => {
       return { ...current, [key]: value }
     })
-  }
-
-  function updateTask(value: string) {
-    sessionRef.current = createAgentSession(value)
-    setTask(value)
-    setPendingStep(null)
   }
 
   function addLog(entry: Omit<LogEntry, 'id' | 'time'>) {
@@ -158,16 +221,27 @@ function App() {
   }
 
   function ensureSession() {
-    if (sessionRef.current.task !== task) {
-      sessionRef.current = createAgentSession(task)
-    }
     return sessionRef.current
+  }
+
+  function syncConversation() {
+    setConversation([...sessionRef.current.messages])
+    setTask(sessionRef.current.task)
   }
 
   function resetSession() {
     sessionRef.current = createAgentSession(task)
     setPendingStep(null)
+    syncConversation()
     addLog({ tone: 'info', title: 'Agent context reset' })
+  }
+
+  function startNewChat() {
+    sessionRef.current = createAgentSession('')
+    setChatInput('')
+    setPendingStep(null)
+    syncConversation()
+    addLog({ tone: 'info', title: 'New chat started' })
   }
 
   function clearRunLog() {
@@ -217,7 +291,7 @@ function App() {
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `webadb-autoglm-run-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+    anchor.download = `webdroid-agent-run-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
     anchor.click()
     URL.revokeObjectURL(url)
     addLog({ tone: 'ok', title: 'Run log exported' })
@@ -289,19 +363,21 @@ function App() {
 
   async function planNextStep() {
     await runTask('Plan next action', async () => {
+      const session = ensureSession()
       const step = await runAgentStep({
         device: backend,
         client,
         modelConfig: { ...modelConfig, stream: streamResponses },
-        task,
+        task: session.task,
         promptMode,
-        session: ensureSession(),
-        index: logs.length + 1,
+        session,
+        index: session.history.length + 1,
       })
       setScreenshot(step.screenshot)
       setCurrentApp(step.currentApp)
       setDeviceState(step.deviceState)
       setPendingStep(step)
+      syncConversation()
       addLog({
         tone: 'info',
         title: `Step ${step.index}: ${step.preview}`,
@@ -321,6 +397,7 @@ function App() {
         recordAgentStep(ensureSession(), pendingStep)
         addLog({ tone: 'ok', title: 'Task complete', detail: pendingStep.action.summary })
         setPendingStep(null)
+        syncConversation()
         return
       }
 
@@ -328,23 +405,24 @@ function App() {
       recordAgentStep(ensureSession(), pendingStep, result)
       addLog({ tone: 'ok', title: `Executed ${pendingStep.preview}`, detail: result })
       setPendingStep(null)
+      syncConversation()
     })
   }
 
   async function runAutoLoop() {
     const controller = new AbortController()
     abortRef.current = controller
-    sessionRef.current = createAgentSession(task)
+    const session = ensureSession()
 
     await runTask('Run agent', async () => {
       const runner = createAgentRunner({ device: backend, client })
       const result = await runner.run({
         modelConfig: { ...modelConfig, stream: streamResponses },
-        task,
+        task: session.task,
         promptMode,
         autoExecute: true,
         maxSteps,
-        session: sessionRef.current,
+        session,
         signal: controller.signal,
         confirmSensitiveAction,
         onStep: (step) => {
@@ -358,9 +436,11 @@ function App() {
             detail: formatStepDetail(step),
             screenshot: toLogScreenshot(step.screenshot),
           })
+          syncConversation()
         },
         onExecuted: (step, commandResult) => {
           addLog({ tone: 'ok', title: `Executed ${step.preview}`, detail: commandResult })
+          syncConversation()
         },
       })
 
@@ -382,7 +462,39 @@ function App() {
       if (result.status !== 'awaiting_takeover') {
         setPendingStep(null)
       }
+      syncConversation()
     })
+  }
+
+  async function submitChatMessage() {
+    const message = chatInput.trim()
+    if (!message) {
+      return
+    }
+
+    setChatInput('')
+    const session = ensureSession()
+
+    if (busy) {
+      queueUserMessage(session, message)
+      syncConversation()
+      addLog({ tone: 'info', title: 'User message queued', detail: message })
+      return
+    }
+
+    addUserMessage(session, message)
+    syncConversation()
+    addLog({ tone: 'info', title: 'User message', detail: message })
+
+    if (!connected || !hasModelConfig) {
+      return
+    }
+
+    if (autoExecute) {
+      await runAutoLoop()
+    } else {
+      await planNextStep()
+    }
   }
 
   function stopRun() {
@@ -394,24 +506,104 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">WebADB + OpenAI-compatible Phone Agent</p>
-          <h1>Android Agent Console</h1>
+          <p className="eyebrow">Browser-based Android Agent</p>
+          <h1>WebDroid Agent</h1>
         </div>
-        <div className="status-strip">
-          <span className={isWebUsbSupported() ? 'status ok' : 'status warn'}>
-            <Usb size={16} />
-            WebUSB {isWebUsbSupported() ? 'ready' : 'missing'}
-          </span>
-          <span className={connected ? 'status ok' : 'status'}>
-            <Activity size={16} />
-            {connected ? 'connected' : 'idle'}
-          </span>
-          <span className="status">
-            <ScanEye size={16} />
-            {currentApp}
-          </span>
+        <div className="topbar-actions">
+          <div className="status-strip">
+            <span className={isWebUsbSupported() ? 'status ok' : 'status warn'}>
+              <Usb size={16} />
+              WebUSB {isWebUsbSupported() ? 'ready' : 'missing'}
+            </span>
+            <span className={connected ? 'status ok' : 'status'}>
+              <Activity size={16} />
+              {connected ? 'connected' : 'idle'}
+            </span>
+            <span className="status">
+              <ScanEye size={16} />
+              {currentApp}
+            </span>
+          </div>
+          <button type="button" className="about-button" onClick={() => setAboutOpen(true)}>
+            <Info size={16} />
+            About
+          </button>
         </div>
       </header>
+
+      {aboutOpen ? (
+        <div
+          className="about-page"
+          role="dialog"
+          aria-modal="true"
+          aria-label="About WebDroid Agent"
+          onClick={() => setAboutOpen(false)}
+        >
+          <section className="about-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="about-header">
+              <div>
+                <p className="eyebrow">About</p>
+                <h2>WebDroid Agent</h2>
+              </div>
+              <button
+                type="button"
+                className="about-close"
+                onClick={() => setAboutOpen(false)}
+                aria-label="Close about page"
+              >
+                Close
+              </button>
+            </div>
+            <p className="about-copy">
+              Browser-based Android automation console for WebADB and OpenAI-compatible vision
+              models.
+            </p>
+            <a
+              className="repository-link"
+              href={REPOSITORY_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="GitHub repository"
+            >
+              <Code2 size={18} />
+              <span>{REPOSITORY_URL}</span>
+              <ExternalLink size={15} />
+            </a>
+            <div className="repository-stats" aria-label="Repository stats">
+              <div>
+                <Star size={18} />
+                <strong>
+                  {repositoryStatsStatus === 'loading'
+                    ? '...'
+                    : (repositoryStats?.stars.toLocaleString() ?? '-')}
+                </strong>
+                <span>Stars</span>
+              </div>
+              <div>
+                <GitFork size={18} />
+                <strong>
+                  {repositoryStatsStatus === 'loading'
+                    ? '...'
+                    : (repositoryStats?.forks.toLocaleString() ?? '-')}
+                </strong>
+                <span>Forks</span>
+              </div>
+              <div>
+                <AlertTriangle size={18} />
+                <strong>
+                  {repositoryStatsStatus === 'loading'
+                    ? '...'
+                    : (repositoryStats?.openIssues.toLocaleString() ?? '-')}
+                </strong>
+                <span>Open issues</span>
+              </div>
+            </div>
+            {repositoryStatsStatus === 'error' ? (
+              <p className="about-error">Could not load GitHub stats right now.</p>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="alert">
@@ -426,49 +618,55 @@ function App() {
             <KeyRound size={18} />
             <h2>Model</h2>
           </div>
-          <label>
-            Base URL
-            <input
-              value={modelConfig.baseUrl}
-              onChange={(event) => updateConfig('baseUrl', event.target.value)}
-              placeholder="https://api.example.com/v1"
-            />
-          </label>
-          <label>
-            API Key
-            <input
-              value={modelConfig.apiKey}
-              onChange={(event) => updateConfig('apiKey', event.target.value)}
-              placeholder="sk-..."
-              type="password"
-            />
-          </label>
-          <label>
-            Model
-            <input
-              value={modelConfig.model}
-              onChange={(event) => updateConfig('model', event.target.value)}
-              placeholder="vision-model"
-            />
-          </label>
-          <label>
-            Prompt mode
-            <select
-              value={promptMode}
-              onChange={(event) => setPromptMode(event.target.value as PromptMode)}
-            >
-              <option value="canonical-json">Canonical JSON</option>
-              <option value="autoglm-native">AutoGLM native</option>
-            </select>
-          </label>
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={streamResponses}
-              onChange={(event) => setStreamResponses(event.target.checked)}
-            />
-            <span>Stream model responses</span>
-          </label>
+          <div className="model-box">
+            <span>{modelConfig.model || 'No model'}</span>
+            <details className="model-details">
+              <summary>Model settings</summary>
+              <label>
+                Base URL
+                <input
+                  value={modelConfig.baseUrl}
+                  onChange={(event) => updateConfig('baseUrl', event.target.value)}
+                  placeholder="https://api.example.com/v1"
+                />
+              </label>
+              <label>
+                API Key
+                <input
+                  value={modelConfig.apiKey}
+                  onChange={(event) => updateConfig('apiKey', event.target.value)}
+                  placeholder="sk-..."
+                  type="password"
+                />
+              </label>
+              <label>
+                Model
+                <input
+                  value={modelConfig.model}
+                  onChange={(event) => updateConfig('model', event.target.value)}
+                  placeholder="vision-model"
+                />
+              </label>
+              <label>
+                Prompt mode
+                <select
+                  value={promptMode}
+                  onChange={(event) => setPromptMode(event.target.value as PromptMode)}
+                >
+                  <option value="canonical-json">Canonical JSON</option>
+                  <option value="autoglm-native">AutoGLM native</option>
+                </select>
+              </label>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={streamResponses}
+                  onChange={(event) => setStreamResponses(event.target.checked)}
+                />
+                <span>Stream model responses</span>
+              </label>
+            </details>
+          </div>
 
           <div className="panel-title">
             <Usb size={18} />
@@ -476,11 +674,21 @@ function App() {
           </div>
           <div className="device-box">
             <span>{deviceInfo?.name || 'No device'}</span>
-            <small>{deviceInfo?.serial || 'USB debugging required'}</small>
-            <small>Current app: {currentApp}</small>
-            {deviceState.packageName ? <small>Package: {deviceState.packageName}</small> : null}
-            {deviceState.activity ? <small>Activity: {deviceState.activity}</small> : null}
-            {deviceState.keyboard ? <small>Keyboard: {deviceState.keyboard}</small> : null}
+            {connected ? (
+              <details className="device-details">
+                <summary>Device details</summary>
+                <small>Serial: {deviceInfo.serial}</small>
+                <small>Current app: {currentApp}</small>
+                {deviceState.packageName ? <small>Package: {deviceState.packageName}</small> : null}
+                {deviceState.activity ? <small>Activity: {deviceState.activity}</small> : null}
+                {deviceState.keyboard ? <small>Keyboard: {deviceState.keyboard}</small> : null}
+              </details>
+            ) : (
+              <>
+                <small>USB debugging required</small>
+                <small>Current app: {currentApp}</small>
+              </>
+            )}
           </div>
           <div className="button-row">
             <button type="button" onClick={connectDevice} disabled={Boolean(busy) || connected}>
@@ -599,13 +807,37 @@ function App() {
 
         <aside className="panel run-panel">
           <div className="panel-title">
-            <Play size={18} />
-            <h2>Task</h2>
+            <MessageSquare size={18} />
+            <h2>Chat</h2>
+          </div>
+          <div className="conversation-list" aria-label="Conversation">
+            {conversation.length === 0 ? <p className="muted">No messages yet</p> : null}
+            {conversation.map((message) => (
+              <article className={`chat-message ${message.role}`} key={message.id}>
+                <span>{formatConversationRole(message.role)}</span>
+                <p>{message.content}</p>
+              </article>
+            ))}
           </div>
           <label>
-            Goal
-            <textarea value={task} onChange={(event) => updateTask(event.target.value)} rows={5} />
+            Chat message
+            <textarea
+              value={chatInput}
+              onChange={(event) => setChatInput(event.target.value)}
+              rows={4}
+              placeholder="Send a follow-up instruction..."
+            />
           </label>
+          <div className="button-row">
+            <button type="button" onClick={submitChatMessage} disabled={!chatInput.trim()}>
+              <Send size={16} />
+              Send
+            </button>
+            <button type="button" onClick={startNewChat} disabled={Boolean(busy)}>
+              <Plus size={16} />
+              New chat
+            </button>
+          </div>
           <label>
             Max steps
             <input
@@ -666,6 +898,16 @@ function App() {
       <RunLog logs={logs} onClear={clearRunLog} />
     </main>
   )
+}
+
+function formatConversationRole(role: 'user' | 'assistant' | 'observation') {
+  if (role === 'assistant') {
+    return 'Assistant'
+  }
+  if (role === 'observation') {
+    return 'Observation'
+  }
+  return 'User'
 }
 
 function formatDeviceState(state: DeviceState) {

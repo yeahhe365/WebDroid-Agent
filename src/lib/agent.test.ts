@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { DeviceBackend } from '../adapters/deviceBackend'
-import { createAgentRunner, createAgentSession, recordAgentStep, runAgentStep } from './agent'
+import {
+  createAgentRunner,
+  createAgentSession,
+  queueUserMessage,
+  recordAgentStep,
+  runAgentStep,
+} from './agent'
 import type { OpenAiClient } from './openAiClient'
 
 function fakeDevice(): DeviceBackend & { executed: string[] } {
@@ -287,6 +293,47 @@ describe('createAgentRunner', () => {
         executionResult: 'input tap 100 200',
       },
     ])
+    expect(session.messages.at(-1)).toEqual(
+      expect.objectContaining({
+        role: 'observation',
+        content: 'input tap 100 200',
+      }),
+    )
+  })
+
+  it('keeps running when a new user message is queued while the model finishes', async () => {
+    const device = fakeDevice()
+    const session = createAgentSession('Open Settings')
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => {
+        if (vi.mocked(client.completeAction).mock.calls.length === 1) {
+          queueUserMessage(session, 'Now open Bluetooth')
+          return '{"action":"done","summary":"settings opened"}'
+        }
+        return '{"action":"done","summary":"bluetooth opened"}'
+      }),
+    }
+    const runner = createAgentRunner({ device, client })
+
+    const result = await runner.run({
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Open Settings',
+      promptMode: 'canonical-json',
+      autoExecute: true,
+      maxSteps: 3,
+      session,
+    })
+
+    expect(result.status).toBe('done')
+    expect(client.completeAction).toHaveBeenCalledTimes(2)
+    expect(session.pendingUserMessages).toEqual([])
+    expect(client.completeAction).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        conversation: expect.arrayContaining([
+          expect.objectContaining({ role: 'user', content: 'Now open Bluetooth' }),
+        ]),
+      }),
+    )
   })
 
   it('stops before executing a fourth consecutive wait action', async () => {

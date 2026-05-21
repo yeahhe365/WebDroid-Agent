@@ -12,6 +12,7 @@ export type ModelConfig = {
 
 export type CompletionRequest = ModelConfig & {
   task: string
+  conversation?: readonly AgentConversationMessage[]
   screenshotDataUrl: string
   screen: ScreenSize
   deviceScreen?: ScreenSize
@@ -28,25 +29,39 @@ export type AgentHistoryItem = {
   executionResult?: string
 }
 
+export type AgentConversationMessage = {
+  id: string
+  role: 'user' | 'assistant' | 'observation'
+  content: string
+}
+
+type UserContent =
+  | string
+  | Array<
+      | {
+          type: 'text'
+          text: string
+        }
+      | {
+          type: 'image_url'
+          image_url: {
+            url: string
+          }
+        }
+    >
+
 type ChatMessage =
   | {
       role: 'system'
       content: string
     }
   | {
+      role: 'assistant'
+      content: string
+    }
+  | {
       role: 'user'
-      content: Array<
-        | {
-            type: 'text'
-            text: string
-          }
-        | {
-            type: 'image_url'
-            image_url: {
-              url: string
-            }
-          }
-      >
+      content: UserContent
     }
 
 export type ChatCompletionPayload = {
@@ -78,6 +93,7 @@ export function normalizeBaseUrl(baseUrl: string) {
 export function buildChatCompletionPayload({
   model,
   task,
+  conversation,
   screenshotDataUrl,
   screen,
   deviceScreen,
@@ -90,6 +106,7 @@ export function buildChatCompletionPayload({
   CompletionRequest,
   | 'model'
   | 'task'
+  | 'conversation'
   | 'screenshotDataUrl'
   | 'screen'
   | 'deviceScreen'
@@ -99,38 +116,58 @@ export function buildChatCompletionPayload({
   | 'promptMode'
   | 'stream'
 >): ChatCompletionPayload {
-  const payload: ChatCompletionPayload = {
-    model,
-    temperature: promptMode === 'autoglm-native' ? 0 : 0.1,
-    max_tokens: promptMode === 'autoglm-native' ? 3000 : 800,
-    ...(stream ? { stream: true } : {}),
-    messages: [
-      {
-        role: 'system',
-        content: buildSystemPrompt(promptMode),
-      },
-      {
-        role: 'user',
-        content: [
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content: buildSystemPrompt(promptMode),
+    },
+  ]
+
+  const context = buildUserContext({
+    task,
+    screen,
+    deviceScreen,
+    currentApp,
+    deviceState,
+    history,
+    promptMode,
+    latestUserMessage: latestUserMessage(conversation),
+  })
+  const conversationMessages = conversation?.filter((message) => message.content.trim()) ?? []
+
+  if (conversationMessages.length > 0) {
+    for (const message of conversationMessages) {
+      messages.push(toChatMessage(message))
+    }
+    const lastUserIndex = findLastUserMessageIndex(messages)
+    if (lastUserIndex >= 0) {
+      const lastUser = messages[lastUserIndex]
+      if (lastUser.role === 'user') {
+        const text = userContentText(lastUser.content)
+        lastUser.content = [
           {
             type: 'text',
-            text: buildUserContext({
-              task,
-              screen,
-              deviceScreen,
-              currentApp,
-              deviceState,
-              history,
-              promptMode,
-            }),
+            text: [text, context].filter(Boolean).join('\n\n'),
           },
           {
             type: 'image_url',
             image_url: { url: screenshotDataUrl },
           },
-        ],
-      },
-    ],
+        ]
+      }
+    } else {
+      messages.push(multimodalUserMessage(context, screenshotDataUrl))
+    }
+  } else {
+    messages.push(multimodalUserMessage(context, screenshotDataUrl))
+  }
+
+  const payload: ChatCompletionPayload = {
+    model,
+    temperature: promptMode === 'autoglm-native' ? 0 : 0.1,
+    max_tokens: promptMode === 'autoglm-native' ? 3000 : 800,
+    ...(stream ? { stream: true } : {}),
+    messages,
   }
 
   if (promptMode === 'canonical-json') {
@@ -148,6 +185,7 @@ function buildUserContext({
   deviceState,
   history,
   promptMode,
+  latestUserMessage,
 }: Pick<
   CompletionRequest,
   | 'task'
@@ -157,7 +195,9 @@ function buildUserContext({
   | 'deviceState'
   | 'history'
   | 'promptMode'
->) {
+> & {
+  latestUserMessage?: string
+}) {
   const historyEntries = history ?? []
   const screenInfo = JSON.stringify({
     current_app: currentApp ?? deviceState?.app ?? 'Unknown',
@@ -174,11 +214,13 @@ function buildUserContext({
   })
   const lines = [
     `Task: ${task}`,
+    latestUserMessage ? `Latest user message: ${latestUserMessage}` : null,
     `Screen Info: ${screenInfo}`,
+    'Treat the latest user message as the current instruction. Use earlier messages and observations only as context.',
     promptMode === 'autoglm-native'
       ? 'Coordinates in actions should use Open-AutoGLM relative coordinates from 0 to 1000.'
       : 'Coordinates use pixels in the attached screenshot. Use numeric x/y labels on major grid lines as anchors; do not answer with grid-cell numbers. Your screenshot coordinates are mapped back to native device pixels before execution.',
-  ]
+  ].filter(Boolean) as string[]
 
   if (historyEntries.length > 0) {
     lines.push('Previous steps:')
@@ -197,6 +239,75 @@ function buildUserContext({
   }
 
   return lines.join('\n')
+}
+
+function multimodalUserMessage(text: string, screenshotDataUrl: string): ChatMessage {
+  return {
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text,
+      },
+      {
+        type: 'image_url',
+        image_url: { url: screenshotDataUrl },
+      },
+    ],
+  }
+}
+
+function toChatMessage(message: AgentConversationMessage): ChatMessage {
+  if (message.role === 'assistant') {
+    return {
+      role: 'assistant',
+      content: message.content,
+    }
+  }
+
+  if (message.role === 'observation') {
+    return {
+      role: 'user',
+      content: `<observation>\n${message.content}\n</observation>`,
+    }
+  }
+
+  return {
+    role: 'user',
+    content: message.content,
+  }
+}
+
+function findLastUserMessageIndex(messages: readonly ChatMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === 'user') {
+      return index
+    }
+  }
+  return -1
+}
+
+function latestUserMessage(conversation?: readonly AgentConversationMessage[]) {
+  if (!conversation) {
+    return undefined
+  }
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    const message = conversation[index]
+    if (message.role === 'user' && message.content.trim()) {
+      return message.content.trim()
+    }
+  }
+  return undefined
+}
+
+function userContentText(content: UserContent) {
+  if (typeof content === 'string') {
+    return content
+  }
+  return content
+    .map((part) => (part.type === 'text' ? part.text : ''))
+    .join('\n')
+    .trim()
 }
 
 export function extractAssistantText(response: unknown): string {

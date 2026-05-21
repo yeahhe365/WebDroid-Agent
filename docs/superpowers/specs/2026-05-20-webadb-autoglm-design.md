@@ -1,4 +1,4 @@
-# WebADB AutoGLM Design
+# WebDroid Agent Design
 
 ## Goal
 

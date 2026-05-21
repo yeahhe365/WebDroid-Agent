@@ -1,13 +1,46 @@
-# WebADB AutoGLM
+# WebDroid Agent
 
-WebADB AutoGLM 是一个完全纯前端的 Android 手机 Agent 实验项目。它在浏览器中通过 WebUSB/WebADB 连接 Android 设备，截取手机屏幕并发送给 OpenAI 兼容的视觉模型，再把模型返回的受控动作解析、校验并通过 ADB 执行。
+[English](./README.en-US.md)
+
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)
+![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
+![WebUSB](https://img.shields.io/badge/WebUSB-Android_ADB-34A853?logo=googlechrome&logoColor=white)
+![Cloudflare Pages](https://img.shields.io/badge/Cloudflare_Pages-online-F38020?logo=cloudflare&logoColor=white)
+
+WebDroid Agent 是一个完全纯前端的 Android 手机 Agent 实验项目。它在浏览器中通过 WebUSB/WebADB 连接 Android 设备，截取手机屏幕并发送给 OpenAI 兼容的视觉模型，再把模型返回的受控动作解析、校验并通过 ADB 执行。
 
 项目目标不是替代人工长期托管手机，而是提供一个可以在本地浏览器中快速验证「视觉模型 + 手机控制」链路的实验环境。
+
+[在线体验](https://webadb-autoglm.pages.dev/) · [英文版](./README.en-US.md) · [Tango / WebADB](https://github.com/yume-chan/ya-webadb)
+
+![WebDroid Agent 界面预览](./src/assets/hero.png)
 
 ```text
 Chromium WebUSB -> Tango/WebADB -> Android ADB
 浏览器 fetch -> OpenAI 兼容 /v1/chat/completions -> 视觉模型
 ```
+
+## 目录
+
+- [核心能力](#核心能力)
+- [适合谁使用](#适合谁使用)
+- [项目状态](#项目状态)
+- [工作流程](#工作流程)
+- [环境要求](#环境要求)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [模型动作协议](#模型动作协议)
+- [Open-AutoGLM 兼容](#open-autoglm-兼容)
+- [设备控制细节](#设备控制细节)
+- [安全边界](#安全边界)
+- [项目结构](#项目结构)
+- [验证](#验证)
+- [路线图](#路线图)
+- [贡献说明](#贡献说明)
+- [部署到 Cloudflare Pages](#部署到-cloudflare-pages)
+- [License](#license)
+- [相关项目和社区](#相关项目和社区)
 
 ## 核心能力
 
@@ -21,7 +54,7 @@ Chromium WebUSB -> Tango/WebADB -> Android ADB
 - 支持敏感动作确认、最大步数限制、停止运行、上下文重置和运行日志导出。
 - 页面配置持久化到本机浏览器 `localStorage`。
 
-## 使用场景
+## 适合谁使用
 
 适合用于：
 
@@ -29,12 +62,25 @@ Chromium WebUSB -> Tango/WebADB -> Android ADB
 - 调试手机 Agent 的动作协议、坐标映射和自动执行流程。
 - 研究 Open-AutoGLM 风格动作和更通用 JSON 动作之间的兼容层。
 - 在本地安全环境中做 Android UI 自动化原型实验。
+- 想快速体验 WebUSB + ADB + 多模态模型闭环的开发者。
 
 不建议用于：
 
 - 支付、下单、删除、授权、账号设置等高风险流程。
 - 登录、验证码、密码输入等需要人工明确介入的流程。
 - 需要后台服务、长期稳定托管或多设备调度的生产场景。
+
+## 项目状态
+
+当前项目处于实验可用阶段，核心链路已经打通：
+
+- 浏览器端连接 Android 设备并获取截图。
+- 调用 OpenAI 兼容视觉模型生成下一步动作。
+- 解析 canonical JSON 和 Open-AutoGLM 风格动作。
+- 执行常见 ADB 控制指令并记录运行日志。
+- 支持自动执行、人工确认、停止和上下文重置。
+
+仍建议把它当作本地实验工具使用。真实设备、模型能力、浏览器权限、CORS 配置和 Android ROM 差异都会影响效果。
 
 ## 工作流程
 
@@ -224,6 +270,37 @@ npm run build
 
 真实设备控制仍需要连接 Android 设备进行手动验证。
 
+## 路线图
+
+- [x] 浏览器中通过 WebADB 连接 Android 设备。
+- [x] 截图并发送给 OpenAI 兼容视觉模型。
+- [x] 支持 canonical JSON 动作协议。
+- [x] 兼容 Open-AutoGLM 风格动作输出。
+- [x] 支持自动执行、单步执行和敏感动作确认。
+- [x] 支持运行日志和截图查看。
+- [ ] 补充更完整的真实设备验证矩阵。
+- [ ] 增加更多模型提供商配置示例。
+- [ ] 增强失败恢复、动作重试和任务暂停恢复体验。
+- [ ] 提供更系统的安全策略和风险分级。
+
+## 贡献说明
+
+欢迎围绕以下方向提交 issue 或 pull request：
+
+- 新设备、新浏览器或新模型的兼容性反馈。
+- 动作解析、坐标映射、ADB 执行稳定性改进。
+- Open-AutoGLM 或其他手机 Agent 协议兼容。
+- 文档、示例任务、故障排查和安全建议补充。
+- UI 可用性、日志可读性和本地实验体验优化。
+
+提交改动前建议先运行：
+
+```bash
+npm test
+npm run lint
+npm run build
+```
+
 ## 部署到 Cloudflare Pages
 
 项目已创建在 Cloudflare Pages：
@@ -242,6 +319,10 @@ git push origin main
 ```bash
 npm run build
 ```
+
+## License
+
+当前仓库尚未声明开源许可证。正式复用、分发或二次开发前，请先确认许可证安排。
 
 ## 相关项目和社区
 

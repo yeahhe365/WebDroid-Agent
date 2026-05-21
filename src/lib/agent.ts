@@ -5,7 +5,12 @@ import type {
   ExecuteActionOptions,
 } from '../adapters/deviceBackend'
 import { type AgentAction, buildActionPreview, parseModelAction } from './actions'
-import type { AgentHistoryItem, ModelConfig, OpenAiClient } from './openAiClient'
+import type {
+  AgentConversationMessage,
+  AgentHistoryItem,
+  ModelConfig,
+  OpenAiClient,
+} from './openAiClient'
 import type { PromptMode } from './prompts'
 import { mapActionCoordinates, modelScreenshotView } from './screenshotCoordinates'
 
@@ -70,13 +75,50 @@ export type AgentRunnerInput = {
 export type AgentSession = {
   task: string
   history: AgentHistoryItem[]
+  messages: AgentConversationMessage[]
+  pendingUserMessages: QueuedUserMessage[]
+  stepNumber: number
+}
+
+export type QueuedUserMessage = {
+  id: string
+  message: string
+  queuedAtStep: number
 }
 
 export function createAgentSession(task: string): AgentSession {
+  const initialTask = task.trim()
   return {
     task,
     history: [],
+    messages: initialTask ? [createConversationMessage('user', initialTask)] : [],
+    pendingUserMessages: [],
+    stepNumber: 0,
   }
+}
+
+export function addUserMessage(session: AgentSession, message: string) {
+  const content = message.trim()
+  if (!content) {
+    throw new Error('Cannot add an empty user message.')
+  }
+  const entry = createConversationMessage('user', content)
+  session.messages.push(entry)
+  if (!session.task.trim()) {
+    session.task = content
+  }
+  return entry
+}
+
+export function queueUserMessage(session: AgentSession, message: string): QueuedUserMessage {
+  const entry = addUserMessage(session, message)
+  const queued = {
+    id: entry.id,
+    message: entry.content,
+    queuedAtStep: session.stepNumber,
+  }
+  session.pendingUserMessages.push(queued)
+  return queued
 }
 
 export function recordAgentStep(session: AgentSession, step: AgentStep, executionResult?: string) {
@@ -87,6 +129,9 @@ export function recordAgentStep(session: AgentSession, step: AgentStep, executio
     actionPreview: step.preview,
     executionResult,
   })
+  if (executionResult) {
+    session.messages.push(createConversationMessage('observation', executionResult))
+  }
 }
 
 export async function runAgentStep({
@@ -108,9 +153,14 @@ export async function runAgentStep({
   const currentAppMs = elapsed(currentAppStartedAt)
   const modelStartedAt = now()
   const modelScreenshot = modelScreenshotView(screenshot)
+  if (session) {
+    session.stepNumber = index
+    drainPendingUserMessages(session)
+  }
   const modelOutput = await client.completeAction({
     ...modelConfig,
     task,
+    conversation: session?.messages,
     screenshotDataUrl: modelScreenshot.dataUrl,
     screen: modelScreenshot.screen,
     deviceScreen: screenshot.screen,
@@ -119,6 +169,9 @@ export async function runAgentStep({
     history: session?.history ?? [],
     promptMode,
   })
+  if (session) {
+    session.messages.push(createConversationMessage('assistant', modelOutput))
+  }
   const modelMs = elapsed(modelStartedAt)
   const parseStartedAt = now()
   const action = parseModelAction(modelOutput, modelScreenshot.screen)
@@ -175,6 +228,9 @@ export function createAgentRunner({
 
         if (step.action.action === 'done') {
           recordAgentStep(session, step)
+          if (session.pendingUserMessages.length > 0) {
+            continue
+          }
           return { status: 'done', steps }
         }
 
@@ -202,6 +258,26 @@ export function createAgentRunner({
 
       return { status: 'max_steps', steps }
     },
+  }
+}
+
+function drainPendingUserMessages(session: AgentSession) {
+  if (session.pendingUserMessages.length === 0) {
+    return []
+  }
+  const messages = [...session.pendingUserMessages]
+  session.pendingUserMessages = []
+  return messages
+}
+
+function createConversationMessage(
+  role: AgentConversationMessage['role'],
+  content: string,
+): AgentConversationMessage {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    role,
+    content,
   }
 }
 

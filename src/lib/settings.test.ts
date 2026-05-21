@@ -48,7 +48,7 @@ describe('settings persistence', () => {
     expect(
       loadSettings(
         memoryStorage({
-          'webadb-autoglm-settings': JSON.stringify(persisted),
+          'webdroid-agent-settings': JSON.stringify(persisted),
         }),
       ),
     ).toEqual(persisted)
@@ -82,14 +82,14 @@ describe('settings persistence', () => {
 
     saveSettings(settings, storage)
 
-    expect(storage.setItem).toHaveBeenCalledWith('webadb-autoglm-settings', JSON.stringify(settings))
+    expect(storage.setItem).toHaveBeenCalledWith('webdroid-agent-settings', JSON.stringify(settings))
   })
 
   it('normalizes new optimization settings when they are missing or invalid', () => {
     expect(
       loadSettings(
         memoryStorage({
-          'webadb-autoglm-settings': JSON.stringify({
+          'webdroid-agent-settings': JSON.stringify({
             ...DEFAULT_SETTINGS,
             promptMode: 'invalid-mode',
             streamResponses: 'yes',
@@ -100,6 +100,21 @@ describe('settings persistence', () => {
         }),
       ),
     ).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('keeps the previous WebADB AutoGLM settings key as a migration fallback', () => {
+    const persisted: AppSettings = {
+      ...DEFAULT_SETTINGS,
+      task: 'Migrated project name task',
+    }
+
+    expect(
+      loadSettings(
+        memoryStorage({
+          'webadb-autoglm-settings': JSON.stringify(persisted),
+        }),
+      ),
+    ).toEqual(persisted)
   })
 
   it('keeps old combined settings key as a migration fallback', () => {

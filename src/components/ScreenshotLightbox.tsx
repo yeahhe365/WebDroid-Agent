@@ -1,5 +1,5 @@
 import { Maximize2, X } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode, type WheelEvent } from 'react'
 
 export type ScreenshotSource = {
   dataUrl: string
@@ -35,6 +35,8 @@ export function ScreenshotLightbox({
   children?: ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  const [zoom, setZoom] = useState(1)
+  const zoomPercent = Math.round(zoom * 100)
 
   useEffect(() => {
     if (!open) {
@@ -51,13 +53,27 @@ export function ScreenshotLightbox({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open])
 
+  function openLightbox() {
+    setZoom(1)
+    setOpen(true)
+  }
+
+  function zoomScreenshot(event: WheelEvent) {
+    event.preventDefault()
+    const direction = event.deltaY < 0 ? 1 : -1
+    setZoom((current) => {
+      const next = current + direction * 0.15
+      return Math.min(4, Math.max(0.5, Math.round(next * 100) / 100))
+    })
+  }
+
   return (
     <>
       <button
         type="button"
         className={thumbnailClassName}
         aria-label={`Open screenshot for ${title}`}
-        onClick={() => setOpen(true)}
+        onClick={openLightbox}
       >
         <img src={screenshot.dataUrl} alt={thumbnailAlt} />
         {children}
@@ -91,7 +107,13 @@ export function ScreenshotLightbox({
                 <X size={16} />
               </button>
             </div>
-            <img src={screenshot.dataUrl} alt={expandedAlt} />
+            <div className="screenshot-modal-viewport" onWheel={zoomScreenshot}>
+              <img
+                src={screenshot.dataUrl}
+                alt={expandedAlt}
+                style={{ height: `${zoomPercent}%` }}
+              />
+            </div>
           </div>
         </div>
       ) : null}

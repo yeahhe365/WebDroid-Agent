@@ -17,7 +17,8 @@ export type AppSettings = {
 
 export type SettingsStorage = Pick<Storage, 'getItem' | 'setItem'>
 
-const SETTINGS_KEY = 'webadb-autoglm-settings'
+const SETTINGS_KEY = 'webdroid-agent-settings'
+const LEGACY_PROJECT_SETTINGS_KEY = 'webadb-autoglm-settings'
 const LEGACY_SETTINGS_KEY = 'webadb-demo-settings'
 const LEGACY_BASE_URL_KEY = 'webadb-demo-base-url'
 const LEGACY_MODEL_KEY = 'webadb-demo-model'
@@ -41,7 +42,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
 }
 
 export function loadSettings(storage: SettingsStorage = localStorage): AppSettings {
-  const raw = storage.getItem(SETTINGS_KEY) ?? storage.getItem(LEGACY_SETTINGS_KEY)
+  const raw =
+    storage.getItem(SETTINGS_KEY) ??
+    storage.getItem(LEGACY_PROJECT_SETTINGS_KEY) ??
+    storage.getItem(LEGACY_SETTINGS_KEY)
   if (raw) {
     try {
       return normalizeSettings(JSON.parse(raw))

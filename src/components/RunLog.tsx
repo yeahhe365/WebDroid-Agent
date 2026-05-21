@@ -34,18 +34,29 @@ export function RunLog({
       <div className="log-list">
         {logs.length === 0 ? <p className="muted">No events yet</p> : null}
         {logs.map((entry) => (
-          <article className={`log-entry ${entry.tone}`} key={entry.id}>
-            <time>{entry.time}</time>
-            <strong>{entry.title}</strong>
-            {entry.detail ? <pre>{entry.detail}</pre> : null}
-            {entry.screenshot ? (
-              <ScreenshotLightbox
-                screenshot={entry.screenshot}
-                title={entry.title}
-                thumbnailAlt={`Screenshot for ${entry.title}`}
-                expandedAlt={`Expanded screenshot for ${entry.title}`}
-                thumbnailClassName="log-screenshot-button"
-              />
+          <article
+            className={`log-entry ${entry.tone}${entry.screenshot ? ' with-screenshot' : ''}`}
+            key={entry.id}
+          >
+            <div className="log-entry-content">
+              <time>{entry.time}</time>
+              <strong>{entry.title}</strong>
+            </div>
+            {entry.detail || entry.screenshot ? (
+              <div className="log-entry-body">
+                {entry.detail ? <pre>{entry.detail}</pre> : null}
+                {entry.screenshot ? (
+                  <div className="log-entry-media">
+                    <ScreenshotLightbox
+                      screenshot={entry.screenshot}
+                      title={entry.title}
+                      thumbnailAlt={`Screenshot for ${entry.title}`}
+                      expandedAlt={`Expanded screenshot for ${entry.title}`}
+                      thumbnailClassName="log-screenshot-button"
+                    />
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </article>
         ))}

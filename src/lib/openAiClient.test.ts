@@ -51,7 +51,11 @@ describe('buildChatCompletionPayload', () => {
     })
 
     const userMessage = payload.messages[1]
-    if (userMessage.role !== 'user' || userMessage.content[0].type !== 'text') {
+    if (
+      userMessage.role !== 'user' ||
+      !Array.isArray(userMessage.content) ||
+      userMessage.content[0].type !== 'text'
+    ) {
       throw new Error('Expected first user content item to be text.')
     }
 
@@ -91,7 +95,11 @@ describe('buildChatCompletionPayload', () => {
 
     const userMessage = payload.messages[1]
     expect(userMessage.role).toBe('user')
-    if (userMessage.role !== 'user' || userMessage.content[0].type !== 'text') {
+    if (
+      userMessage.role !== 'user' ||
+      !Array.isArray(userMessage.content) ||
+      userMessage.content[0].type !== 'text'
+    ) {
       throw new Error('Expected first user content item to be text.')
     }
     const userText = userMessage.content[0].text
@@ -102,6 +110,60 @@ describe('buildChatCompletionPayload', () => {
     expect(userText).toContain('Step 1')
     expect(userText).toContain('launch Chrome')
     expect(userText).toContain('monkey -p com.android.chrome')
+  })
+
+  it('preserves conversation messages and injects current context into the latest user turn', () => {
+    const payload = buildChatCompletionPayload({
+      model: 'agent-model',
+      task: 'Open settings',
+      conversation: [
+        { id: 'u1', role: 'user', content: 'Open Settings.' },
+        { id: 'a1', role: 'assistant', content: '{"action":"tap","x":100,"y":200}' },
+        { id: 'o1', role: 'observation', content: 'Executed tap (100, 200)' },
+        { id: 'u2', role: 'user', content: 'Now open the Bluetooth page.' },
+      ],
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 1080, height: 2400 },
+      currentApp: 'Settings',
+      promptMode: 'canonical-json',
+    })
+
+    expect(payload.messages.map((message) => message.role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'user',
+      'user',
+    ])
+    expect(payload.messages[1]).toEqual({
+      role: 'user',
+      content: 'Open Settings.',
+    })
+    expect(payload.messages[2]).toEqual({
+      role: 'assistant',
+      content: '{"action":"tap","x":100,"y":200}',
+    })
+    expect(payload.messages[3]).toEqual({
+      role: 'user',
+      content: '<observation>\nExecuted tap (100, 200)\n</observation>',
+    })
+
+    const latestUserMessage = payload.messages[4]
+    if (latestUserMessage.role !== 'user' || !Array.isArray(latestUserMessage.content)) {
+      throw new Error('Expected latest user message to be multimodal.')
+    }
+    expect(latestUserMessage.content[0]).toEqual({
+      type: 'text',
+      text: expect.stringContaining('Now open the Bluetooth page.'),
+    })
+    expect(latestUserMessage.content[0]).toEqual({
+      type: 'text',
+      text: expect.stringContaining('"current_app":"Settings"'),
+    })
+    expect(latestUserMessage.content[1]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'data:image/png;base64,abc123' },
+    })
   })
 
   it('enables streaming when requested by the model config', () => {

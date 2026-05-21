@@ -53,7 +53,7 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     const transport = await AdbDaemonTransport.authenticate({
       serial: device.serial,
       connection,
-      credentialStore: new AdbWebCredentialStore('webadb-autoglm'),
+      credentialStore: new AdbWebCredentialStore('webdroid-agent'),
     })
 
     this.#adb = new Adb(transport)

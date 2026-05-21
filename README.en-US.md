@@ -1,6 +1,6 @@
-# WebADB AutoGLM
+# WebDroid Agent
 
-WebADB AutoGLM is a fully frontend Android phone agent experiment. It connects to an Android device from the browser through WebUSB/WebADB, captures the device screen, sends it to an OpenAI-compatible vision model, then parses, validates, and executes the model's constrained action through ADB.
+WebDroid Agent is a fully frontend Android phone agent experiment. It connects to an Android device from the browser through WebUSB/WebADB, captures the device screen, sends it to an OpenAI-compatible vision model, then parses, validates, and executes the model's constrained action through ADB.
 
 The goal is not to replace long-running human supervision. It is a local browser environment for quickly validating the vision-model-plus-phone-control loop.
 
