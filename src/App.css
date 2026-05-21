@@ -143,6 +143,16 @@ button {
   margin: 0;
 }
 
+.settings-field span {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.settings-field svg {
+  color: var(--accent);
+}
+
 .repository-link {
   align-items: center;
   background: var(--subtle-bg);

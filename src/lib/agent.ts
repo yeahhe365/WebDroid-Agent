@@ -13,6 +13,10 @@ import type {
 } from './openAiClient'
 import type { PromptMode } from './prompts'
 import { mapActionCoordinates, modelScreenshotView } from './screenshotCoordinates'
+import {
+  createDefaultActionToolRegistry,
+  type ActionToolRegistry,
+} from './toolRegistry'
 
 export type AgentTiming = {
   captureMs: number
@@ -74,6 +78,19 @@ export type AgentRunnerInput = {
 
 export type AgentSession = {
   task: string
+  currentApp: string
+  deviceState: DeviceState
+  lastScreenshot?: DeviceScreenshot
+  visitedPackages: string[]
+  visitedActivities: string[]
+  lastActionPreview?: string
+  lastExecutionResult?: string
+  actionOutcomes: boolean[]
+  errorDescriptions: string[]
+  memory: string[]
+  progressSummary: string
+  finished: boolean
+  success?: boolean
   history: AgentHistoryItem[]
   messages: AgentConversationMessage[]
   pendingUserMessages: QueuedUserMessage[]
@@ -90,6 +107,15 @@ export function createAgentSession(task: string): AgentSession {
   const initialTask = task.trim()
   return {
     task,
+    currentApp: 'Unknown',
+    deviceState: { app: 'Unknown' },
+    visitedPackages: [],
+    visitedActivities: [],
+    actionOutcomes: [],
+    errorDescriptions: [],
+    memory: [],
+    progressSummary: '',
+    finished: false,
     history: [],
     messages: initialTask ? [createConversationMessage('user', initialTask)] : [],
     pendingUserMessages: [],
@@ -121,14 +147,37 @@ export function queueUserMessage(session: AgentSession, message: string): Queued
   return queued
 }
 
-export function recordAgentStep(session: AgentSession, step: AgentStep, executionResult?: string) {
+export function recordAgentStep(
+  session: AgentSession,
+  step: AgentStep,
+  executionResult?: string,
+  success = executionResult === undefined ? undefined : true,
+) {
   step.executionResult = executionResult
+  updateSessionDeviceSnapshot(session, {
+    currentApp: step.currentApp,
+    deviceState: step.deviceState,
+    screenshot: step.screenshot,
+  })
+  session.lastActionPreview = step.preview
+  session.lastExecutionResult = executionResult
+  if (step.action.action === 'done') {
+    session.finished = true
+    session.success = true
+    session.progressSummary = step.action.summary ?? step.action.reason ?? 'Task completed.'
+  }
   session.history.push({
     step: step.index,
     currentApp: step.currentApp,
     actionPreview: step.preview,
     executionResult,
   })
+  if (success !== undefined) {
+    session.actionOutcomes.push(success)
+    if (!success && executionResult) {
+      session.errorDescriptions.push(executionResult)
+    }
+  }
   if (executionResult) {
     session.messages.push(createConversationMessage('observation', executionResult))
   }
@@ -155,6 +204,7 @@ export async function runAgentStep({
   const modelScreenshot = modelScreenshotView(screenshot)
   if (session) {
     session.stepNumber = index
+    updateSessionDeviceSnapshot(session, { currentApp, deviceState, screenshot })
     drainPendingUserMessages(session)
   }
   const modelOutput = await client.completeAction({
@@ -200,9 +250,11 @@ export async function runAgentStep({
 export function createAgentRunner({
   device,
   client,
+  toolRegistry = createDefaultActionToolRegistry(),
 }: {
   device: DeviceBackend
   client: OpenAiClient
+  toolRegistry?: ActionToolRegistry
 }) {
   return {
     async run(input: AgentRunnerInput): Promise<AgentRunResult> {
@@ -249,11 +301,15 @@ export function createAgentRunner({
           return { status: 'awaiting_review', steps }
         }
 
-        const result = await device.execute(step.executionAction, {
+        const result = await toolRegistry.execute(step.executionAction, {
+          device,
           confirmSensitiveAction: input.confirmSensitiveAction,
         })
-        recordAgentStep(session, step, result)
-        input.onExecuted?.(step, result)
+        recordAgentStep(session, step, result.summary, result.success)
+        input.onExecuted?.(step, result.summary)
+        if (!result.success) {
+          return { status: 'awaiting_review', steps, reason: result.summary }
+        }
       }
 
       return { status: 'max_steps', steps }
@@ -268,6 +324,29 @@ function drainPendingUserMessages(session: AgentSession) {
   const messages = [...session.pendingUserMessages]
   session.pendingUserMessages = []
   return messages
+}
+
+function updateSessionDeviceSnapshot(
+  session: AgentSession,
+  snapshot: {
+    currentApp: string
+    deviceState: DeviceState
+    screenshot?: DeviceScreenshot
+  },
+) {
+  session.currentApp = snapshot.currentApp
+  session.deviceState = snapshot.deviceState
+  if (snapshot.screenshot) {
+    session.lastScreenshot = snapshot.screenshot
+  }
+  addUnique(session.visitedPackages, snapshot.deviceState.packageName)
+  addUnique(session.visitedActivities, snapshot.deviceState.activity)
+}
+
+function addUnique(values: string[], value: string | undefined) {
+  if (value && !values.includes(value)) {
+    values.push(value)
+  }
 }
 
 function createConversationMessage(

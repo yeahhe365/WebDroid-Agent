@@ -15,24 +15,38 @@ export type LogEntry = {
 export function RunLog({
   logs,
   onClear,
+  labels = {
+    clear: 'Clear',
+    empty: 'No events yet',
+    title: 'Run Log',
+    screenshotFor: (title: string) => `Screenshot for ${title}`,
+    expandedScreenshotFor: (title: string) => `Expanded screenshot for ${title}`,
+  },
 }: {
   logs: LogEntry[]
   onClear: () => void
+  labels?: {
+    clear: string
+    empty: string
+    title: string
+    screenshotFor: (title: string) => string
+    expandedScreenshotFor: (title: string) => string
+  }
 }) {
   return (
     <section className="log-section">
       <div className="panel-title log-title">
         <span>
           <RotateCcw size={18} />
-          <h2>Run Log</h2>
+          <h2>{labels.title}</h2>
         </span>
         <button type="button" onClick={onClear} disabled={logs.length === 0}>
           <Trash2 size={16} />
-          Clear
+          {labels.clear}
         </button>
       </div>
       <div className="log-list">
-        {logs.length === 0 ? <p className="muted">No events yet</p> : null}
+        {logs.length === 0 ? <p className="muted">{labels.empty}</p> : null}
         {logs.map((entry) => (
           <article
             className={`log-entry ${entry.tone}${entry.screenshot ? ' with-screenshot' : ''}`}
@@ -50,8 +64,8 @@ export function RunLog({
                     <ScreenshotLightbox
                       screenshot={entry.screenshot}
                       title={entry.title}
-                      thumbnailAlt={`Screenshot for ${entry.title}`}
-                      expandedAlt={`Expanded screenshot for ${entry.title}`}
+                      thumbnailAlt={labels.screenshotFor(entry.title)}
+                      expandedAlt={labels.expandedScreenshotFor(entry.title)}
                       thumbnailClassName="log-screenshot-button"
                     />
                   </div>

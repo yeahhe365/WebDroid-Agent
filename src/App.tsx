@@ -1,5 +1,4 @@
 import {
-  Activity,
   AlertTriangle,
   Check,
   CircleStop,
@@ -8,6 +7,7 @@ import {
   ExternalLink,
   GitFork,
   KeyRound,
+  Languages,
   Link,
   Loader2,
   MessageSquare,
@@ -43,13 +43,180 @@ import {
 import { createOpenAiClient, type ModelConfig } from './lib/openAiClient'
 import type { PromptMode } from './lib/prompts'
 import { modelScreenshotView } from './lib/screenshotCoordinates'
-import { loadSettings, saveSettings, type ThemeMode } from './lib/settings'
+import { loadSettings, saveSettings, type LanguageMode, type ThemeMode } from './lib/settings'
+import { createDefaultActionToolRegistry } from './lib/toolRegistry'
 import { RunLog, type LogEntry, type LogScreenshot } from './components/RunLog'
 import { ScreenshotLightbox } from './components/ScreenshotLightbox'
 
 const REPOSITORY_URL = 'https://github.com/yeahhe365/webadb-autoglm'
 const REPOSITORY_API_URL = 'https://api.github.com/repos/yeahhe365/webadb-autoglm'
 const THEME_MODE_SEQUENCE: ThemeMode[] = ['system', 'light', 'dark']
+
+type Locale = 'en-US' | 'zh-CN'
+
+const APP_COPY = {
+  'en-US': {
+    settings: 'Settings',
+    closeSettings: 'Close settings',
+    close: 'Close',
+    language: 'Language',
+    languageSystem: 'System default',
+    languageChinese: '中文',
+    languageEnglish: 'English',
+    aboutCopy:
+      'Browser-based Android automation console for WebADB and OpenAI-compatible vision models.',
+    githubRepository: 'GitHub repository',
+    repositoryStats: 'Repository stats',
+    stars: 'Stars',
+    forks: 'Forks',
+    openIssues: 'Open issues',
+    githubStatsError: 'Could not load GitHub stats right now.',
+    theme: 'Theme',
+    themeSystem: 'System',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    webUsbReady: 'ready',
+    webUsbMissing: 'missing',
+    model: 'Model',
+    noModel: 'No model',
+    modelSettings: 'Model settings',
+    baseUrl: 'Base URL',
+    apiKey: 'API Key',
+    promptMode: 'Prompt mode',
+    streamModelResponses: 'Stream model responses',
+    device: 'Device',
+    noDevice: 'No device',
+    deviceDetails: 'Device details',
+    serial: 'Serial',
+    currentApp: 'Current app',
+    package: 'Package',
+    activity: 'Activity',
+    keyboard: 'Keyboard',
+    usbDebuggingRequired: 'USB debugging required',
+    connect: 'Connect',
+    disconnect: 'Disconnect',
+    capture: 'Capture',
+    enableAdbKeyboard: 'Enable ADB Keyboard',
+    useAdbKeyboard: 'Use ADB Keyboard for text',
+    confirmSensitiveTaps: 'Confirm sensitive taps',
+    actionSettle: 'Action settle (ms)',
+    doubleTapInterval: 'Double tap interval (ms)',
+    keyboardStep: 'Keyboard step (ms)',
+    supportedActions: 'Supported actions',
+    capabilities: ['Launch', 'Tap', 'Type', 'Swipe', 'Back', 'Home', 'Long press', 'Double tap', 'Wait', 'Take over'],
+    androidScreenshot: 'Android screenshot',
+    expandedAndroidScreenshot: 'Expanded screenshot for Android screenshot',
+    noScreenshot: 'No screenshot',
+    chat: 'Chat',
+    conversation: 'Conversation',
+    noMessages: 'No messages yet',
+    chatMessage: 'Chat message',
+    chatPlaceholder: 'Send a follow-up instruction...',
+    send: 'Send',
+    newChat: 'New chat',
+    maxSteps: 'Max steps',
+    autoExecute: 'Auto execute',
+    plan: 'Plan',
+    run: 'Run',
+    runAgent: 'Run agent',
+    stop: 'Stop',
+    reset: 'Reset',
+    export: 'Export',
+    pendingAction: 'Pending action',
+    step: 'Step',
+    none: 'None',
+    acknowledge: 'Acknowledge',
+    finish: 'Finish',
+    execute: 'Execute',
+    user: 'User',
+    assistant: 'Assistant',
+    observation: 'Observation',
+    runLog: 'Run Log',
+    clear: 'Clear',
+    noEvents: 'No events yet',
+  },
+  'zh-CN': {
+    settings: '设置',
+    closeSettings: '关闭设置',
+    close: '关闭',
+    language: '语言',
+    languageSystem: '系统默认',
+    languageChinese: '中文',
+    languageEnglish: 'English',
+    aboutCopy: '基于浏览器的 Android 自动化控制台，支持 WebADB 和 OpenAI 兼容视觉模型。',
+    githubRepository: 'GitHub 仓库',
+    repositoryStats: '仓库统计',
+    stars: '星标',
+    forks: '复刻',
+    openIssues: '开放问题',
+    githubStatsError: '暂时无法加载 GitHub 统计。',
+    theme: '主题',
+    themeSystem: '系统',
+    themeLight: '浅色',
+    themeDark: '深色',
+    webUsbReady: '可用',
+    webUsbMissing: '不可用',
+    model: '模型',
+    noModel: '未设置模型',
+    modelSettings: '模型设置',
+    baseUrl: 'Base URL',
+    apiKey: 'API Key',
+    promptMode: '提示模式',
+    streamModelResponses: '流式模型响应',
+    device: '设备',
+    noDevice: '无设备',
+    deviceDetails: '设备详情',
+    serial: '序列号',
+    currentApp: '当前应用',
+    package: '包名',
+    activity: 'Activity',
+    keyboard: '键盘',
+    usbDebuggingRequired: '需要 USB 调试',
+    connect: '连接',
+    disconnect: '断开',
+    capture: '截图',
+    enableAdbKeyboard: '启用 ADB 键盘',
+    useAdbKeyboard: '文本输入使用 ADB 键盘',
+    confirmSensitiveTaps: '确认敏感点击',
+    actionSettle: '动作等待 (ms)',
+    doubleTapInterval: '双击间隔 (ms)',
+    keyboardStep: '键盘步进 (ms)',
+    supportedActions: '支持的动作',
+    capabilities: ['启动', '点击', '输入', '滑动', '返回', '主页', '长按', '双击', '等待', '接管'],
+    androidScreenshot: 'Android 截图',
+    expandedAndroidScreenshot: '展开的 Android 截图',
+    noScreenshot: '暂无截图',
+    chat: '聊天',
+    conversation: '对话',
+    noMessages: '暂无消息',
+    chatMessage: '聊天消息',
+    chatPlaceholder: '发送后续指令...',
+    send: '发送',
+    newChat: '新聊天',
+    maxSteps: '最大步数',
+    autoExecute: '自动执行',
+    plan: '计划',
+    run: '运行',
+    runAgent: '运行代理',
+    stop: '停止',
+    reset: '重置',
+    export: '导出',
+    pendingAction: '待处理动作',
+    step: '步骤',
+    none: '无',
+    acknowledge: '确认',
+    finish: '完成',
+    execute: '执行',
+    user: '用户',
+    assistant: '助手',
+    observation: '观察',
+    runLog: '运行日志',
+    clear: '清空',
+    noEvents: '暂无事件',
+  },
+} as const
+
+type AppCopy = (typeof APP_COPY)[Locale]
 
 type RepositoryStats = {
   stars: number
@@ -75,14 +242,23 @@ function nextThemeMode(current: ThemeMode): ThemeMode {
   return THEME_MODE_SEQUENCE[(currentIndex + 1) % THEME_MODE_SEQUENCE.length]
 }
 
-function themeModeLabel(themeMode: ThemeMode) {
+function resolveLocale(languageMode: LanguageMode): Locale {
+  if (languageMode === 'zh-CN' || languageMode === 'en-US') {
+    return languageMode
+  }
+
+  const browserLanguage = navigator.languages?.[0] ?? navigator.language
+  return browserLanguage.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
+}
+
+function themeModeLabel(themeMode: ThemeMode, copy: AppCopy) {
   if (themeMode === 'light') {
-    return 'Light'
+    return copy.themeLight
   }
   if (themeMode === 'dark') {
-    return 'Dark'
+    return copy.themeDark
   }
-  return 'System'
+  return copy.themeSystem
 }
 
 function ThemeModeIcon({ themeMode }: { themeMode: ThemeMode }) {
@@ -95,6 +271,21 @@ function ThemeModeIcon({ themeMode }: { themeMode: ThemeMode }) {
   return <Monitor size={16} />
 }
 
+function pendingActionLabel(action: AgentAction['action'] | undefined, copy: AppCopy) {
+  if (
+    action === 'take_over' ||
+    action === 'note' ||
+    action === 'interact' ||
+    action === 'call_api'
+  ) {
+    return copy.acknowledge
+  }
+  if (action === 'done') {
+    return copy.finish
+  }
+  return copy.execute
+}
+
 function App() {
   const abortRef = useRef<AbortController | null>(null)
   const settings = useMemo(() => loadSettings(), [])
@@ -102,6 +293,7 @@ function App() {
   const [conversation, setConversation] = useState(() => [...sessionRef.current.messages])
   const [backend] = useState(() => new WebAdbDeviceBackend())
   const client = useMemo(() => createOpenAiClient(), [])
+  const actionToolRegistry = useMemo(() => createDefaultActionToolRegistry(), [])
   const [modelConfig, setModelConfig] = useState<ModelConfig>(settings.modelConfig)
   const [task, setTask] = useState(settings.task)
   const [chatInput, setChatInput] = useState('')
@@ -117,6 +309,7 @@ function App() {
   const [doubleTapIntervalMs, setDoubleTapIntervalMs] = useState(settings.doubleTapIntervalMs)
   const [keyboardStepMs, setKeyboardStepMs] = useState(settings.keyboardStepMs)
   const [themeMode, setThemeMode] = useState(settings.themeMode)
+  const [languageMode, setLanguageMode] = useState(settings.languageMode)
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null)
   const [currentApp, setCurrentApp] = useState<string>('Unknown')
   const [deviceState, setDeviceState] = useState<DeviceState>({ app: 'Unknown' })
@@ -136,18 +329,9 @@ function App() {
   const hasConversation = conversation.some((message) => message.role === 'user')
   const canRun = connected && !busy && hasModelConfig && hasConversation
   const displayedScreenshot = screenshot ? modelScreenshotView(screenshot) : null
-  const pendingButtonLabel =
-    pendingStep?.action.action === 'take_over'
-      ? 'Acknowledge'
-      : pendingStep?.action.action === 'note'
-        ? 'Acknowledge'
-        : pendingStep?.action.action === 'interact'
-          ? 'Acknowledge'
-          : pendingStep?.action.action === 'call_api'
-            ? 'Acknowledge'
-            : pendingStep?.action.action === 'done'
-              ? 'Finish'
-              : 'Execute'
+  const activeLocale = useMemo(() => resolveLocale(languageMode), [languageMode])
+  const copy = APP_COPY[activeLocale]
+  const pendingButtonLabel = pendingActionLabel(pendingStep?.action.action, copy)
 
   useEffect(() => {
     saveSettings({
@@ -163,6 +347,7 @@ function App() {
       doubleTapIntervalMs,
       keyboardStepMs,
       themeMode,
+      languageMode,
     })
   }, [
     actionSettleMs,
@@ -170,6 +355,7 @@ function App() {
     confirmSensitiveActions,
     doubleTapIntervalMs,
     keyboardStepMs,
+    languageMode,
     maxSteps,
     modelConfig,
     preferAdbKeyboard,
@@ -182,6 +368,10 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = themeMode
   }, [themeMode])
+
+  useEffect(() => {
+    document.documentElement.lang = activeLocale
+  }, [activeLocale])
 
   useEffect(() => {
     backend.setPreferAdbKeyboard(preferAdbKeyboard)
@@ -437,9 +627,19 @@ function App() {
         return
       }
 
-      const result = await backend.execute(pendingStep.executionAction, { confirmSensitiveAction })
-      recordAgentStep(ensureSession(), pendingStep, result)
-      addLog({ tone: 'ok', title: `Executed ${pendingStep.preview}`, detail: result })
+      const result = await actionToolRegistry.execute(pendingStep.executionAction, {
+        device: backend,
+        confirmSensitiveAction,
+      })
+      recordAgentStep(ensureSession(), pendingStep, result.summary, result.success)
+      addLog({
+        tone: result.success ? 'ok' : 'error',
+        title: result.success ? `Executed ${pendingStep.preview}` : `Failed ${pendingStep.preview}`,
+        detail: result.summary,
+      })
+      if (!result.success) {
+        setError(result.summary)
+      }
       setPendingStep(null)
       syncConversation()
     })
@@ -451,7 +651,7 @@ function App() {
     const session = ensureSession()
 
     await runTask('Run agent', async () => {
-      const runner = createAgentRunner({ device: backend, client })
+      const runner = createAgentRunner({ device: backend, client, toolRegistry: actionToolRegistry })
       const result = await runner.run({
         modelConfig: { ...modelConfig, stream: streamResponses },
         task: session.task,
@@ -542,18 +742,13 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Browser-based Android Agent</p>
           <h1>WebDroid Agent</h1>
         </div>
         <div className="topbar-actions">
           <div className="status-strip">
             <span className={isWebUsbSupported() ? 'status ok' : 'status warn'}>
               <Usb size={16} />
-              WebUSB {isWebUsbSupported() ? 'ready' : 'missing'}
-            </span>
-            <span className={connected ? 'status ok' : 'status'}>
-              <Activity size={16} />
-              {connected ? 'connected' : 'idle'}
+              WebUSB {isWebUsbSupported() ? copy.webUsbReady : copy.webUsbMissing}
             </span>
             <span className="status">
               <ScanEye size={16} />
@@ -564,15 +759,15 @@ function App() {
             type="button"
             className="theme-button"
             onClick={() => setThemeMode((current) => nextThemeMode(current))}
-            aria-label={`Theme: ${themeModeLabel(themeMode)}`}
-            title={`Theme: ${themeModeLabel(themeMode)}`}
+            aria-label={`${copy.theme}: ${themeModeLabel(themeMode, copy)}`}
+            title={`${copy.theme}: ${themeModeLabel(themeMode, copy)}`}
           >
             <ThemeModeIcon themeMode={themeMode} />
-            {themeModeLabel(themeMode)}
+            {themeModeLabel(themeMode, copy)}
           </button>
           <button type="button" className="settings-button" onClick={() => setAboutOpen(true)}>
             <SettingsIcon size={16} />
-            Settings
+            {copy.settings}
           </button>
         </div>
       </header>
@@ -582,40 +777,51 @@ function App() {
           className="about-page"
           role="dialog"
           aria-modal="true"
-          aria-label="Settings"
+          aria-label={copy.settings}
           onClick={() => setAboutOpen(false)}
         >
           <section className="about-panel" onClick={(event) => event.stopPropagation()}>
             <div className="about-header">
               <div>
-                <p className="eyebrow">Settings</p>
+                <p className="eyebrow">{copy.settings}</p>
                 <h2>WebDroid Agent</h2>
               </div>
               <button
                 type="button"
                 className="about-close"
                 onClick={() => setAboutOpen(false)}
-                aria-label="Close settings"
+                aria-label={copy.closeSettings}
               >
-                Close
+                {copy.close}
               </button>
             </div>
-            <p className="about-copy">
-              Browser-based Android automation console for WebADB and OpenAI-compatible vision
-              models.
-            </p>
+            <label className="settings-field">
+              <span>
+                <Languages size={16} />
+                {copy.language}
+              </span>
+              <select
+                value={languageMode}
+                onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
+              >
+                <option value="system">{copy.languageSystem}</option>
+                <option value="zh-CN">{copy.languageChinese}</option>
+                <option value="en-US">{copy.languageEnglish}</option>
+              </select>
+            </label>
+            <p className="about-copy">{copy.aboutCopy}</p>
             <a
               className="repository-link"
               href={REPOSITORY_URL}
               target="_blank"
               rel="noreferrer"
-              aria-label="GitHub repository"
+              aria-label={copy.githubRepository}
             >
               <Code2 size={18} />
               <span>{REPOSITORY_URL}</span>
               <ExternalLink size={15} />
             </a>
-            <div className="repository-stats" aria-label="Repository stats">
+            <div className="repository-stats" aria-label={copy.repositoryStats}>
               <div>
                 <Star size={18} />
                 <strong>
@@ -623,7 +829,7 @@ function App() {
                     ? '...'
                     : (repositoryStats?.stars.toLocaleString() ?? '-')}
                 </strong>
-                <span>Stars</span>
+                <span>{copy.stars}</span>
               </div>
               <div>
                 <GitFork size={18} />
@@ -632,7 +838,7 @@ function App() {
                     ? '...'
                     : (repositoryStats?.forks.toLocaleString() ?? '-')}
                 </strong>
-                <span>Forks</span>
+                <span>{copy.forks}</span>
               </div>
               <div>
                 <AlertTriangle size={18} />
@@ -641,11 +847,11 @@ function App() {
                     ? '...'
                     : (repositoryStats?.openIssues.toLocaleString() ?? '-')}
                 </strong>
-                <span>Open issues</span>
+                <span>{copy.openIssues}</span>
               </div>
             </div>
             {repositoryStatsStatus === 'error' ? (
-              <p className="about-error">Could not load GitHub stats right now.</p>
+              <p className="about-error">{copy.githubStatsError}</p>
             ) : null}
           </section>
         </div>
@@ -662,14 +868,14 @@ function App() {
         <aside className="panel config-panel">
           <div className="panel-title">
             <KeyRound size={18} />
-            <h2>Model</h2>
+            <h2>{copy.model}</h2>
           </div>
           <div className="model-box">
-            <span>{modelConfig.model || 'No model'}</span>
+            <span>{modelConfig.model || copy.noModel}</span>
             <details className="model-details">
-              <summary>Model settings</summary>
+              <summary>{copy.modelSettings}</summary>
               <label>
-                Base URL
+                {copy.baseUrl}
                 <input
                   value={modelConfig.baseUrl}
                   onChange={(event) => updateConfig('baseUrl', event.target.value)}
@@ -677,7 +883,7 @@ function App() {
                 />
               </label>
               <label>
-                API Key
+                {copy.apiKey}
                 <input
                   value={modelConfig.apiKey}
                   onChange={(event) => updateConfig('apiKey', event.target.value)}
@@ -686,7 +892,7 @@ function App() {
                 />
               </label>
               <label>
-                Model
+                {copy.model}
                 <input
                   value={modelConfig.model}
                   onChange={(event) => updateConfig('model', event.target.value)}
@@ -694,7 +900,7 @@ function App() {
                 />
               </label>
               <label>
-                Prompt mode
+                {copy.promptMode}
                 <select
                   value={promptMode}
                   onChange={(event) => setPromptMode(event.target.value as PromptMode)}
@@ -709,46 +915,46 @@ function App() {
                   checked={streamResponses}
                   onChange={(event) => setStreamResponses(event.target.checked)}
                 />
-                <span>Stream model responses</span>
+                <span>{copy.streamModelResponses}</span>
               </label>
             </details>
           </div>
 
           <div className="panel-title">
             <Usb size={18} />
-            <h2>Device</h2>
+            <h2>{copy.device}</h2>
           </div>
           <div className="device-box">
-            <span>{deviceInfo?.name || 'No device'}</span>
+            <span>{deviceInfo?.name || copy.noDevice}</span>
             {connected ? (
               <details className="device-details">
-                <summary>Device details</summary>
-                <small>Serial: {deviceInfo.serial}</small>
-                <small>Current app: {currentApp}</small>
-                {deviceState.packageName ? <small>Package: {deviceState.packageName}</small> : null}
-                {deviceState.activity ? <small>Activity: {deviceState.activity}</small> : null}
-                {deviceState.keyboard ? <small>Keyboard: {deviceState.keyboard}</small> : null}
+                <summary>{copy.deviceDetails}</summary>
+                <small>{copy.serial}: {deviceInfo.serial}</small>
+                <small>{copy.currentApp}: {currentApp}</small>
+                {deviceState.packageName ? <small>{copy.package}: {deviceState.packageName}</small> : null}
+                {deviceState.activity ? <small>{copy.activity}: {deviceState.activity}</small> : null}
+                {deviceState.keyboard ? <small>{copy.keyboard}: {deviceState.keyboard}</small> : null}
               </details>
             ) : (
               <>
-                <small>USB debugging required</small>
-                <small>Current app: {currentApp}</small>
+                <small>{copy.usbDebuggingRequired}</small>
+                <small>{copy.currentApp}: {currentApp}</small>
               </>
             )}
           </div>
           <div className="button-row">
             <button type="button" onClick={connectDevice} disabled={Boolean(busy) || connected}>
               <Link size={16} />
-              Connect
+              {copy.connect}
             </button>
             <button type="button" onClick={disconnectDevice} disabled={Boolean(busy) || !connected}>
               <CircleStop size={16} />
-              Disconnect
+              {copy.disconnect}
             </button>
           </div>
           <button type="button" className="wide" onClick={captureScreen} disabled={Boolean(busy) || !connected}>
             <ScanEye size={16} />
-            Capture
+            {copy.capture}
           </button>
           <button
             type="button"
@@ -757,7 +963,7 @@ function App() {
             disabled={Boolean(busy) || !connected}
           >
             <KeyRound size={16} />
-            Enable ADB Keyboard
+            {copy.enableAdbKeyboard}
           </button>
           <label className="toggle">
             <input
@@ -765,7 +971,7 @@ function App() {
               checked={preferAdbKeyboard}
               onChange={(event) => toggleAdbKeyboard(event.target.checked)}
             />
-            <span>Use ADB Keyboard for text</span>
+            <span>{copy.useAdbKeyboard}</span>
           </label>
           <label className="toggle">
             <input
@@ -773,11 +979,11 @@ function App() {
               checked={confirmSensitiveActions}
               onChange={(event) => setConfirmSensitiveActions(event.target.checked)}
             />
-            <span>Confirm sensitive taps</span>
+            <span>{copy.confirmSensitiveTaps}</span>
           </label>
           <div className="timing-grid">
             <label>
-              Action settle (ms)
+              {copy.actionSettle}
               <input
                 type="number"
                 min={100}
@@ -788,7 +994,7 @@ function App() {
               />
             </label>
             <label>
-              Double tap interval (ms)
+              {copy.doubleTapInterval}
               <input
                 type="number"
                 min={20}
@@ -799,7 +1005,7 @@ function App() {
               />
             </label>
             <label>
-              Keyboard step (ms)
+              {copy.keyboardStep}
               <input
                 type="number"
                 min={100}
@@ -810,82 +1016,66 @@ function App() {
               />
             </label>
           </div>
-          <div className="capability-grid" aria-label="Supported actions">
-            {[
-              'Launch',
-              'Tap',
-              'Type',
-              'Swipe',
-              'Back',
-              'Home',
-              'Long press',
-              'Double tap',
-              'Wait',
-              'Take over',
-            ].map((capability) => (
+          <div className="capability-grid" aria-label={copy.supportedActions}>
+            {copy.capabilities.map((capability) => (
               <span key={capability}>{capability}</span>
             ))}
           </div>
         </aside>
 
-        <section className="phone-stage">
-          <div className="phone-frame">
-            {displayedScreenshot ? (
+        <section className="phone-stage" aria-label={displayedScreenshot ? copy.androidScreenshot : copy.noScreenshot}>
+          {displayedScreenshot ? (
+            <div className="phone-frame">
               <ScreenshotLightbox
                 screenshot={displayedScreenshot}
-                title="Android screenshot"
-                thumbnailAlt="Android screenshot"
-                expandedAlt="Expanded screenshot for Android screenshot"
+                title={copy.androidScreenshot}
+                thumbnailAlt={copy.androidScreenshot}
+                expandedAlt={copy.expandedAndroidScreenshot}
                 thumbnailClassName="phone-screenshot-button"
               >
                 {pendingStep ? (
                   <ActionOverlay action={pendingStep.action} screen={displayedScreenshot.screen} />
                 ) : null}
               </ScreenshotLightbox>
-            ) : (
-              <div className="empty-screen">
-                <ScanEye size={36} />
-                <span>No screenshot</span>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : null}
         </section>
 
         <aside className="panel run-panel">
           <div className="panel-title">
             <MessageSquare size={18} />
-            <h2>Chat</h2>
+            <h2>{copy.chat}</h2>
           </div>
-          <div className="conversation-list" aria-label="Conversation">
-            {conversation.length === 0 ? <p className="muted">No messages yet</p> : null}
+          <div className="conversation-list" aria-label={copy.conversation}>
+            {conversation.length === 0 ? <p className="muted">{copy.noMessages}</p> : null}
             {conversation.map((message) => (
               <article className={`chat-message ${message.role}`} key={message.id}>
-                <span>{formatConversationRole(message.role)}</span>
+                <span>{formatConversationRole(message.role, copy)}</span>
                 <p>{message.content}</p>
               </article>
             ))}
           </div>
           <label>
-            Chat message
+            {copy.chatMessage}
             <textarea
               value={chatInput}
               onChange={(event) => setChatInput(event.target.value)}
               rows={4}
-              placeholder="Send a follow-up instruction..."
+              placeholder={copy.chatPlaceholder}
             />
           </label>
           <div className="button-row">
             <button type="button" onClick={submitChatMessage} disabled={!chatInput.trim()}>
               <Send size={16} />
-              Send
+              {copy.send}
             </button>
             <button type="button" onClick={startNewChat} disabled={Boolean(busy)}>
               <Plus size={16} />
-              New chat
+              {copy.newChat}
             </button>
           </div>
           <label>
-            Max steps
+            {copy.maxSteps}
             <input
               type="number"
               min={1}
@@ -900,39 +1090,39 @@ function App() {
               checked={autoExecute}
               onChange={(event) => setAutoExecute(event.target.checked)}
             />
-            <span>Auto execute</span>
+            <span>{copy.autoExecute}</span>
           </label>
           <div className="button-row">
             <button type="button" onClick={planNextStep} disabled={!canRun || autoExecute}>
               <StepForward size={16} />
-              Plan
+              {copy.plan}
             </button>
             <button type="button" onClick={runAutoLoop} disabled={!canRun || !autoExecute}>
               {busy === 'Run agent' ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
-              Run
+              {copy.run}
             </button>
           </div>
           <button type="button" className="wide danger" onClick={stopRun} disabled={!busy}>
             <CircleStop size={16} />
-            Stop
+            {copy.stop}
           </button>
           <div className="button-row">
             <button type="button" onClick={resetSession} disabled={Boolean(busy)}>
               <RotateCcw size={16} />
-              Reset
+              {copy.reset}
             </button>
             <button type="button" onClick={exportRunLog} disabled={logs.length === 0}>
               <Download size={16} />
-              Export
+              {copy.export}
             </button>
           </div>
 
           <div className="pending-action">
             <div className="pending-header">
-              <span>Pending action</span>
-              {pendingStep ? <small>Step {pendingStep.index}</small> : null}
+              <span>{copy.pendingAction}</span>
+              {pendingStep ? <small>{copy.step} {pendingStep.index}</small> : null}
             </div>
-            <p>{pendingStep ? buildActionPreview(pendingStep.action) : 'None'}</p>
+            <p>{pendingStep ? buildActionPreview(pendingStep.action) : copy.none}</p>
             <button type="button" className="wide primary" onClick={executePendingStep} disabled={!pendingStep || Boolean(busy)}>
               <Check size={16} />
               {pendingButtonLabel}
@@ -941,19 +1131,29 @@ function App() {
         </aside>
       </section>
 
-      <RunLog logs={logs} onClear={clearRunLog} />
+      <RunLog
+        logs={logs}
+        onClear={clearRunLog}
+        labels={{
+          clear: copy.clear,
+          empty: copy.noEvents,
+          title: copy.runLog,
+          screenshotFor: (title) => `${copy.androidScreenshot}: ${title}`,
+          expandedScreenshotFor: (title) => `${copy.expandedAndroidScreenshot}: ${title}`,
+        }}
+      />
     </main>
   )
 }
 
-function formatConversationRole(role: 'user' | 'assistant' | 'observation') {
+function formatConversationRole(role: 'user' | 'assistant' | 'observation', copy: AppCopy) {
   if (role === 'assistant') {
-    return 'Assistant'
+    return copy.assistant
   }
   if (role === 'observation') {
-    return 'Observation'
+    return copy.observation
   }
-  return 'User'
+  return copy.user
 }
 
 function formatDeviceState(state: DeviceState) {

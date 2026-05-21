@@ -243,6 +243,12 @@ You can also verify the build locally first:
 npm run build
 ```
 
+## License
+
+This project is open source under the [MIT License](./LICENSE). You may use, copy, modify, distribute, and build on the code, provided that the original copyright notice and license text are retained.
+
+Third-party dependencies remain subject to their own licenses. Please review dependency license terms before redistribution or commercial use.
+
 ## Related Projects and Community
 
 - [Tango / WebADB](https://github.com/yume-chan/ya-webadb): the browser-side ADB/WebUSB foundation.

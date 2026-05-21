@@ -2,6 +2,7 @@ import type { ModelConfig } from './openAiClient'
 import type { PromptMode } from './prompts'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
+export type LanguageMode = 'system' | 'zh-CN' | 'en-US'
 
 export type AppSettings = {
   modelConfig: ModelConfig
@@ -16,6 +17,7 @@ export type AppSettings = {
   doubleTapIntervalMs: number
   keyboardStepMs: number
   themeMode: ThemeMode
+  languageMode: LanguageMode
 }
 
 export type SettingsStorage = Pick<Storage, 'getItem' | 'setItem'>
@@ -43,6 +45,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   doubleTapIntervalMs: 100,
   keyboardStepMs: 1000,
   themeMode: 'system',
+  languageMode: 'system',
 }
 
 export function loadSettings(storage: SettingsStorage = localStorage): AppSettings {
@@ -108,6 +111,7 @@ function normalizeSettings(candidate: unknown): AppSettings {
     ),
     keyboardStepMs: readRangeNumber(candidate.keyboardStepMs, DEFAULT_SETTINGS.keyboardStepMs, 100, 5000),
     themeMode: readThemeMode(candidate.themeMode, DEFAULT_SETTINGS.themeMode),
+    languageMode: readLanguageMode(candidate.languageMode, DEFAULT_SETTINGS.languageMode),
   }
 }
 
@@ -134,6 +138,10 @@ function readPromptMode(value: unknown, fallback: PromptMode): PromptMode {
 
 function readThemeMode(value: unknown, fallback: ThemeMode): ThemeMode {
   return value === 'system' || value === 'light' || value === 'dark' ? value : fallback
+}
+
+function readLanguageMode(value: unknown, fallback: LanguageMode): LanguageMode {
+  return value === 'system' || value === 'zh-CN' || value === 'en-US' ? value : fallback
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

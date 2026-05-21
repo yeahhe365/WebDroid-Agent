@@ -162,6 +162,22 @@ describe('App run log', () => {
     )
   })
 
+  it('changes and persists the app language from settings', async () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
+
+    const languageSelect = await screen.findByLabelText(/language/i)
+    fireEvent.change(languageSelect, { target: { value: 'zh-CN' } })
+
+    expect(screen.getByRole('button', { name: /^设置$/i })).toBeTruthy()
+    expect(document.documentElement.lang).toBe('zh-CN')
+    expect(localStorage.setItem).toHaveBeenLastCalledWith(
+      'webdroid-agent-settings',
+      expect.stringContaining('"languageMode":"zh-CN"'),
+    )
+  })
+
   it('keeps follow-up user messages in a continuous chat transcript', () => {
     render(<App />)
 
@@ -213,5 +229,24 @@ describe('App run log', () => {
     const tabletBreakpoint = readMediaBlock(appCss, 'max-width: 1120px')
 
     expect(tabletBreakpoint).not.toMatch(/\.topbar\s*\{[\s\S]*?flex-direction:\s*column/)
+  })
+
+  it('does not show the connection idle status in the top bar', () => {
+    render(<App />)
+
+    expect(screen.queryByText('idle')).toBeNull()
+  })
+
+  it('does not show the browser-based agent eyebrow in the top bar', () => {
+    render(<App />)
+
+    expect(screen.queryByText(/browser-based android agent/i)).toBeNull()
+  })
+
+  it('does not show an empty phone frame before ADB is connected', () => {
+    const { container } = render(<App />)
+
+    expect(container.querySelector('.phone-stage')).toBeTruthy()
+    expect(container.querySelector('.phone-frame')).toBeNull()
   })
 })

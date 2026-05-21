@@ -301,6 +301,63 @@ describe('createAgentRunner', () => {
     )
   })
 
+  it('keeps device state, visits, and action outcomes in shared run state', async () => {
+    const device = fakeDevice()
+    const session = createAgentSession('Open Chrome')
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"tap","x":100,"y":200}'),
+    }
+
+    const step = await runAgentStep({
+      device,
+      client,
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Open app',
+      promptMode: 'canonical-json',
+      session,
+    })
+    recordAgentStep(session, step, 'input tap 100 200', true)
+
+    expect(session.currentApp).toBe('Chrome')
+    expect(session.deviceState).toEqual(
+      expect.objectContaining({
+        packageName: 'com.android.chrome',
+        activity: 'com.google.android.apps.chrome.Main',
+      }),
+    )
+    expect(session.lastScreenshot?.screen).toEqual({ width: 1080, height: 2400 })
+    expect(session.visitedPackages).toEqual(['com.android.chrome'])
+    expect(session.visitedActivities).toEqual(['com.google.android.apps.chrome.Main'])
+    expect(session.actionOutcomes).toEqual([true])
+    expect(session.lastActionPreview).toBe('tap (100, 200)')
+    expect(session.lastExecutionResult).toBe('input tap 100 200')
+  })
+
+  it('records failed executions in shared run state', () => {
+    const session = createAgentSession('Open app')
+    const step = {
+      index: 1,
+      screenshot: {
+        bytes: new Uint8Array(),
+        dataUrl: 'data:image/png;base64,abc',
+        screen: { width: 1080, height: 2400 },
+      },
+      currentApp: 'Chrome',
+      deviceState: { app: 'Chrome' },
+      modelOutput: '{"action":"tap","x":100,"y":200}',
+      action: { action: 'tap', x: 100, y: 200 } as const,
+      executionAction: { action: 'tap', x: 100, y: 200 } as const,
+      preview: 'tap (100, 200)',
+      timing: { captureMs: 1, currentAppMs: 2, modelMs: 3, parseMs: 4, totalMs: 10 },
+    }
+
+    recordAgentStep(session, step, 'Sensitive action blocked', false)
+
+    expect(session.actionOutcomes).toEqual([false])
+    expect(session.errorDescriptions).toEqual(['Sensitive action blocked'])
+    expect(session.lastExecutionResult).toBe('Sensitive action blocked')
+  })
+
   it('keeps running when a new user message is queued while the model finishes', async () => {
     const device = fakeDevice()
     const session = createAgentSession('Open Settings')
