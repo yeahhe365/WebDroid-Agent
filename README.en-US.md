@@ -421,24 +421,19 @@ The current tests mainly cover:
 
 Real-device control still needs manual verification with an Android device.
 
+## Deploying to GitHub Pages
+
+1. In your GitHub repository settings, go to **Settings** -> **Pages**.
+2. Under **Build and deployment** -> **Source**, select **GitHub Actions**.
+3. Every push to the `main` branch will now trigger the `.github/workflows/deploy.yml` workflow to build and deploy automatically.
+
 ## Deploying to Cloudflare Pages
 
-The project is already set up on Cloudflare Pages:
+The project supports deployment on Cloudflare Pages:
 
-- Historical live site (legacy Pages hostname): https://webadb-autoglm.pages.dev/
-- Deployment method: automatic deployment from GitHub
-
-Redeploy:
-
-```bash
-git push origin main
-```
-
-You can also verify the build locally first:
-
-```bash
-npm run build
-```
+- Deployment method: automatic deployment from GitHub.
+- Build command: `npm run build`.
+- Build output directory: `dist`.
 
 Cloudflare Pages should keep using plain `npm run build` without `VITE_OPENAI_PROXY_URL`. That keeps the hosted static app on browser-direct model API requests and avoids depending on the Docker-only local Node proxy.
 

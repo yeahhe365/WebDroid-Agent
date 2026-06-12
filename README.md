@@ -497,24 +497,19 @@ npm run lint
 npm run build
 ```
 
+## 部署到 GitHub Pages
+
+1. 在 GitHub 仓库设置中，进入 **Settings** -> **Pages**。
+2. 在 **Build and deployment** -> **Source** 中选择 **GitHub Actions**。
+3. 之后每次推送到 `main` 分支都会触发 `.github/workflows/deploy.yml` 自动构建并部署。
+
 ## 部署到 Cloudflare Pages
 
-项目已创建在 Cloudflare Pages：
+项目支持在 Cloudflare Pages 部署：
 
-- 历史在线地址（Pages 旧域名）：https://webadb-autoglm.pages.dev/
-- 部署方式：GitHub 绑定自动部署
-
-重新部署：
-
-```bash
-git push origin main
-```
-
-也可以本地先验证构建：
-
-```bash
-npm run build
-```
+- 部署方式：GitHub 绑定自动部署。
+- 构建命令：`npm run build`。
+- 构建输出目录：`dist`。
 
 Cloudflare Pages 使用普通 `npm run build`，不要设置 `VITE_OPENAI_PROXY_URL`。这样线上静态站点会继续由浏览器直接请求你填写的 OpenAI 兼容 API，不依赖 Docker 的本地 Node 代理。
 
