@@ -240,7 +240,6 @@ src/
   adapters/
     adbKeyboard.ts            # ADB Keyboard install, detection, and encoding helpers
     appPackages.ts            # common app-name to package-name mappings
-    deviceCommands.ts         # device command compatibility exports
     deviceParsers.ts          # dumpsys and screenshot byte parsing
     deviceRetry.ts            # device-read retry and delay helpers
     deviceTiming.ts           # device execution timing defaults
@@ -292,7 +291,6 @@ src/
     actionProtocol.ts         # explicit action protocol enum
     actionSafetyPolicy.ts     # local action safety policy
     actionTypes.ts            # action types and validation error definitions
-    actions.ts                # action module compatibility barrel
     agentResources.ts         # local Secret and Custom Tool resources
     agent.ts                  # agent loop orchestration
     agentThread.ts            # persistent agent thread/turn/event model

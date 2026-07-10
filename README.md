@@ -281,7 +281,6 @@ src/
   adapters/
     adbKeyboard.ts            # ADB Keyboard 安装、检测和编码工具
     appPackages.ts            # 常见 App 名称和包名映射
-    deviceCommands.ts         # 设备命令兼容导出口
     deviceParsers.ts          # dumpsys 和截图二进制解析
     deviceRetry.ts            # 设备读取重试和延迟工具
     deviceTiming.ts           # 设备执行时序默认值
@@ -333,7 +332,6 @@ src/
     actionProtocol.ts         # 显式动作协议枚举
     actionSafetyPolicy.ts     # 本地动作安全策略
     actionTypes.ts            # 动作类型和校验错误定义
-    actions.ts                # 动作模块兼容导出口
     agentResources.ts         # App 外的本地 Secret 和 Custom Tool 资源
     agent.ts                  # Agent 循环调度
     agentThread.ts            # 持久化 Agent thread/turn/event 模型

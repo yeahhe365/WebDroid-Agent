@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildActionPreview } from './actionPreview'
-import {
-  ActionValidationError,
-  parseModelAction,
-  validateAction,
-} from './actions'
+import { parseModelAction, validateAction } from './actionParser'
+import { ActionValidationError } from './actionTypes'
 
 const screen = { width: 1080, height: 2400 }
 

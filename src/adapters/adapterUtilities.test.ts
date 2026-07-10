@@ -1,35 +1,45 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_DOUBLE_TAP_INTERVAL_MS,
+  encodeAdbKeyboardText,
+  escapeInputText,
+  findAdbKeyboardIme,
+  isAdbKeyboardInstalled,
+  isAndroidInputTextSafe,
+} from './adbKeyboard'
+import {
   DEFAULT_DEVICE_TIMING,
-  buildDeleteScreenBrightnessCommand,
-  buildDeleteScreenBrightnessModeCommand,
-  buildDisableStayAwakeCommand,
-  buildEnableStayAwakeCommand,
+  DEFAULT_DOUBLE_TAP_INTERVAL_MS,
+} from './deviceTiming'
+import {
   buildInputCommand,
   buildInputCommandSequence,
+  keyToAndroidKeyCode,
+} from './inputCommands'
+import { getSensitiveActionMessage } from './sensitiveActions'
+import {
+  buildDeleteScreenBrightnessCommand,
+  buildDeleteScreenBrightnessModeCommand,
+  buildReadScreenBrightnessCommand,
+  buildReadScreenBrightnessModeCommand,
+  buildSetScreenBrightnessCommand,
+  buildSetScreenBrightnessModeCommand,
+  normalizeScreenSetting,
+} from './screenBlackoutCommands'
+import {
+  buildDisableStayAwakeCommand,
+  buildEnableStayAwakeCommand,
+  buildReadStayAwakeSettingCommand,
+  buildRestoreStayAwakeSettingCommand,
+  buildWakeDeviceCommand,
+  normalizeStayAwakeSetting,
+} from './stayAwakeCommands'
+import {
   buildDumpScreenTreeCommand,
   buildReadScreenTreeCommand,
   buildRemoveScreenTreeCommand,
-  buildReadScreenBrightnessCommand,
-  buildReadScreenBrightnessModeCommand,
-  buildReadStayAwakeSettingCommand,
-  buildRestoreStayAwakeSettingCommand,
-  buildSetScreenBrightnessCommand,
-  buildSetScreenBrightnessModeCommand,
-  buildWakeDeviceCommand,
-  encodeAdbKeyboardText,
-  getSensitiveActionMessage,
-  escapeInputText,
-  findAdbKeyboardIme,
-  isAndroidInputTextSafe,
-  isAdbKeyboardInstalled,
-  keyToAndroidKeyCode,
-  normalizeScreenSetting,
-  normalizeStayAwakeSetting,
-  parseUiAutomatorDumpXml,
   formatScreenTreeForPrompt,
-} from './deviceCommands'
+  parseUiAutomatorDumpXml,
+} from './uiAutomator'
 import {
   parseCurrentAppFromDumpsys,
   parseDeviceStateFromDumpsys,
