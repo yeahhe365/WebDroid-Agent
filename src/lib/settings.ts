@@ -1,4 +1,9 @@
-import { isReasoningEffort, type ModelConfig } from './openAiTypes'
+import {
+  isOpenAiReasoningMode,
+  isOpenAiReasoningSummary,
+  isReasoningEffort,
+  type ModelConfig,
+} from './openAiTypes'
 import {
   DEFAULT_ACTION_PROTOCOL,
   isActionProtocol,
@@ -133,6 +138,16 @@ export function normalizeSettings(candidate: unknown): AppSettings {
       ...(isModelProviderPreset(rawProvider) ? { provider: rawProvider } : {}),
       ...(isReasoningEffort(modelConfig.reasoningEffort)
         ? { reasoningEffort: modelConfig.reasoningEffort }
+        : {}),
+      ...(isModelProviderPreset(rawProvider) && rawProvider === 'openai'
+        ? {
+            ...(isOpenAiReasoningMode(modelConfig.openaiReasoningMode)
+              ? { openaiReasoningMode: modelConfig.openaiReasoningMode }
+              : {}),
+            ...(isOpenAiReasoningSummary(modelConfig.openaiReasoningSummary)
+              ? { openaiReasoningSummary: modelConfig.openaiReasoningSummary }
+              : {}),
+          }
         : {}),
       ...(isModelProviderPreset(rawProvider) && rawProvider === 'qwen'
         ? {

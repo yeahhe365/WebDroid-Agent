@@ -1,26 +1,42 @@
-import { AppWindow, BookOpen, Settings as SettingsIcon, Usb } from 'lucide-react'
+import { BookOpen, CheckCircle2, LoaderCircle, Settings as SettingsIcon } from 'lucide-react'
 import { useAppCopy } from './AppContext'
 import { Button, IconButton } from './primitives'
-import { isWebUsbSupported } from '../adapters/webUsbSupport'
-import { formatCurrentAppLabel } from './deviceDisplay'
 
 type AppTopbarProps = {
-  currentApp: string
+  deviceConnected: boolean
+  hasModelConfig: boolean
+  isAgentRunning?: boolean
   isTutorialOpen: boolean
+  runningStep?: number | null
   onOpenSettings: () => void
+  onReadinessClick?: () => void
   onToggleTutorial: () => void
 }
 
 export function AppTopbar({
-  currentApp,
+  deviceConnected,
+  hasModelConfig,
+  isAgentRunning = false,
   isTutorialOpen,
+  runningStep = null,
   onOpenSettings,
+  onReadinessClick,
   onToggleTutorial,
 }: AppTopbarProps) {
   const copy = useAppCopy()
-  const webUsbSupported = isWebUsbSupported()
   const tutorialButtonLabel = isTutorialOpen ? copy.closeTutorial : copy.openTutorial
-  const currentAppLabel = formatCurrentAppLabel(currentApp, copy)
+  const readinessReady = deviceConnected && hasModelConfig
+  const readinessLabel = readinessReady
+    ? copy.agentReady
+    : !deviceConnected && !hasModelConfig
+      ? copy.readinessNeedsBoth
+      : !deviceConnected
+        ? copy.readinessNeedsDevice
+        : copy.readinessNeedsModel
+  const runningLabel =
+    runningStep && runningStep > 0
+      ? copy.agentRunningStep(runningStep)
+      : copy.agentRunningStatus
 
   return (
     <header className="topbar">
@@ -32,24 +48,27 @@ export function AppTopbar({
         />
         <h1>WebDroid Agent</h1>
       </div>
-      <div className="status-strip">
-        <span className={webUsbSupported ? 'status ok' : 'status warn'}>
-          <Usb size={16} />
-          <span className="status-label">
-            <span className="status-prefix">WebUSB </span>
-            {webUsbSupported ? copy.webUsbReady : copy.webUsbMissing}
+      <div className="status-strip" aria-label={copy.readinessStatus}>
+        {isAgentRunning ? (
+          <span className="status ok readiness-pill is-running" title={runningLabel}>
+            <LoaderCircle size={16} className="spin" aria-hidden="true" />
+            <span className="status-label">{runningLabel}</span>
           </span>
-        </span>
-        <span
-          className="status current-app-status"
-          title={`${copy.currentApp}: ${currentAppLabel}`}
-        >
-          <AppWindow size={16} />
-          <span className="status-label">
-            <span className="status-prefix">{copy.currentApp}: </span>
-            {currentAppLabel}
+        ) : readinessReady ? (
+          <span className="status ok readiness-pill" title={copy.agentReady}>
+            <CheckCircle2 size={16} aria-hidden="true" />
+            <span className="status-label">{copy.agentReady}</span>
           </span>
-        </span>
+        ) : (
+          <button
+            type="button"
+            className="status warn readiness-pill readiness-action"
+            title={readinessLabel}
+            onClick={onReadinessClick}
+          >
+            <span className="status-label">{readinessLabel}</span>
+          </button>
+        )}
       </div>
       <div className="topbar-actions">
         <Button

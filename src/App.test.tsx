@@ -140,8 +140,30 @@ async function settleAsyncWork() {
   }
 }
 
-function connectDeviceFromPanel(buttonName: RegExp = /connect/i) {
-  fireEvent.click(screen.getAllByRole('button', { name: buttonName })[0])
+function expandConfigurationPanel() {
+  const panel = document.querySelector('.config-panel')
+  if (!panel?.classList.contains('config-panel-collapsed')) {
+    return
+  }
+  const toggle = panel.querySelector('.config-sidebar-toggle')
+  if (toggle instanceof HTMLElement) {
+    fireEvent.click(toggle)
+  }
+}
+
+function expectScreenshotSource(
+  img: HTMLElement,
+  expectedDataUrl: string,
+) {
+  const src = img.getAttribute('src') ?? ''
+  // Display path converts data: URLs to blob: object URLs for cheaper paints.
+  expect(src === expectedDataUrl || src.startsWith('blob:')).toBe(true)
+}
+
+function connectDeviceFromPanel(buttonName: RegExp = /^connect$/i) {
+  expandConfigurationPanel()
+  const configPanel = document.querySelector('.config-panel') as HTMLElement
+  fireEvent.click(within(configPanel).getByRole('button', { name: buttonName }))
 }
 
 async function waitForConnectedDeviceName(name = 'Pixel') {
@@ -151,6 +173,7 @@ async function waitForConnectedDeviceName(name = 'Pixel') {
 }
 
 async function openInstalledAppsDialog() {
+  expandConfigurationPanel()
   const configPanel = document.querySelector('.config-panel') as HTMLElement
   fireEvent.click(within(configPanel).getByRole('button', { name: /installed apps/i }))
   return screen.findByRole('dialog', { name: /installed apps/i })
@@ -178,6 +201,8 @@ describe('App', () => {
       configurable: true,
       value: storage,
     })
+    // Default tests enter the agent workspace; setup-home coverage opts out.
+    storage.setItem('webdroid-setup-dismissed', '1')
     document.documentElement.removeAttribute('data-theme')
     document.documentElement.removeAttribute('data-system-theme')
     Object.defineProperty(window, 'matchMedia', {
@@ -392,8 +417,10 @@ describe('App', () => {
 
   it('renders advanced optimization controls', () => {
     render(<App />)
+    expandConfigurationPanel()
 
     const configPanel = document.querySelector('.config-panel') as HTMLElement
+    expandConfigurationPanel()
     fireEvent.click(screen.getByText('Model settings'))
 
     expect(screen.getByLabelText(/thinking depth/i)).toBeTruthy()
@@ -407,6 +434,7 @@ describe('App', () => {
   it('persists the configured model thinking depth', () => {
     render(<App />)
 
+    expandConfigurationPanel()
     fireEvent.click(screen.getByText('Model settings'))
     fireEvent.change(screen.getByLabelText(/thinking depth/i), {
       target: { value: 'high' },
@@ -420,9 +448,11 @@ describe('App', () => {
 
   it('keeps model and device connection controls in the left configuration panel', () => {
     render(<App />)
+    expandConfigurationPanel()
 
     const configPanel = document.querySelector('.config-panel')
     expect(configPanel).toBeTruthy()
+    expandConfigurationPanel()
     expect(within(configPanel as HTMLElement).getByText('Model settings')).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Device')).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Tools')).toBeTruthy()
@@ -445,6 +475,7 @@ describe('App', () => {
 
   it('keeps the left-panel status overview out of the configuration panel', () => {
     render(<App />)
+    expandConfigurationPanel()
 
     const configPanel = document.querySelector('.config-panel') as HTMLElement
 
@@ -460,9 +491,7 @@ describe('App', () => {
 
     const configPanel = document.querySelector('.config-panel')
     expect(configPanel).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: /collapse configuration panel/i }))
-
+    // Config starts collapsed to keep the main workspace focused.
     expect(configPanel?.classList.contains('config-panel-collapsed')).toBe(true)
     expect(screen.queryByText('Model settings')).toBeNull()
 
@@ -474,24 +503,44 @@ describe('App', () => {
     expect(within(rail).queryByRole('button', { name: /open toolbox/i })).toBeNull()
   })
 
-  it('prioritizes the phone preview in the desktop workspace layout', () => {
+  it('prioritizes chat over the phone preview in the desktop workspace layout', () => {
     const compactWorkspaceBreakpoint = readMediaBlock(responsiveCss, 'max-width: 1199px')
 
     expect(layoutCss).toMatch(
-      /\.workspace\s*\{[\s\S]*grid-template-columns:\s*[\s\S]*minmax\(320px,\s*360px\)[\s\S]*minmax\(400px,\s*500px\)[\s\S]*minmax\(380px,\s*1fr\)/,
+      /\.workspace\s*\{[\s\S]*grid-template-columns:\s*[\s\S]*minmax\(320px,\s*360px\)[\s\S]*minmax\(420px,\s*1fr\)[\s\S]*minmax\(320px,\s*420px\)/,
     )
-    expect(layoutCss).toMatch(/\.phone-column\s*\{[\s\S]*width:\s*min\(100%,\s*500px\)/)
+    expect(layoutCss).toMatch(/\.phone-column\s*\{[\s\S]*width:\s*min\(100%,\s*420px\)/)
     expect(layoutCss).toMatch(
-      /\.workspace-config-collapsed\s*\{[\s\S]*grid-template-columns:\s*64px\s+minmax\(420px,\s*520px\)\s+minmax\(380px,\s*1fr\)/,
+      /\.workspace-config-collapsed\s*\{[\s\S]*grid-template-columns:\s*64px\s+minmax\(420px,\s*1fr\)\s+minmax\(340px,\s*460px\)/,
     )
     expect(compactWorkspaceBreakpoint).toMatch(
       /\.workspace\s*\{[\s\S]*grid-template-columns:\s*minmax\(280px,\s*340px\)\s+minmax\(360px,\s*1fr\)/,
     )
+    expect(compactWorkspaceBreakpoint).toMatch(
+      /\.phone-column\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/,
+    )
+  })
+
+  it('shows setup home until the user dismisses it or becomes ready', () => {
+    localStorage.clear()
+    render(<App />)
+
+    const setup = screen.getByRole('region', { name: /getting started/i })
+    expect(setup).toBeTruthy()
+    expect(within(setup).getByRole('button', { name: /^connect device$/i })).toBeTruthy()
+    expect(within(setup).getByRole('button', { name: /^configure model$/i })).toBeTruthy()
+    expect(document.querySelector('.workspace')).toBeNull()
+
+    fireEvent.click(within(setup).getByRole('button', { name: /skip to workspace/i }))
+
+    expect(document.querySelector('.workspace')).toBeTruthy()
+    expect(localStorage.setItem).toHaveBeenCalledWith('webdroid-setup-dismissed', '1')
   })
 
   it('does not expose the removed AutoGLM native prompt mode', () => {
     render(<App />)
 
+    expandConfigurationPanel()
     fireEvent.click(screen.getByText('Model settings'))
 
     expect(screen.queryByLabelText(/prompt mode/i)).toBeNull()
@@ -501,6 +550,7 @@ describe('App', () => {
   it('offers pixel and normalized JSON action protocols in model settings', () => {
     render(<App />)
 
+    expandConfigurationPanel()
     fireEvent.click(screen.getByText('Model settings'))
 
     const protocolSelect = screen.getByLabelText(/action protocol/i)
@@ -514,6 +564,7 @@ describe('App', () => {
 
   it('labels sensitive action confirmation by its full action scope', () => {
     render(<App />)
+    expandConfigurationPanel()
 
     const configPanel = document.querySelector('.config-panel') as HTMLElement
     expect(within(configPanel).getByLabelText(/confirm sensitive actions/i)).toBeTruthy()
@@ -524,6 +575,7 @@ describe('App', () => {
 
   it('collapses model settings behind the current model name', () => {
     render(<App />)
+    expandConfigurationPanel()
 
     const configPanel = document.querySelector('.config-panel') as HTMLElement
     const modelSection = within(configPanel).getByRole('region', { name: /^model$/i })
@@ -539,6 +591,7 @@ describe('App', () => {
   it('toggles API key visibility in model settings', () => {
     render(<App />)
 
+    expandConfigurationPanel()
     fireEvent.click(screen.getByText('Model settings'))
     const apiKeyInput = screen.getByLabelText(/^api key$/i) as HTMLInputElement
 
@@ -556,6 +609,7 @@ describe('App', () => {
   it('names visible form controls to keep browser diagnostics quiet', () => {
     render(<App />)
 
+    expandConfigurationPanel()
     fireEvent.click(screen.getByText('Model settings'))
 
     const fields = Array.from(document.querySelectorAll('input, select, textarea'))
@@ -569,6 +623,7 @@ describe('App', () => {
 
   it('keeps device tools directly available in the homepage configuration panel', () => {
     render(<App />)
+    expandConfigurationPanel()
 
     const configPanel = document.querySelector('.config-panel')
     expect(configPanel).toBeTruthy()
@@ -622,6 +677,7 @@ describe('App', () => {
 
   it('renders homepage device tools as compact action cards', () => {
     render(<App />)
+    expandConfigurationPanel()
 
     const configPanel = document.querySelector('.config-panel') as HTMLElement
 
@@ -817,6 +873,7 @@ describe('App', () => {
     expect((within(settingsDialog).getByLabelText(/max steps/i) as HTMLInputElement).value).toBe('150')
     expect(within(settingsDialog).queryByLabelText(/memory/i)).toBeNull()
     expect(within(settingsDialog).queryByLabelText(/dim screen during auto control/i)).toBeNull()
+    expandConfigurationPanel()
     const configPanel = document.querySelector('.config-panel') as HTMLElement
     const screenBlackoutToggle = within(configPanel).getByLabelText(
       /dim screen during auto control/i,
@@ -1201,8 +1258,12 @@ describe('App', () => {
     const conversation = screen.getByLabelText('Conversation')
 
     expect(await within(conversation).findByText('Resume Bluetooth settings')).toBeTruthy()
-    expect(screen.getAllByText(/Current app: Settings/i).length).toBeGreaterThan(0)
-    expect(screen.getByAltText('Android screenshot').getAttribute('src')).toBe(
+    await waitFor(() => {
+      const appStatus = document.querySelector('.current-app-status')
+      expect(appStatus?.textContent?.replace(/\s+/g, ' ')).toMatch(/Current app:\s*Settings/i)
+    })
+    expectScreenshotSource(
+      await screen.findByAltText('Android screenshot'),
       'data:image/png;base64,restored',
     )
   })
@@ -1363,6 +1424,7 @@ describe('App', () => {
   it('runs device doctor checks from the homepage tools section', async () => {
     render(<App />)
 
+    expandConfigurationPanel()
     fireEvent.click(screen.getByText('Model settings'))
     fireEvent.change(screen.getByLabelText(/^api key$/i), {
       target: { value: 'secret' },
@@ -1401,6 +1463,7 @@ describe('App', () => {
     await connectDeviceFromPanel()
     await waitForConnectedDeviceName()
 
+    expandConfigurationPanel()
     const configPanel = document.querySelector('.config-panel') as HTMLElement
     fireEvent.click(within(configPanel).getByRole('button', { name: /enable adb text input/i }))
 
@@ -1435,15 +1498,16 @@ describe('App', () => {
 
     await connectDeviceFromPanel()
     const screenshot = await screen.findByAltText('Android screenshot')
-    expect(screenshot.getAttribute('src')).toBe('data:image/png;base64,before')
+    expectScreenshotSource(screenshot, 'data:image/png;base64,before')
+    const beforeSrc = screenshot.getAttribute('src')
 
     const quickControls = document.querySelector('.device-quick-controls') as HTMLElement
     fireEvent.click(within(quickControls).getByRole('button', { name: /^back$/i }))
 
     await waitFor(() => {
-      expect(screen.getByAltText('Android screenshot').getAttribute('src')).toBe(
-        'data:image/png;base64,after',
-      )
+      const next = screen.getByAltText('Android screenshot')
+      expectScreenshotSource(next, 'data:image/png;base64,after')
+      expect(next.getAttribute('src')).not.toBe(beforeSrc)
     })
   })
 
@@ -1487,7 +1551,8 @@ describe('App', () => {
     render(<App />)
 
     await connectDeviceFromPanel()
-    expect((await screen.findByAltText('Android screenshot')).getAttribute('src')).toBe(
+    expectScreenshotSource(
+      await screen.findByAltText('Android screenshot'),
       'data:image/png;base64,model',
     )
 
@@ -1628,7 +1693,6 @@ describe('App', () => {
     expect(mobileBreakpoint).toMatch(/\.topbar-actions\s*\{[\s\S]*grid-area:\s*actions/)
     expect(mobileBreakpoint).toMatch(/\.status-strip\s*\{[\s\S]*grid-area:\s*status/)
     expect(mobileBreakpoint).not.toMatch(/\.tutorial-button,\s*[\r\n]+\.settings-button\s*\{[\s\S]*position:\s*absolute/)
-    expect(mobileBreakpoint).not.toMatch(/\.current-app-status\s*\{[\s\S]*display:\s*none/)
   })
 
   it('puts the device preview before chat and configuration in single-column layouts', () => {

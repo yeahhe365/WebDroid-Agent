@@ -6,22 +6,24 @@ import {
   LoaderCircle,
   XCircle,
 } from 'lucide-react'
+import { memo } from 'react'
 import type { AgentTurn } from '../lib/agentThread'
 import type { AppCopy } from '../lib/appCopy'
 import { getActionDisplay } from './actionDisplay'
+import { useAppCopy } from './AppContext'
 import { formatCurrentAppLabel } from './deviceDisplay'
 import { LazyDetails } from './LazyDetails'
 import { LazyMarkdownContent } from './LazyMarkdownContent'
 
 type AgentStepCardProps = {
-  copy: AppCopy
   isActive: boolean
   turn: AgentTurn
 }
 
 type StepTone = 'planned' | 'running' | 'success' | 'failed' | 'review' | 'takeover'
 
-export function AgentStepCard({ copy, isActive, turn }: AgentStepCardProps) {
+export const AgentStepCard = memo(function AgentStepCard({ isActive, turn }: AgentStepCardProps) {
+  const copy = useAppCopy()
   const status = formatStepStatus(turn, copy, isActive)
   const packageName = turn.deviceSnapshot.deviceState.packageName
   const result = formatStepResult(turn, copy)
@@ -89,7 +91,7 @@ export function AgentStepCard({ copy, isActive, turn }: AgentStepCardProps) {
       </LazyDetails>
     </article>
   )
-}
+})
 
 function StepStatusIcon({ tone }: { tone: StepTone }) {
   if (tone === 'success') {

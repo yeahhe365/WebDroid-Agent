@@ -2,7 +2,6 @@
   align-items: center;
   animation: sensitive-dialog-overlay-in 200ms var(--ease-out-expo);
   background: var(--overlay);
-  backdrop-filter: blur(16px) saturate(1.15);
   bottom: 0;
   display: flex;
   justify-content: center;
@@ -24,7 +23,6 @@
   --sensitive-action-dialog-padding: var(--space-5);
   animation: sensitive-dialog-panel-in 350ms var(--ease-out-expo);
   background: var(--panel-bg-elevated);
-  backdrop-filter: blur(40px) saturate(1.4);
   border: 1px solid var(--border);
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-elevated), var(--shadow-accent-sm);
@@ -95,7 +93,6 @@
 
 .sensitive-action-dialog-preview {
   background: var(--surface-muted);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: grid;

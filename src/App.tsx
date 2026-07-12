@@ -14,8 +14,10 @@ import type { AgentStep } from './lib/agent'
 import type { AgentAction } from './lib/actionTypes'
 import type { ActionProtocol } from './lib/actionProtocol'
 import { createOpenAiClient } from './lib/openAiClient'
+import { createOpenAiResponsesClient } from './lib/openAiResponsesClient'
 import { createGeminiClient } from './lib/geminiClient'
 import { isGeminiProvider } from './lib/geminiTypes'
+import { isOpenAiProvider } from './lib/modelProviders'
 import type { ModelConfig } from './lib/openAiTypes'
 import { OPENAI_PROXY_URL } from './lib/openAiRuntimeConfig'
 import { APP_COPY, resolveLocale } from './lib/appCopy'
@@ -47,6 +49,7 @@ import { DeviceQuickControls } from './components/DeviceQuickControls'
 import { PhoneStage } from './components/PhoneStage'
 import { RunLog } from './components/RunLog'
 import { ConversationPanel } from './components/ConversationPanel'
+import { SetupHome } from './components/SetupHome'
 import {
   SensitiveActionDialog,
   type SensitiveActionDialogRequest,
@@ -58,6 +61,9 @@ import { buildActionPreview } from './lib/actionPreview'
 function createModelClient(modelConfig: ModelConfig) {
   if (isGeminiProvider(modelConfig.provider)) {
     return createGeminiClient(globalThis.fetch)
+  }
+  if (isOpenAiProvider(modelConfig.provider)) {
+    return createOpenAiResponsesClient(globalThis.fetch, { proxyUrl: OPENAI_PROXY_URL })
   }
   return createOpenAiClient(globalThis.fetch, { proxyUrl: OPENAI_PROXY_URL })
 }
@@ -103,7 +109,6 @@ function App() {
     updateSecretRecordsJson,
   } = useLocalResourcesState()
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false)
-  const [chatInput, setChatInput] = useState('')
   const [maxSteps, setMaxSteps] = useState(settings.maxSteps)
   const [memoryEnabled, setMemoryEnabled] = useState(settings.memoryEnabled)
   const [memoryItems, setMemoryItems] = useState(() => loadMemoryItems())
@@ -116,8 +121,25 @@ function App() {
   )
   const [themeMode, setThemeMode] = useState(settings.themeMode)
   const [languageMode, setLanguageMode] = useState(settings.languageMode)
-  const [configSidebarOpen, setConfigSidebarOpen] = useState(true)
+  const [configSidebarOpen, setConfigSidebarOpen] = useState(false)
   const openConfigTarget = useConfigTargetScroll(configSidebarOpen, setConfigSidebarOpen)
+  type WorkspaceTab = 'phone' | 'chat' | 'config'
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('phone')
+  const [setupDismissed, setSetupDismissed] = useState(() => {
+    try {
+      return globalThis.localStorage?.getItem('webdroid-setup-dismissed') === '1'
+    } catch {
+      return false
+    }
+  })
+  const dismissSetup = useCallback(() => {
+    setSetupDismissed(true)
+    try {
+      globalThis.localStorage?.setItem('webdroid-setup-dismissed', '1')
+    } catch {
+      // Ignore quota / private-mode failures; in-memory flag still applies.
+    }
+  }, [])
   const [pendingStep, setPendingStep] = useState<AgentStep | null>(null)
   const { logs, addLog, clearLogs } = useRunLog()
   const { busyTask, error, runTask, setError } = useBusyTask(({ label, message }) => {
@@ -217,6 +239,45 @@ function App() {
     [device.actions, requestUnrestrictedModeConfirmation],
   )
   const hasModelConfig = Boolean(modelConfig.baseUrl && modelConfig.apiKey && modelConfig.model)
+  const agentReady = device.connected && hasModelConfig
+  const showSetupHome = !agentReady && !setupDismissed
+  const isAgentRunning = busyTask?.id === 'run-agent'
+  const handleEnterWorkspace = useCallback(() => {
+    dismissSetup()
+    setWorkspaceTab('chat')
+  }, [dismissSetup])
+  const handleConfigureModelFromSetup = useCallback(() => {
+    dismissSetup()
+    setWorkspaceTab('config')
+    openConfigTarget('model')
+  }, [dismissSetup, openConfigTarget])
+  const handleConfigureDeviceFromSetup = useCallback(() => {
+    dismissSetup()
+    setWorkspaceTab('config')
+    openConfigTarget('device')
+  }, [dismissSetup, openConfigTarget])
+  const handleReadinessClick = useCallback(() => {
+    if (agentReady) {
+      return
+    }
+    if (showSetupHome) {
+      return
+    }
+    if (!device.connected) {
+      handleConfigureDeviceFromSetup()
+      return
+    }
+    if (!hasModelConfig) {
+      handleConfigureModelFromSetup()
+    }
+  }, [
+    agentReady,
+    device.connected,
+    handleConfigureDeviceFromSetup,
+    handleConfigureModelFromSetup,
+    hasModelConfig,
+    showSetupHome,
+  ])
   const handleIrreversibleBlocked = useCallback((action: AgentAction, message: string) => {
     const detail = `${buildActionPreview(action)} — ${message}`
     appendAuditEntry({
@@ -355,7 +416,6 @@ function App() {
     backend,
     busyTask,
     canRunAgent: device.connected && hasModelConfig,
-    chatInput,
     client,
     copy,
     customTools,
@@ -369,7 +429,6 @@ function App() {
     onRunEndNotification: handleRunEndNotification,
     pendingStep,
     runTask,
-    setChatInput,
     setError,
     setPendingStep,
     secrets: secretRecords,
@@ -379,6 +438,49 @@ function App() {
     unrestrictedMode,
     onIrreversibleBlocked: handleIrreversibleBlocked,
   })
+  const runLogLabels = useMemo(
+    () => ({
+      clear: copy.clear,
+      closeScreenshotPreview: copy.closeScreenshotPreview,
+      empty: copy.noEvents,
+      executionResult: copy.stepExecutionResult,
+      expandedScreenshotFor: (title: string) => `${copy.expandedAndroidScreenshot}: ${title}`,
+      modelOutput: copy.stepModelOutput,
+      openScreenshotFor: copy.openScreenshotFor,
+      parsedAction: copy.stepParsedAction,
+      resetScreenshotZoom: copy.resetScreenshotZoom,
+      screenshotDialogFor: copy.screenshotDialogFor,
+      screenshotFor: (title: string) => `${copy.androidScreenshot}: ${title}`,
+      screenshotZoomControls: copy.screenshotZoomControls,
+      step: (step: number) => `${copy.step} ${step}`,
+      title: copy.runLog,
+      zoomInScreenshot: copy.zoomInScreenshot,
+      zoomOutScreenshot: copy.zoomOutScreenshot,
+    }),
+    [copy],
+  )
+  const handleOpenConfigTarget = useCallback(
+    (target: Parameters<typeof openConfigTarget>[0]) => {
+      setWorkspaceTab('config')
+      openConfigTarget(target)
+    },
+    [openConfigTarget],
+  )
+  const handleToggleConfigSidebar = useCallback(() => {
+    setConfigSidebarOpen((current) => {
+      const next = !current
+      if (next) {
+        setWorkspaceTab('config')
+      }
+      return next
+    })
+  }, [])
+  const handleSelectWorkspaceTab = useCallback((tab: WorkspaceTab) => {
+    setWorkspaceTab(tab)
+    if (tab === 'config') {
+      setConfigSidebarOpen(true)
+    }
+  }, [])
 
   function updateConfig<Key extends keyof ModelConfig>(key: Key, value: ModelConfig[Key]) {
     setModelConfig((current) => {
@@ -470,9 +572,9 @@ function App() {
   }
 
   function startNewChat() {
-    setChatInput('')
     setPendingStep(null)
     setHistorySidebarOpen(false)
+    setWorkspaceTab('chat')
     startNewSession()
     addLog({ tone: 'info', title: copy.newChatStarted })
   }
@@ -480,7 +582,6 @@ function App() {
   async function clearChatHistoryFromSettings() {
     const cleared = await clearHistoryThreads()
     if (cleared) {
-      setChatInput('')
       setPendingStep(null)
       setHistorySidebarOpen(false)
     }
@@ -493,9 +594,9 @@ function App() {
 
     const restored = await selectStoredHistoryThread(threadId)
     if (restored) {
-      setChatInput('')
       setPendingStep(null)
       setHistorySidebarOpen(false)
+      setWorkspaceTab('chat')
     }
   }
 
@@ -506,7 +607,6 @@ function App() {
 
     const result = await deleteStoredHistoryThread(threadId)
     if (result.resetActiveThread) {
-      setChatInput('')
       setPendingStep(null)
     }
   }
@@ -543,9 +643,13 @@ function App() {
     <AppProvider value={{ copy, locale: activeLocale }}>
       <main className="app-shell">
         <AppTopbar
-          currentApp={device.currentApp}
+          deviceConnected={device.connected}
+          hasModelConfig={hasModelConfig}
+          isAgentRunning={isAgentRunning}
           isTutorialOpen={tutorialOpen}
+          runningStep={sessionSummary?.stepNumber ?? null}
           onOpenSettings={openSettings}
+          onReadinessClick={handleReadinessClick}
           onToggleTutorial={toggleTutorial}
         />
 
@@ -624,76 +728,138 @@ function App() {
           </div>
         ) : null}
 
-        <section
-          className={
-            configSidebarOpen ? 'workspace' : 'workspace workspace-config-collapsed'
-          }
-        >
-          <ConfigSidebar
-            deviceActions={{ ...device.actions, onUnrestrictedModeChange: handleUnrestrictedModeChange }}
-            deviceOptions={device.options}
-            deviceState={device.state}
-            isOpen={configSidebarOpen}
-            memoryEnabled={memoryEnabled}
-            modelConfig={modelConfig}
-            actionProtocol={actionProtocol}
-            onModelConfigChange={updateConfig}
-            onActionProtocolChange={setActionProtocol}
-            onMemoryEnabledChange={setMemoryEnabled}
-            onScreenBlackoutDuringAutoControlChange={setScreenBlackoutDuringAutoControl}
-            onSelectTarget={openConfigTarget}
-            onStreamResponsesChange={setStreamResponses}
-            onToggleOpen={() => setConfigSidebarOpen((current) => !current)}
-            screenBlackoutDuringAutoControl={screenBlackoutDuringAutoControl}
-            streamResponses={streamResponses}
-          />
-
-          <div className="phone-column">
-            <PhoneStage
-              busyTask={busyTask}
-              copy={copy}
-              deviceConnected={device.connected}
-              displayedScreenshot={device.displayedScreenshot}
-              onRunInteractiveAction={device.runScreenshotAction}
-              pendingStep={pendingStep}
-              runningAgent={Boolean(
-                busyTask?.id === 'run-agent' || (device.state?.currentApp != null && pendingStep != null),
-              )}
-            />
-            <DeviceQuickControls
-              busyTask={busyTask}
-              connected={device.connected}
-              copy={copy}
-              onRunDirectAction={device.actions.onRunDirectAction}
-            />
-          </div>
-
-          <ConversationPanel
-            activeThreadId={activeThreadId}
+        {showSetupHome ? (
+          <SetupHome
             busyTask={busyTask}
-            chatInput={chatInput}
-            conversation={conversation}
-            interactionItems={interactionItems}
-            historySidebarOpen={historySidebarOpen}
-            sessionSummary={sessionSummary}
-            onChatInputChange={setChatInput}
-            onCloseHistorySidebar={() => setHistorySidebarOpen(false)}
-            onDeleteThread={(threadId) => {
-              void deleteHistoryThread(threadId)
-            }}
-            onExecutePendingStep={executePendingStep}
-            onSelectThread={(threadId) => {
-              void selectHistoryThread(threadId)
-            }}
-            onStartNewChat={startNewChat}
-            onStopRun={handleStopRun}
-            onSubmitChatMessage={submitChatMessage}
-            onToggleHistorySidebar={() => setHistorySidebarOpen((current) => !current)}
-            pendingStep={pendingStep}
-            queuedChatMessageCount={queuedChatMessageCount}
-            threadSummaries={threadSummaries}
+            deviceConnected={device.connected}
+            hasModelConfig={hasModelConfig}
+            onConnectDevice={device.actions.onConnectDevice}
+            onConfigureModel={handleConfigureModelFromSetup}
+            onEnterWorkspace={handleEnterWorkspace}
+            onSkipToWorkspace={handleEnterWorkspace}
           />
-        </section>
+        ) : (
+          <>
+            <nav className="workspace-mobile-tabs" aria-label={copy.workspaceTabs}>
+              <button
+                type="button"
+                className={workspaceTab === 'phone' ? 'workspace-mobile-tab active' : 'workspace-mobile-tab'}
+                aria-current={workspaceTab === 'phone' ? 'page' : undefined}
+                onClick={() => handleSelectWorkspaceTab('phone')}
+              >
+                {copy.workspaceTabPhone}
+              </button>
+              <button
+                type="button"
+                className={workspaceTab === 'chat' ? 'workspace-mobile-tab active' : 'workspace-mobile-tab'}
+                aria-current={workspaceTab === 'chat' ? 'page' : undefined}
+                onClick={() => handleSelectWorkspaceTab('chat')}
+              >
+                {copy.workspaceTabChat}
+              </button>
+              <button
+                type="button"
+                className={workspaceTab === 'config' ? 'workspace-mobile-tab active' : 'workspace-mobile-tab'}
+                aria-current={workspaceTab === 'config' ? 'page' : undefined}
+                onClick={() => handleSelectWorkspaceTab('config')}
+              >
+                {copy.workspaceTabConfig}
+              </button>
+            </nav>
+
+            <section
+              className={[
+                'workspace',
+                configSidebarOpen ? '' : 'workspace-config-collapsed',
+                `workspace-tab-${workspaceTab}`,
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              <ConfigSidebar
+                deviceActions={{ ...device.actions, onUnrestrictedModeChange: handleUnrestrictedModeChange }}
+                deviceOptions={device.options}
+                deviceState={device.state}
+                isOpen={configSidebarOpen}
+                memoryEnabled={memoryEnabled}
+                modelConfig={modelConfig}
+                actionProtocol={actionProtocol}
+                onModelConfigChange={updateConfig}
+                onActionProtocolChange={setActionProtocol}
+                onMemoryEnabledChange={setMemoryEnabled}
+                onScreenBlackoutDuringAutoControlChange={setScreenBlackoutDuringAutoControl}
+                onSelectTarget={handleOpenConfigTarget}
+                onStreamResponsesChange={setStreamResponses}
+                onToggleOpen={handleToggleConfigSidebar}
+                screenBlackoutDuringAutoControl={screenBlackoutDuringAutoControl}
+                streamResponses={streamResponses}
+              />
+
+              <ConversationPanel
+                activeThreadId={activeThreadId}
+                busyTask={busyTask}
+                conversation={conversation}
+                deviceConnected={device.connected}
+                hasModelConfig={hasModelConfig}
+                interactionItems={interactionItems}
+                historySidebarOpen={historySidebarOpen}
+                sessionSummary={sessionSummary}
+                onCloseHistorySidebar={() => setHistorySidebarOpen(false)}
+                onConfigureModel={handleConfigureModelFromSetup}
+                onConnectDevice={device.actions.onConnectDevice}
+                onDeleteThread={(threadId) => {
+                  void deleteHistoryThread(threadId)
+                }}
+                onExecutePendingStep={executePendingStep}
+                onSelectThread={(threadId) => {
+                  void selectHistoryThread(threadId)
+                }}
+                onStartNewChat={startNewChat}
+                onStopRun={handleStopRun}
+                onSubmitChatMessage={(message) => {
+                  void submitChatMessage(message)
+                }}
+                onToggleHistorySidebar={() => setHistorySidebarOpen((current) => !current)}
+                pendingStep={pendingStep}
+                queuedChatMessageCount={queuedChatMessageCount}
+                threadSummaries={threadSummaries}
+              />
+
+              <div className="phone-column">
+                {device.connected ||
+                (device.currentApp && device.currentApp !== copy.unknownApp) ? (
+                  <div
+                    className="status current-app-status phone-current-app"
+                    title={`${copy.currentApp}: ${device.currentApp || copy.unknownApp}`}
+                  >
+                    <span className="status-label">
+                      <span className="status-prefix">{copy.currentApp}: </span>
+                      {device.currentApp || copy.unknownApp}
+                    </span>
+                  </div>
+                ) : null}
+                <PhoneStage
+                  busyTask={busyTask}
+                  copy={copy}
+                  deviceConnected={device.connected}
+                  displayedScreenshot={device.displayedScreenshot}
+                  onConnectDevice={device.actions.onConnectDevice}
+                  onRunInteractiveAction={device.runScreenshotAction}
+                  pendingStep={pendingStep}
+                  runningAgent={Boolean(
+                    busyTask?.id === 'run-agent' || (device.state?.currentApp != null && pendingStep != null),
+                  )}
+                />
+                <DeviceQuickControls
+                  busyTask={busyTask}
+                  connected={device.connected}
+                  copy={copy}
+                  onRunDirectAction={device.actions.onRunDirectAction}
+                />
+              </div>
+            </section>
+          </>
+        )}
 
         <details className="log-drawer compact-section" open={runLogOpen} ref={runLogDrawerRef}>
           <summary onClick={toggleRunLog}>
@@ -704,24 +870,7 @@ function App() {
             <RunLog
               logs={logs}
               onClear={clearLogs}
-              labels={{
-                clear: copy.clear,
-                closeScreenshotPreview: copy.closeScreenshotPreview,
-                empty: copy.noEvents,
-                executionResult: copy.stepExecutionResult,
-                expandedScreenshotFor: (title) => `${copy.expandedAndroidScreenshot}: ${title}`,
-                modelOutput: copy.stepModelOutput,
-                openScreenshotFor: copy.openScreenshotFor,
-                parsedAction: copy.stepParsedAction,
-                resetScreenshotZoom: copy.resetScreenshotZoom,
-                screenshotDialogFor: copy.screenshotDialogFor,
-                screenshotFor: (title) => `${copy.androidScreenshot}: ${title}`,
-                screenshotZoomControls: copy.screenshotZoomControls,
-                step: (step) => `${copy.step} ${step}`,
-                title: copy.runLog,
-                zoomInScreenshot: copy.zoomInScreenshot,
-                zoomOutScreenshot: copy.zoomOutScreenshot,
-              }}
+              labels={runLogLabels}
             />
           ) : null}
         </details>

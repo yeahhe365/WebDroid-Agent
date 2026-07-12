@@ -175,13 +175,45 @@
   line-height: 1.4;
 }
 
+.phone-connect-cta {
+  align-items: center;
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius-full);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  transition: background var(--duration-normal) var(--ease-productive);
+}
+
+.phone-connect-cta:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.phone-connect-cta:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.phone-connect-cta svg {
+  color: inherit;
+  height: 14px;
+  opacity: 1;
+  width: 14px;
+}
+
 .phone-zoom-controls {
   align-items: center;
   background: var(--overlay);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
-  backdrop-filter: blur(16px) saturate(1.3);
   color: var(--modal-text);
   display: flex;
   gap: var(--space-1);
@@ -316,7 +348,6 @@
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(12px) saturate(1.2);
   color: var(--modal-text);
   font: var(--text-xs)/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   padding: var(--space-1) calc(var(--space-1) + 2px);
@@ -351,7 +382,6 @@
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
-  backdrop-filter: blur(16px) saturate(1.3);
   bottom: var(--space-2);
   color: var(--modal-text);
   display: grid;

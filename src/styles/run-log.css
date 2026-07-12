@@ -44,7 +44,6 @@
 .log-empty-state {
   align-items: center;
   background: var(--surface-muted);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   color: var(--text-soft);
@@ -66,7 +65,6 @@
 
 .log-entry {
   background: var(--surface-muted);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-left: 3px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -138,7 +136,6 @@
 
 .step-timeline {
   background: var(--surface-muted);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: grid;
@@ -213,7 +210,6 @@
 .log-screenshot-overlay {
   align-items: center;
   background: var(--overlay);
-  backdrop-filter: blur(4px);
   bottom: 0;
   color: var(--on-primary);
   display: flex;

@@ -2,7 +2,6 @@
   align-items: center;
   animation: screenshot-modal-in 250ms var(--ease-out-expo);
   background: var(--overlay);
-  backdrop-filter: blur(16px) saturate(1.15);
   bottom: 0;
   display: flex;
   justify-content: center;

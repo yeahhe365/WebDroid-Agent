@@ -22,8 +22,11 @@ WebDroid Agent 是一个以浏览器为核心的 Android 手机 Agent 实验项�
 
 ```text
 Chromium WebUSB -> Tango/WebADB -> Android ADB
-静态部署: 浏览器 fetch -> OpenAI 兼容 /v1/chat/completions -> 视觉模型
-Docker: 浏览器 fetch -> 同源本地代理 -> OpenAI 兼容 /v1/chat/completions -> 视觉模型
+静态部署:
+  OpenAI 官方: 浏览器 fetch -> /v1/responses -> 视觉模型
+  其他提供商: 浏览器 fetch -> /v1/chat/completions 或 Gemini generateContent
+Docker:
+  浏览器 fetch -> 同源本地代理 (/chat/completions 或 /responses) -> 模型 API
 ```
 
 ## 目录
@@ -105,9 +108,9 @@ Docker: 浏览器 fetch -> 同源本地代理 -> OpenAI 兼容 /v1/chat/completi
 - 支持 WebUSB 的 Chromium 系浏览器，例如 Chrome 或 Edge。
 - 已开启 USB 调试的 Android 设备。
 - 可传输数据的 USB 数据线。
-- OpenAI 兼容的 `/v1/chat/completions` API。
-- 支持 `image_url` 输入的视觉模型。
-- 静态部署时，API 服务需要允许浏览器跨域请求，也就是正确配置 CORS；Docker 部署可通过同源本地代理规避这项要求。
+- 视觉模型 API：可选 **OpenAI 官方**（`/v1/responses`，默认模型 `gpt-5.6`）、**OpenAI 兼容** `/v1/chat/completions`、**Qwen** 兼容接口，或 **Gemini** 原生 `generateContent`。
+- 支持截图/图像输入的视觉模型。
+- 静态部署时，API 服务需要允许浏览器跨域请求，也就是正确配置 CORS；Docker 部署可通过同源本地代理规避这项要求（OpenAI 官方与兼容提供商走代理；Gemini 直连 Google）。
 - 页面需要运行在 `localhost` 或 HTTPS 环境下，WebUSB 才能正常工作。
 
 ## 快速开始
@@ -125,6 +128,7 @@ npm run dev
 npm test
 npm run lint
 npm run build
+npm run build:server   # Docker / npm start 需要的 Node 代理
 npm run preview
 ```
 
@@ -132,10 +136,11 @@ npm run preview
 
 应用会把以下配置保存在当前浏览器的 `localStorage` 中：
 
-- `Base URL`：OpenAI 兼容接口地址，默认 `https://api.openai.com/v1`。
+- `Provider`：服务商预设。`OpenAI 官方` 走 Responses API；`OpenAI 兼容` / `Qwen` 走 chat completions；`Gemini` 走原生 generateContent。
+- `Base URL`：模型接口地址。OpenAI 官方默认 `https://api.openai.com/v1`；兼容接口与 Qwen/Gemini 各有预设。
 - `API Key`：模型接口密钥。
-- `Model`：模型名称，默认 `gpt-5.5`。
-- `Thinking depth`：GPT-5.5 等推理模型的 `reasoning_effort`，可使用服务默认值，或选择 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`。
+- `Model`：模型名称。OpenAI 官方默认 `gpt-5.6`；未选预设时兼容接口默认 `gpt-5.5`。
+- `Thinking depth` / 推理参数：兼容接口的 `reasoning_effort`；OpenAI 官方额外支持推理模式（standard/pro）与推理摘要；Qwen/Gemini 使用各自的思考预算或 thinking level。
 - `Action protocol`：模型动作协议。`webdroid_json` 使用截图像素坐标；`webdroid_normalized_json` 使用 0-1000 归一化坐标。
 - `Max steps`：自动执行的最大步数，默认 `150`。
 - `Confirm sensitive actions`：敏感点击是否需要人工确认，默认开启。
@@ -151,11 +156,12 @@ API Key 只保存在浏览器本地。请只在可信设备和本地实验环境
 
 ## Docker 部署
 
-Docker 镜像会构建同一个前端应用，并额外启用一个本地 Node 服务：
+Docker 镜像会构建同一个前端应用，并额外启用一个本地 Node 服务（TypeScript 编译到 `dist-server/`）：
 
 - 浏览器访问容器页面，WebUSB/WebADB 仍然在浏览器中工作。
-- 前端请求同源 `/api/openai/chat/completions`。
-- 容器内 Node 服务读取请求里的 `Base URL`、`API Key` 和 OpenAI-compatible payload，再转发到模型 API。
+- 前端通过同源 `/api/openai/chat/completions` 代理信封转发请求；OpenAI 官方预设会在信封内指定上游 path `/responses`，兼容提供商使用 `/chat/completions`。
+- 容器内 Node 服务读取请求里的 `Base URL`、`API Key` 和 payload，再转发到模型 API。
+- Gemini 预设不经过该代理，浏览器直连 Google API。
 - Cloudflare Pages 不使用这个 Node 服务，也不会设置代理构建变量，仍然是静态前端和浏览器直连模型 API。
 
 构建并运行：
@@ -311,6 +317,7 @@ src/
     RunLog.tsx                # 运行日志
     ScreenshotLightbox.tsx    # 截图预览弹窗
     SettingsDialog.tsx        # 应用设置、仓库信息和可编辑资源
+    SetupHome.tsx             # 首次连接设备/配置模型引导页
     TutorialPanel.tsx         # 顶部栏展开的快速上手教程
   hooks/
     useAgentRunController.ts        # Agent 自动运行和待执行动作控制
@@ -319,12 +326,14 @@ src/
     useConfigTargetScroll.ts        # 配置侧栏目标定位
     useDeviceBackendPreferences.ts  # 设备后端偏好同步
     useDeviceController.ts          # 设备连接、截图和直接动作控制
+    useDisplayImageUrl.ts           # 截图 blob URL 生命周期
     useDocumentPreferences.ts       # 文档主题和语言属性同步
     useLatestValue.ts               # 异步回调读取最新值的 ref
     usePersistedSettings.ts         # 设置变更持久化
     useRepositoryStats.ts           # 设置弹窗中的 GitHub 仓库统计加载
     useRunLog.ts                    # 运行日志状态管理
     useStorageEstimate.ts           # 本地存储容量估算
+    useVirtualWindow.ts             # 长列表虚拟窗口
   lib/
     actionDefaults.ts         # 常用截图动作默认值
     actionParser.ts           # 动作解析、规范化和校验
@@ -344,12 +353,15 @@ src/
     deviceDoctor.ts           # 设备和模型配置诊断
     deviceState.ts            # 设备状态展示格式化
     interactionStream.ts      # 聊天消息和 Agent 步骤合并展示
-    openAiClient.ts           # OpenAI 兼容网络客户端
+    openAiClient.ts           # OpenAI 兼容 chat completions 客户端
     openAiErrors.ts           # OpenAI 客户端错误类型
     openAiPayload.ts          # OpenAI 兼容请求体构造
     openAiResponse.ts         # OpenAI 兼容响应读取和错误格式化
+    openAiResponsesClient.ts  # OpenAI 官方 Responses API 客户端
+    openAiResponsesTypes.ts   # Responses API 请求/响应类型
     openAiRuntimeConfig.ts    # OpenAI 请求运行时配置
     openAiTypes.ts            # OpenAI 客户端和消息类型
+    modelProviders.ts         # 服务商预设（OpenAI / Qwen / Gemini）
     promptContextFormatting.ts # 模型上下文格式化工具
     prompts.ts                # 提示词和动作规则
     repository.ts             # 仓库链接和 GitHub 统计解析
@@ -385,13 +397,14 @@ src/
     run-log.css              # 运行日志样式
     screenshot-lightbox.css  # 截图预览弹窗样式
     settings-dialog.css      # 设置弹窗样式
+    setup-home.css           # 启动引导页样式
     theme.css                # 主题变量和基础 reset
     tutorial-panel.css       # 教程面板样式
   App.tsx                     # 页面状态、业务流程和组件编排
   main.tsx                    # React 入口和全局样式加载
 server/
-  index.js                    # Docker 中的静态文件和 API 代理服务
-  openAiProxy.js              # OpenAI 兼容接口本地代理
+  index.ts                    # Docker 中的静态文件和 API 代理服务（编译到 dist-server/）
+  openAiProxy.ts              # OpenAI 兼容 / Responses 本地代理
 ```
 
 ## 验证
@@ -400,12 +413,14 @@ server/
 npm test
 npm run lint
 npm run build
+npm run build:server
 ```
 
 当前测试主要覆盖：
 
 - 动作解析和动作安全校验。
-- OpenAI 兼容请求体构造、响应解析和网络客户端错误处理。
+- OpenAI 兼容与 Responses API 请求体构造、响应解析和网络客户端错误处理。
+- Docker 本地代理对 `/chat/completions` 与 `/responses` 的转发约束。
 - Agent 单步和连续执行流程。
 - 失败反馈、瞬时模型 API 错误/模型空回复重试和有限自动恢复。
 - 设置持久化和兼容迁移。
@@ -425,8 +440,9 @@ npm run build
 - [x] 支持自动执行、单步执行和敏感动作确认。
 - [x] 支持运行日志和截图查看。
 - [x] 支持已安装应用列表、文本清空输入、可配置等待和基础失败恢复。
+- [x] 支持 OpenAI 官方 Responses API、Gemini 原生接口与 Qwen 预设。
+- [x] 首次使用 Setup 引导（连接设备 → 配置模型 → 进入工作台）。
 - [ ] 补充更完整的真实设备验证矩阵。
-- [ ] 增加更多模型提供商配置示例。
 - [ ] 增强更系统的失败分类、动作重试和任务暂停恢复体验。
 - [ ] 提供更系统的安全策略和风险分级。
 

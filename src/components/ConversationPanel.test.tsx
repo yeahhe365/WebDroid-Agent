@@ -33,10 +33,8 @@ function renderConversationPanel(
   const props: Parameters<typeof ConversationPanel>[0] = {
     activeThreadId: 'thread-current',
     busyTask: null,
-    chatInput: '',
     conversation: [],
     historySidebarOpen: false,
-    onChatInputChange: vi.fn(),
     onCloseHistorySidebar: vi.fn(),
     onDeleteThread: vi.fn(),
     onExecutePendingStep: vi.fn(),
@@ -253,7 +251,7 @@ describe('ConversationPanel', () => {
       /\.chat-input:focus,\s*[\r\n]+\.chat-input:focus-visible\s*\{[\s\S]*box-shadow:\s*none/,
     )
     expect(chatComposerCss).toMatch(/\.chat-send\s*\{[\s\S]*height:\s*38px/)
-    expect(chatComposerCss).toContain('backdrop-filter')
+    expect(chatComposerCss).not.toContain('backdrop-filter')
   })
 
   it('renders chat messages as sanitized markdown', async () => {
@@ -369,14 +367,16 @@ describe('ConversationPanel', () => {
   it('submits chat with Enter while keeping Shift Enter for multiline input', () => {
     const onSubmitChatMessage = vi.fn()
     renderConversationPanel({
-      chatInput: 'Open Wi-Fi settings',
       onSubmitChatMessage,
     })
 
     const input = screen.getByRole('textbox', { name: /chat message/i })
+    fireEvent.change(input, { target: { value: 'Open Wi-Fi settings' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onSubmitChatMessage).toHaveBeenCalledTimes(1)
+    expect(onSubmitChatMessage).toHaveBeenCalledWith('Open Wi-Fi settings')
 
+    fireEvent.change(input, { target: { value: 'Another line' } })
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
     expect(onSubmitChatMessage).toHaveBeenCalledTimes(1)
   })
@@ -386,7 +386,6 @@ describe('ConversationPanel', () => {
     const onSubmitChatMessage = vi.fn()
     renderConversationPanel({
       busyTask: { id: 'run-agent', label: 'Run agent', startedAt: 1000 },
-      chatInput: 'Queue this after stop',
       onStopRun,
       onSubmitChatMessage,
     })

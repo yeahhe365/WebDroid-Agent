@@ -143,8 +143,6 @@
   min-height: 0;
   min-width: 0;
   padding: var(--space-5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 }
 
 .card--elevated {

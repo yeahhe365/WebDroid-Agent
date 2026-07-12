@@ -1,7 +1,23 @@
-export const OPENAI_PROXY_PATH = '/api/openai/chat/completions'
-export const MAX_PROXY_BODY_BYTES = 10 * 1024 * 1024
+import type { IncomingMessage, ServerResponse } from 'node:http'
 
-export function createOpenAiProxyHandler(fetcher = fetch, options = {}) {
+export const OPENAI_PROXY_PATH = '/api/openai/chat/completions'
+export const MAX_PROXY_BODY_BYTES = 10 * 1024 * 1024 // 10 MiB — room for multi-message conversations with image data URLs
+
+type Fetcher = (input: string, init?: RequestInit) => Promise<Response>
+
+export interface OpenAiProxyHandlerOptions {
+  maxBodyBytes?: number
+}
+
+export type OpenAiProxyHandler = (
+  request: IncomingMessage,
+  response: ServerResponse,
+) => Promise<void>
+
+export function createOpenAiProxyHandler(
+  fetcher: Fetcher = fetch,
+  options: OpenAiProxyHandlerOptions = {},
+): OpenAiProxyHandler {
   const maxBodyBytes = options.maxBodyBytes ?? MAX_PROXY_BODY_BYTES
 
   return async function openAiProxyHandler(request, response) {
@@ -25,7 +41,7 @@ export function createOpenAiProxyHandler(fetcher = fetch, options = {}) {
       return
     }
 
-    let body
+    let body: unknown
     try {
       body = JSON.parse(await readRequestBody(request, maxBodyBytes))
     } catch (caught) {
@@ -43,7 +59,15 @@ export function createOpenAiProxyHandler(fetcher = fetch, options = {}) {
       return
     }
 
-    const upstreamUrl = `${normalizeBaseUrl(body.baseUrl)}/chat/completions`
+    const validatedBody = body as ProxyRequestBody
+    const upstreamPath = resolveUpstreamPath(validatedBody.path)
+    if (!upstreamPath) {
+      sendJson(response, 400, {
+        error: { message: 'Upstream path must be /chat/completions or /responses.' },
+      })
+      return
+    }
+    const upstreamUrl = `${normalizeBaseUrl(validatedBody.baseUrl)}${upstreamPath}`
     const abortController = new AbortController()
     const abortUpstream = () => {
       if (!abortController.signal.aborted) {
@@ -53,16 +77,16 @@ export function createOpenAiProxyHandler(fetcher = fetch, options = {}) {
     request.once('aborted', abortUpstream)
     response.once('close', abortUpstream)
 
-    let upstreamResponse
+    let upstreamResponse: Response
     try {
       upstreamResponse = await fetcher(upstreamUrl, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${body.apiKey}`,
+          Authorization: `Bearer ${validatedBody.apiKey}`,
           'Content-Type': 'application/json',
         },
         signal: abortController.signal,
-        body: JSON.stringify(body.payload),
+        body: JSON.stringify(validatedBody.payload),
       })
     } catch (caught) {
       request.off('aborted', abortUpstream)
@@ -84,11 +108,18 @@ export function createOpenAiProxyHandler(fetcher = fetch, options = {}) {
   }
 }
 
-export function isOpenAiProxyRequest(requestUrl) {
+export function isOpenAiProxyRequest(requestUrl: string | undefined): boolean {
   return parseRequestUrl(requestUrl)?.pathname === OPENAI_PROXY_PATH
 }
 
-function validateProxyRequest(body) {
+interface ProxyRequestBody {
+  baseUrl: string
+  apiKey: string
+  payload: Record<string, unknown>
+  path?: string | null
+}
+
+function validateProxyRequest(body: unknown): string | null {
   if (!isRecord(body)) {
     return 'Request body must be an object.'
   }
@@ -107,11 +138,25 @@ function validateProxyRequest(body) {
   return null
 }
 
-function normalizeBaseUrl(baseUrl) {
+const ALLOWED_UPSTREAM_PATHS = new Set(['/chat/completions', '/responses'])
+
+function resolveUpstreamPath(path: unknown): string | null {
+  if (path === undefined || path === null || path === '') {
+    return '/chat/completions'
+  }
+  if (typeof path !== 'string') {
+    return null
+  }
+  const trimmed = path.trim()
+  const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return ALLOWED_UPSTREAM_PATHS.has(normalized) ? normalized : null
+}
+
+function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '')
 }
 
-function isHttpBaseUrl(baseUrl) {
+function isHttpBaseUrl(baseUrl: string): boolean {
   try {
     const url = new URL(baseUrl)
     return url.protocol === 'http:' || url.protocol === 'https:'
@@ -120,14 +165,14 @@ function isHttpBaseUrl(baseUrl) {
   }
 }
 
-function readRequestBody(request, maxBodyBytes) {
+function readRequestBody(request: IncomingMessage, maxBodyBytes: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = ''
     let bodyBytes = 0
     let tooLarge = false
 
     request.setEncoding('utf8')
-    request.on('data', (chunk) => {
+    request.on('data', (chunk: string) => {
       if (tooLarge) {
         return
       }
@@ -144,7 +189,7 @@ function readRequestBody(request, maxBodyBytes) {
         resolve(body)
       }
     })
-    request.on('error', (error) => {
+    request.on('error', (error: NodeJS.ErrnoException) => {
       if (!tooLarge) {
         reject(error)
       }
@@ -152,7 +197,7 @@ function readRequestBody(request, maxBodyBytes) {
   })
 }
 
-function parseRequestUrl(requestUrl) {
+function parseRequestUrl(requestUrl: string | undefined): URL | null {
   try {
     return new URL(requestUrl ?? '/', 'http://localhost')
   } catch {
@@ -164,14 +209,23 @@ class RequestBodyTooLargeError extends Error {
   constructor() {
     super('Request body is too large.')
     this.name = 'RequestBodyTooLargeError'
+    Object.setPrototypeOf(this, RequestBodyTooLargeError.prototype)
   }
 }
 
-function isRequestBodyTooLargeError(error) {
+function isRequestBodyTooLargeError(error: unknown): boolean {
   return error instanceof RequestBodyTooLargeError
 }
 
-async function forwardUpstreamResponse(response, upstreamResponse, { onFinished } = {}) {
+interface ForwardUpstreamOptions {
+  onFinished?: () => void
+}
+
+async function forwardUpstreamResponse(
+  response: ServerResponse,
+  upstreamResponse: Response,
+  { onFinished }: ForwardUpstreamOptions = {},
+): Promise<void> {
   response.statusCode = upstreamResponse.status
   const contentType = upstreamResponse.headers.get('content-type')
   if (contentType) {
@@ -191,7 +245,9 @@ async function forwardUpstreamResponse(response, upstreamResponse, { onFinished 
       if (done) {
         break
       }
-      response.write(Buffer.from(value))
+      if (value) {
+        response.write(Buffer.from(value))
+      }
     }
     response.end()
   } catch (caught) {
@@ -204,11 +260,11 @@ async function forwardUpstreamResponse(response, upstreamResponse, { onFinished 
   }
 }
 
-function sendJson(response, statusCode, body) {
+function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, { 'Content-Type': 'application/json' })
   response.end(JSON.stringify(body))
 }
 
-function isRecord(value) {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

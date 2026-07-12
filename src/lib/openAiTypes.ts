@@ -12,14 +12,60 @@ export const REASONING_EFFORT_VALUES = [
   'medium',
   'high',
   'xhigh',
+  'max',
+] as const
+
+/** GPT-5.6 series efforts for the official OpenAI Responses API. */
+export const OPENAI_OFFICIAL_REASONING_EFFORT_VALUES = [
+  'none',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
 ] as const
 
 export type ReasoningEffort = (typeof REASONING_EFFORT_VALUES)[number]
+export type OpenAiOfficialReasoningEffort =
+  (typeof OPENAI_OFFICIAL_REASONING_EFFORT_VALUES)[number]
 
 export function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return (
     typeof value === 'string' &&
     REASONING_EFFORT_VALUES.includes(value as ReasoningEffort)
+  )
+}
+
+export function isOpenAiOfficialReasoningEffort(
+  value: unknown,
+): value is OpenAiOfficialReasoningEffort {
+  return (
+    typeof value === 'string' &&
+    OPENAI_OFFICIAL_REASONING_EFFORT_VALUES.includes(
+      value as OpenAiOfficialReasoningEffort,
+    )
+  )
+}
+
+export const OPENAI_REASONING_MODE_VALUES = ['standard', 'pro'] as const
+export type OpenAiReasoningMode = (typeof OPENAI_REASONING_MODE_VALUES)[number]
+
+export function isOpenAiReasoningMode(value: unknown): value is OpenAiReasoningMode {
+  return (
+    typeof value === 'string' &&
+    OPENAI_REASONING_MODE_VALUES.includes(value as OpenAiReasoningMode)
+  )
+}
+
+export const OPENAI_REASONING_SUMMARY_VALUES = ['auto', 'concise', 'detailed'] as const
+export type OpenAiReasoningSummary = (typeof OPENAI_REASONING_SUMMARY_VALUES)[number]
+
+export function isOpenAiReasoningSummary(
+  value: unknown,
+): value is OpenAiReasoningSummary {
+  return (
+    typeof value === 'string' &&
+    OPENAI_REASONING_SUMMARY_VALUES.includes(value as OpenAiReasoningSummary)
   )
 }
 
@@ -29,6 +75,10 @@ export type ModelConfig = {
   model: string
   provider?: ModelProviderPreset
   reasoningEffort?: ReasoningEffort
+  /** Official OpenAI Responses API reasoning.mode (standard | pro). */
+  openaiReasoningMode?: OpenAiReasoningMode
+  /** Official OpenAI Responses API reasoning.summary. */
+  openaiReasoningSummary?: OpenAiReasoningSummary
   qwenThinkingEnabled?: boolean
   qwenThinkingBudget?: number
   stream?: boolean

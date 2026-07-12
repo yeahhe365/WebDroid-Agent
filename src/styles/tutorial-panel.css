@@ -1,6 +1,5 @@
 .tutorial-panel {
   background: var(--panel-bg);
-  backdrop-filter: blur(20px) saturate(1.3);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-panel);
@@ -36,7 +35,6 @@
 
 .tutorial-steps li {
   background: var(--surface-muted);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: grid;
@@ -124,7 +122,6 @@
 
 .tutorial-faq article {
   background: var(--surface-muted);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: grid;

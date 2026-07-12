@@ -23,6 +23,7 @@ import { useBodyOverflow } from '../hooks/useBodyOverflow'
 export type PhoneStageProps = {
   copy: AppCopy
   displayedScreenshot: ScreenshotSource | null
+  onConnectDevice?: () => void
   onRunInteractiveAction?: (action: AgentAction) => void
   pendingStep: AgentStep | null
   busyTask?: BusyTask | null
@@ -33,6 +34,7 @@ export type PhoneStageProps = {
 export function PhoneStage({
   copy,
   displayedScreenshot,
+  onConnectDevice,
   onRunInteractiveAction,
   pendingStep,
   busyTask = null,
@@ -79,7 +81,9 @@ export function PhoneStage({
           ? copy.disconnectingDevice
           : placeholderState === 'connected-waiting'
             ? copy.deviceConnected
-            : copy.noScreenshot
+            : !deviceConnected
+              ? copy.connectDeviceCta
+              : copy.noScreenshot
   const isPlaceholderBusy = placeholderState !== 'idle' && placeholderState !== 'connected-waiting'
 
   useBodyOverflow(isFullscreenPreview)
@@ -320,7 +324,24 @@ export function PhoneStage({
                       <Usb size={22} aria-hidden="true" />
                     )}
                     <strong>{placeholderLabel}</strong>
-                    {isPlaceholderBusy ? null : <span>{copy.noScreenshotHint}</span>}
+                    {isPlaceholderBusy ? null : (
+                      <span>
+                        {placeholderState === 'idle' && !deviceConnected
+                          ? copy.connectDeviceHint
+                          : copy.noScreenshotHint}
+                      </span>
+                    )}
+                    {placeholderState === 'idle' && !deviceConnected && onConnectDevice ? (
+                      <button
+                        type="button"
+                        className="phone-connect-cta"
+                        onClick={onConnectDevice}
+                        disabled={Boolean(busyTask)}
+                      >
+                        <Usb size={14} aria-hidden="true" />
+                        {copy.connect}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               )}

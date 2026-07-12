@@ -178,6 +178,56 @@ describe('settings persistence', () => {
     expect(result.modelConfig.qwenThinkingBudget).toBe(8192)
   })
 
+  it('persists official OpenAI reasoning mode and summary settings', () => {
+    expect(
+      loadSettings(
+        memoryStorage({
+          'webdroid-agent-settings': JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            modelConfig: {
+              baseUrl: 'https://api.openai.com/v1',
+              apiKey: 'sk-test',
+              model: 'gpt-5.6',
+              provider: 'openai',
+              reasoningEffort: 'max',
+              openaiReasoningMode: 'pro',
+              openaiReasoningSummary: 'detailed',
+            },
+          }),
+        }),
+      ).modelConfig,
+    ).toEqual({
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-5.6',
+      provider: 'openai',
+      reasoningEffort: 'max',
+      openaiReasoningMode: 'pro',
+      openaiReasoningSummary: 'detailed',
+    })
+  })
+
+  it('drops official OpenAI reasoning extras when provider is not openai', () => {
+    expect(
+      loadSettings(
+        memoryStorage({
+          'webdroid-agent-settings': JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            modelConfig: {
+              ...DEFAULT_SETTINGS.modelConfig,
+              provider: 'custom',
+              openaiReasoningMode: 'pro',
+              openaiReasoningSummary: 'auto',
+            },
+          }),
+        }),
+      ).modelConfig,
+    ).toEqual({
+      ...DEFAULT_SETTINGS.modelConfig,
+      provider: 'custom',
+    })
+  })
+
   it('normalizes new optimization settings when they are missing or invalid', () => {
     expect(
       loadSettings(

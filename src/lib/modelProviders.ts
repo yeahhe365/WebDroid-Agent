@@ -2,8 +2,15 @@ export const DEFAULT_QWEN_THINKING_BUDGET = 300
 export const MIN_QWEN_THINKING_BUDGET = 1
 export const MAX_QWEN_THINKING_BUDGET = 38912
 
+export const OPENAI_OFFICIAL_BASE_URL = 'https://api.openai.com/v1'
+export const OPENAI_OFFICIAL_DEFAULT_MODEL = 'gpt-5.6'
+
 export const MODEL_PROVIDER_PRESETS = {
   custom: null,
+  openai: {
+    baseUrl: OPENAI_OFFICIAL_BASE_URL,
+    model: OPENAI_OFFICIAL_DEFAULT_MODEL,
+  },
   qwen: {
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen3.7-plus',
@@ -29,6 +36,10 @@ export function migrateProvider(value: unknown): unknown {
   return typeof value === 'string' && value in PROVIDER_MIGRATIONS
     ? PROVIDER_MIGRATIONS[value]
     : value
+}
+
+export function isOpenAiProvider(provider: unknown) {
+  return provider === 'openai'
 }
 
 export function isQwenProvider(provider: unknown) {

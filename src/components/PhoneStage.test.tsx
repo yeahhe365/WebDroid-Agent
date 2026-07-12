@@ -51,7 +51,7 @@ describe('PhoneStage', () => {
     const frame = container.querySelector('.phone-frame')
     const placeholder = container.querySelector('.phone-screen-placeholder')
 
-    expect(screen.getByLabelText('No screenshot')).toBeTruthy()
+    expect(screen.getByLabelText('Connect Android device')).toBeTruthy()
     expect(frame).toBeTruthy()
     expect(placeholder).toBeTruthy()
     expect(placeholder?.closest('.phone-frame')).toBe(frame)
@@ -142,10 +142,27 @@ describe('PhoneStage', () => {
     )
 
     const placeholder = document.querySelector('.phone-screen-placeholder') as HTMLElement
-    expect(screen.getByLabelText('No screenshot')).toBeTruthy()
+    expect(screen.getByLabelText('Connect Android device')).toBeTruthy()
     expect(placeholder.getAttribute('aria-busy')).toBeNull()
     expect(placeholder.querySelector('.spin')).toBeNull()
-    expect(screen.getByText('Connect and capture to show the live screen here')).toBeTruthy()
+    expect(
+      screen.getByText('USB debugging required — authorize on the phone when prompted'),
+    ).toBeTruthy()
+  })
+
+  it('offers a connect CTA on the idle disconnected phone preview', () => {
+    const onConnectDevice = vi.fn()
+    render(
+      <PhoneStage
+        copy={APP_COPY['en-US']}
+        displayedScreenshot={null}
+        onConnectDevice={onConnectDevice}
+        pendingStep={null}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^connect$/i }))
+    expect(onConnectDevice).toHaveBeenCalledTimes(1)
   })
 
   it('creates a tap action from a screenshot click', () => {
@@ -451,7 +468,7 @@ describe('PhoneStage', () => {
     expect(phoneStageCss).toMatch(/\.phone-frame\s*\{[\s\S]*border:\s*6px solid/)
     expect(phoneStageCss).toMatch(/\.phone-frame\s*\{[\s\S]*max-height:\s*min\(82vh,\s*820px\)/)
     expect(phoneStageCss).toMatch(/\.phone-frame\s*\{[\s\S]*width:\s*min\(100%,\s*390px\)/)
-    expect(responsiveCss).toMatch(/\.phone-frame\s*\{[\s\S]*max-height:\s*80vh/)
+    expect(responsiveCss).toMatch(/\.phone-frame\s*\{[\s\S]*max-height:\s*72vh/)
   })
 
   it('keeps the empty phone preview the same size as the screenshot preview', () => {

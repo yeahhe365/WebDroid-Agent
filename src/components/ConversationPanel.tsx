@@ -9,34 +9,38 @@ import { ChatPanel } from './ChatPanel'
 export type ConversationPanelProps = {
   activeThreadId: string
   busyTask: BusyTask | null
-  chatInput: string
   conversation: AgentConversationMessage[]
+  deviceConnected?: boolean
+  hasModelConfig?: boolean
   interactionItems?: InteractionStreamItem[]
   historySidebarOpen: boolean
   pendingStep: AgentStep | null
   queuedChatMessageCount: number
   sessionSummary?: AgentSessionSummary
   threadSummaries: AgentThreadSummary[]
-  onChatInputChange: (value: string) => void
   onCloseHistorySidebar: () => void
+  onConfigureModel?: () => void
+  onConnectDevice?: () => void
   onDeleteThread: (threadId: string) => void
   onExecutePendingStep: () => void
   onSelectThread: (threadId: string) => void
   onStartNewChat: () => void
   onStopRun: () => void
-  onSubmitChatMessage: () => void
+  onSubmitChatMessage: (message: string) => void
   onToggleHistorySidebar: () => void
 }
 
 export function ConversationPanel({
   activeThreadId,
   busyTask,
-  chatInput,
   conversation,
+  deviceConnected,
+  hasModelConfig,
   interactionItems,
   historySidebarOpen,
-  onChatInputChange,
   onCloseHistorySidebar,
+  onConfigureModel,
+  onConnectDevice,
   onDeleteThread,
   onExecutePendingStep,
   onSelectThread,
@@ -54,15 +58,17 @@ export function ConversationPanel({
       <ChatPanel
         activeThreadId={activeThreadId}
         busyTask={busyTask}
-        chatInput={chatInput}
         conversation={conversation}
+        deviceConnected={deviceConnected}
+        hasModelConfig={hasModelConfig}
         interactionItems={interactionItems}
         historySidebarOpen={historySidebarOpen}
         queuedChatMessageCount={queuedChatMessageCount}
         sessionSummary={sessionSummary}
         threadSummaries={threadSummaries}
-        onChatInputChange={onChatInputChange}
         onCloseHistorySidebar={onCloseHistorySidebar}
+        onConfigureModel={onConfigureModel}
+        onConnectDevice={onConnectDevice}
         onDeleteThread={onDeleteThread}
         onExecutePendingStep={onExecutePendingStep}
         onSelectThread={onSelectThread}

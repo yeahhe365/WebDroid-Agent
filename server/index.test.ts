@@ -1,12 +1,13 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import type { Server } from 'node:http'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createWebDroidServer } from './index.js'
 
-let distDir
-const tempDirs = []
-const servers = []
+let distDir: string | undefined
+const tempDirs: string[] = []
+const servers: Server[] = []
 
 beforeEach(async () => {
   distDir = await mkdtemp(path.join(tmpdir(), 'webdroid-dist-'))
@@ -21,7 +22,7 @@ afterEach(async () => {
   await Promise.all(
     servers.splice(0).map(
       (server) =>
-        new Promise((resolve, reject) => {
+        new Promise<void>((resolve, reject) => {
           server.close((error) => (error ? reject(error) : resolve()))
         }),
     ),
@@ -33,7 +34,7 @@ afterEach(async () => {
 
 describe('createWebDroidServer', () => {
   it('serves static assets from the configured dist directory', async () => {
-    const serverUrl = await listen(createWebDroidServer({ distDir }))
+    const serverUrl = await listen(createWebDroidServer({ distDir: distDir! }))
 
     const response = await fetch(`${serverUrl}/app.js`)
 
@@ -43,7 +44,7 @@ describe('createWebDroidServer', () => {
   })
 
   it('falls back to index.html for client-side routes', async () => {
-    const serverUrl = await listen(createWebDroidServer({ distDir }))
+    const serverUrl = await listen(createWebDroidServer({ distDir: distDir! }))
 
     const response = await fetch(`${serverUrl}/thread/abc123`)
 
@@ -53,7 +54,7 @@ describe('createWebDroidServer', () => {
   })
 
   it('omits the response body for HEAD requests', async () => {
-    const serverUrl = await listen(createWebDroidServer({ distDir }))
+    const serverUrl = await listen(createWebDroidServer({ distDir: distDir! }))
 
     const response = await fetch(`${serverUrl}/`, { method: 'HEAD' })
 
@@ -62,7 +63,7 @@ describe('createWebDroidServer', () => {
   })
 
   it('serves immutable cache headers for built assets and no-cache for HTML', async () => {
-    const serverUrl = await listen(createWebDroidServer({ distDir }))
+    const serverUrl = await listen(createWebDroidServer({ distDir: distDir! }))
 
     const assetResponse = await fetch(`${serverUrl}/assets/index-abc123.js`, { method: 'HEAD' })
     const htmlResponse = await fetch(`${serverUrl}/`, { method: 'HEAD' })
@@ -74,7 +75,7 @@ describe('createWebDroidServer', () => {
   })
 
   it('serves the health check even when a query string is present', async () => {
-    const serverUrl = await listen(createWebDroidServer({ distDir }))
+    const serverUrl = await listen(createWebDroidServer({ distDir: distDir! }))
 
     const response = await fetch(`${serverUrl}/healthz?source=compose`)
 
@@ -83,7 +84,7 @@ describe('createWebDroidServer', () => {
   })
 
   it('rejects malformed encoded paths before serving files', async () => {
-    const serverUrl = await listen(createWebDroidServer({ distDir }))
+    const serverUrl = await listen(createWebDroidServer({ distDir: distDir! }))
 
     const response = await fetch(`${serverUrl}/%E0%A4%A`)
 
@@ -101,7 +102,7 @@ describe('createWebDroidServer', () => {
   })
 })
 
-function listen(server) {
+function listen(server: Server): Promise<string> {
   servers.push(server)
 
   return new Promise((resolve, reject) => {

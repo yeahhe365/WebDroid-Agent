@@ -1,6 +1,7 @@
 import { Maximize2, Minus, Plus, RotateCcw, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode, type WheelEvent } from 'react'
 import { useBodyOverflow } from '../hooks/useBodyOverflow'
+import { useDisplayImageUrl } from '../hooks/useDisplayImageUrl'
 
 export type ScreenshotSource = {
   dataUrl: string
@@ -54,6 +55,7 @@ export function ScreenshotLightbox({
   const [open, setOpen] = useState(false)
   const [zoom, setZoom] = useState(1)
   const zoomPercent = Math.round(zoom * 100)
+  const displayUrl = useDisplayImageUrl(screenshot.dataUrl) ?? screenshot.dataUrl
 
   useBodyOverflow(open)
 
@@ -98,7 +100,7 @@ export function ScreenshotLightbox({
         aria-label={openButtonLabel ?? `Open screenshot for ${title}`}
         onClick={openLightbox}
       >
-        <img src={screenshot.dataUrl} alt={thumbnailAlt} />
+        <img src={displayUrl} alt={thumbnailAlt} decoding="async" loading="lazy" />
         {children}
         <span className={overlayClassName}>
           <Maximize2 size={14} />
@@ -164,8 +166,9 @@ export function ScreenshotLightbox({
             </div>
             <div className="screenshot-modal-viewport" onWheel={zoomScreenshot}>
               <img
-                src={screenshot.dataUrl}
+                src={displayUrl}
                 alt={expandedAlt}
+                decoding="async"
                 style={{ height: `${zoomPercent}%` }}
               />
             </div>

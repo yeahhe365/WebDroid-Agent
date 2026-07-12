@@ -2,7 +2,6 @@
   align-items: center;
   animation: settings-overlay-in 250ms var(--ease-out-expo);
   background: var(--overlay);
-  backdrop-filter: blur(12px) saturate(1.1);
   bottom: 0;
   display: flex;
   justify-content: center;
@@ -27,7 +26,6 @@
 .settings-panel {
   animation: settings-panel-in 350ms var(--ease-out-expo);
   background: var(--panel-bg);
-  backdrop-filter: blur(40px) saturate(1.4);
   border: 1px solid var(--border);
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-elevated), var(--shadow-accent);
@@ -53,7 +51,6 @@
 
 .settings-sidebar {
   background: var(--surface-muted);
-  backdrop-filter: blur(20px);
   border-right: 1px solid var(--border);
   display: flex;
   flex: 0 0 240px;
@@ -210,7 +207,6 @@
 
 .settings-main {
   background: var(--panel-bg);
-  backdrop-filter: blur(30px);
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -477,7 +473,6 @@
 .settings-tool-search {
   align-items: center;
   background: var(--field-bg);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   display: flex;
@@ -756,7 +751,6 @@
 .repository-link {
   align-items: center;
   background: var(--surface-muted);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   color: var(--text);
@@ -780,7 +774,6 @@
 
 .repository-stats div {
   background: var(--surface-muted);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: grid;

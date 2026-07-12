@@ -62,6 +62,7 @@ export function toGeminiThinkingLevel(effort: ReasoningEffort | undefined): Gemi
     medium: 'medium',
     high: 'high',
     xhigh: 'high',
+    max: 'high',
   }
   return map[effort as Exclude<ReasoningEffort, 'none'>]
 }

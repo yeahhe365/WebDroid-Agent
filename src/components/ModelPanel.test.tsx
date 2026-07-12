@@ -94,12 +94,13 @@ describe('ModelPanel', () => {
     expect(screen.queryByRole('status', { name: 'Model configuration status' })).toBeNull()
   })
 
-  it('labels provider choices as OpenAI compatible and Qwen', () => {
+  it('labels provider choices including official OpenAI, compatible, and Qwen', () => {
     render(<ModelPanel {...createModelPanelProps()} />)
 
     fireEvent.click(screen.getByText('Model settings'))
     const providerSelect = screen.getByLabelText(/provider/i)
 
+    expect(within(providerSelect).getByRole('option', { name: 'OpenAI' })).toBeTruthy()
     expect(within(providerSelect).getByRole('option', { name: 'OpenAI Compatible' })).toBeTruthy()
     expect(within(providerSelect).getByRole('option', { name: 'Qwen' })).toBeTruthy()
   })
@@ -135,6 +136,63 @@ describe('ModelPanel', () => {
     expect(onModelConfigChange).toHaveBeenCalledWith('qwenThinkingEnabled', true)
     expect(onModelConfigChange).toHaveBeenCalledWith('qwenThinkingBudget', 300)
     expect(onModelConfigChange).not.toHaveBeenCalledWith('apiKey', expect.anything())
+  })
+
+  it('applies the official OpenAI provider preset with GPT-5.6 Responses defaults', () => {
+    const onModelConfigChange = vi.fn()
+    render(<ModelPanel {...createModelPanelProps({ onModelConfigChange })} />)
+
+    fireEvent.click(screen.getByText('Model settings'))
+    fireEvent.change(screen.getByLabelText(/provider/i), {
+      target: { value: 'openai' },
+    })
+
+    expect(onModelConfigChange).toHaveBeenCalledWith('baseUrl', 'https://api.openai.com/v1')
+    expect(onModelConfigChange).toHaveBeenCalledWith('model', 'gpt-5.6')
+    expect(onModelConfigChange).toHaveBeenCalledWith('provider', 'openai')
+    expect(onModelConfigChange).toHaveBeenCalledWith('openaiReasoningMode', 'standard')
+    expect(onModelConfigChange).toHaveBeenCalledWith('openaiReasoningSummary', undefined)
+    expect(onModelConfigChange).not.toHaveBeenCalledWith('apiKey', expect.anything())
+  })
+
+  it('shows OpenAI official reasoning controls for the openai preset', () => {
+    const onModelConfigChange = vi.fn()
+    render(
+      <ModelPanel
+        {...createModelPanelProps({
+          modelConfig: {
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: 'sk-test',
+            model: 'gpt-5.6',
+            provider: 'openai',
+            reasoningEffort: 'high',
+            openaiReasoningMode: 'standard',
+          },
+          onModelConfigChange,
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByText('Model settings'))
+
+    expect(
+      screen.getByText(/Uses the official OpenAI Responses API for GPT-5.6/i),
+    ).toBeTruthy()
+
+    const effort = screen.getByLabelText(/thinking depth/i) as HTMLSelectElement
+    expect(effort.value).toBe('high')
+    expect(within(effort).queryByRole('option', { name: 'Minimal' })).toBeNull()
+    expect(within(effort).getByRole('option', { name: 'Max' })).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/reasoning mode/i), {
+      target: { value: 'pro' },
+    })
+    expect(onModelConfigChange).toHaveBeenCalledWith('openaiReasoningMode', 'pro')
+
+    fireEvent.change(screen.getByLabelText(/reasoning summary/i), {
+      target: { value: 'auto' },
+    })
+    expect(onModelConfigChange).toHaveBeenCalledWith('openaiReasoningSummary', 'auto')
   })
 
   it('clears the provider when switching back to custom settings', () => {

@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'node:fs'
@@ -12,4 +13,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(packageJson.version ?? '0.0.0'),
   },
   plugins: [react()],
+  test: {
+    exclude: ['**/node_modules/**', '**/dist/**', '**/dist-server/**'],
+  },
 })

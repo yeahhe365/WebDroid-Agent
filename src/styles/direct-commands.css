@@ -1,6 +1,5 @@
 .direct-command-panel {
   background: var(--surface-muted);
-  backdrop-filter: blur(16px) saturate(1.2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: grid;
@@ -33,7 +32,6 @@
 
 .device-quick-controls {
   background: var(--panel-bg);
-  backdrop-filter: blur(20px) saturate(1.3);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);

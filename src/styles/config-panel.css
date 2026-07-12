@@ -38,7 +38,6 @@
 .config-sidebar-header {
   align-items: center;
   background: var(--chrome-bg);
-  backdrop-filter: blur(20px) saturate(1.4);
   border-bottom: 1px solid transparent;
   display: flex;
   gap: var(--space-4);

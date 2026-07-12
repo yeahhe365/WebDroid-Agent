@@ -10,10 +10,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:server": "tsc -b tsconfig.server.json",
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview",
-    "start": "node server/index.js",
+    "start": "node dist-server/index.js",
     "docker:build": "docker build -t webdroid-agent .",
     "deploy:pages": "npm run build && git push origin main"
   },

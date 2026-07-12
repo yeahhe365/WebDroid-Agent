@@ -1,6 +1,5 @@
 .chat-composer {
-  background: linear-gradient(180deg, transparent, var(--panel-bg) 12px);
-  backdrop-filter: blur(16px) saturate(1.1);
+  background: var(--panel-bg);
   border-top: 1px solid var(--border);
   display: block;
   padding: var(--space-4) var(--space-4) calc(env(safe-area-inset-bottom, 0px) + var(--space-4));
@@ -11,7 +10,6 @@
 .chat-input-frame {
   align-items: stretch;
   background: var(--field-bg);
-  backdrop-filter: blur(12px) saturate(1.1);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);

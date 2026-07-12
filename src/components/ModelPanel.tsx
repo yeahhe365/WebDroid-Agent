@@ -11,7 +11,12 @@ import {
   isModelProviderPreset,
   type ModelProviderPreset,
 } from '../lib/modelProviders'
-import type { ModelConfig } from '../lib/openAiTypes'
+import {
+  isOpenAiOfficialReasoningEffort,
+  isOpenAiReasoningMode,
+  isOpenAiReasoningSummary,
+  type ModelConfig,
+} from '../lib/openAiTypes'
 
 type RequiredModelFieldKey = 'apiKey' | 'baseUrl' | 'model'
 
@@ -39,12 +44,15 @@ export function ModelPanel({
   const modelInputId = useId()
   const providerInputId = useId()
   const reasoningEffortInputId = useId()
+  const openaiReasoningModeInputId = useId()
+  const openaiReasoningSummaryInputId = useId()
   const qwenThinkingEnabledInputId = useId()
   const qwenThinkingBudgetInputId = useId()
   const actionProtocolInputId = useId()
   const streamResponsesInputId = useId()
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
   const providerValue = providerValueFor(modelConfig)
+  const isOpenAiPreset = providerValue === 'openai'
   const isQwenPreset = providerValue === 'qwen'
   const isGeminiPreset = providerValue === 'gemini'
   const qwenThinkingEnabled = modelConfig.qwenThinkingEnabled ?? true
@@ -94,6 +102,13 @@ export function ModelPanel({
       onModelConfigChange('qwenThinkingEnabled', undefined)
       onModelConfigChange('qwenThinkingBudget', undefined)
     }
+    if (value === 'openai') {
+      onModelConfigChange('openaiReasoningMode', 'standard')
+      onModelConfigChange('openaiReasoningSummary', undefined)
+    } else {
+      onModelConfigChange('openaiReasoningMode', undefined)
+      onModelConfigChange('openaiReasoningSummary', undefined)
+    }
   }
 
   return (
@@ -128,6 +143,7 @@ export function ModelPanel({
                 value={providerValue}
                 onChange={(event) => handleProviderChange(event.target.value)}
               >
+               <option value="openai">{copy.providerOpenAi}</option>
                <option value="custom">{copy.providerCustom}</option>
                <option value="qwen">{copy.providerQwen}</option>
                <option value="gemini">{copy.providerGemini}</option>
@@ -221,6 +237,76 @@ export function ModelPanel({
                   </label>
                 ) : null}
               </>
+            ) : isOpenAiPreset ? (
+              <>
+                <p className="model-config-status-help">{copy.openaiOfficialModeNotice}</p>
+                <label htmlFor={reasoningEffortInputId}>
+                  {copy.reasoningEffort}
+                  <select
+                    id={reasoningEffortInputId}
+                    name="reasoningEffort"
+                    value={
+                      isOpenAiOfficialReasoningEffort(modelConfig.reasoningEffort)
+                        ? modelConfig.reasoningEffort
+                        : ''
+                    }
+                    onChange={(event) =>
+                      onModelConfigChange(
+                        'reasoningEffort',
+                        event.target.value
+                          ? (event.target.value as ModelConfig['reasoningEffort'])
+                          : undefined,
+                      )
+                    }
+                  >
+                    <option value="">{copy.reasoningEffortDefault}</option>
+                    <option value="none">{copy.reasoningEffortNone}</option>
+                    <option value="low">{copy.reasoningEffortLow}</option>
+                    <option value="medium">{copy.reasoningEffortMedium}</option>
+                    <option value="high">{copy.reasoningEffortHigh}</option>
+                    <option value="xhigh">{copy.reasoningEffortXHigh}</option>
+                    <option value="max">{copy.reasoningEffortMax}</option>
+                  </select>
+                </label>
+                <label htmlFor={openaiReasoningModeInputId}>
+                  {copy.openaiReasoningMode}
+                  <select
+                    id={openaiReasoningModeInputId}
+                    name="openaiReasoningMode"
+                    value={modelConfig.openaiReasoningMode ?? 'standard'}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      onModelConfigChange(
+                        'openaiReasoningMode',
+                        isOpenAiReasoningMode(value) ? value : 'standard',
+                      )
+                    }}
+                  >
+                    <option value="standard">{copy.openaiReasoningModeStandard}</option>
+                    <option value="pro">{copy.openaiReasoningModePro}</option>
+                  </select>
+                </label>
+                <label htmlFor={openaiReasoningSummaryInputId}>
+                  {copy.openaiReasoningSummary}
+                  <select
+                    id={openaiReasoningSummaryInputId}
+                    name="openaiReasoningSummary"
+                    value={modelConfig.openaiReasoningSummary ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      onModelConfigChange(
+                        'openaiReasoningSummary',
+                        isOpenAiReasoningSummary(value) ? value : undefined,
+                      )
+                    }}
+                  >
+                    <option value="">{copy.openaiReasoningSummaryOff}</option>
+                    <option value="auto">{copy.openaiReasoningSummaryAuto}</option>
+                    <option value="concise">{copy.openaiReasoningSummaryConcise}</option>
+                    <option value="detailed">{copy.openaiReasoningSummaryDetailed}</option>
+                  </select>
+                </label>
+              </>
             ) : isGeminiPreset ? (
               <p className="model-config-status-help">
                 {copy.geminiNativeModeNotice}
@@ -248,6 +334,7 @@ export function ModelPanel({
                   <option value="medium">{copy.reasoningEffortMedium}</option>
                   <option value="high">{copy.reasoningEffortHigh}</option>
                   <option value="xhigh">{copy.reasoningEffortXHigh}</option>
+                  <option value="max">{copy.reasoningEffortMax}</option>
                 </select>
               </label>
             )}

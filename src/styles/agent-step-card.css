@@ -21,8 +21,9 @@
 .agent-step-card {
   animation: step-card-enter 250ms var(--ease-out-expo) both;
   background: var(--panel-bg);
-  backdrop-filter: blur(20px) saturate(1.3);
   border: 1px solid var(--border);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 140px;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   display: grid;

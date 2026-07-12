@@ -38,16 +38,21 @@ describe('RunLog', () => {
 
     render(<RunLog logs={logs} onClear={vi.fn()} />)
 
-    expect(screen.getByAltText('Screenshot for Step 1: tap (100, 200)').getAttribute('src')).toBe(
-      'data:image/png;base64,abc123',
-    )
+    const thumbnailSrc =
+      screen.getByAltText('Screenshot for Step 1: tap (100, 200)').getAttribute('src') ?? ''
+    expect(
+      thumbnailSrc === 'data:image/png;base64,abc123' || thumbnailSrc.startsWith('blob:'),
+    ).toBe(true)
 
     fireEvent.click(screen.getByRole('button', { name: /open screenshot/i }))
 
     expect(screen.getByRole('dialog', { name: /screenshot/i })).toBeTruthy()
+    const expandedSrc =
+      screen.getByAltText('Expanded screenshot for Step 1: tap (100, 200)').getAttribute('src') ??
+      ''
     expect(
-      screen.getByAltText('Expanded screenshot for Step 1: tap (100, 200)').getAttribute('src'),
-    ).toBe('data:image/png;base64,abc123')
+      expandedSrc === 'data:image/png;base64,abc123' || expandedSrc.startsWith('blob:'),
+    ).toBe(true)
     expect(screen.getByText('955x2048')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: /close screenshot/i }))

@@ -5,7 +5,6 @@
 
 .conversation-panel {
   background: var(--panel-bg);
-  backdrop-filter: blur(20px) saturate(1.15);
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -41,7 +40,6 @@
 .pending-action {
   animation: pending-action-enter 350ms var(--ease-out-expo) both;
   background: var(--panel-bg-elevated);
-  backdrop-filter: blur(16px) saturate(1.1);
   border: 1px solid var(--accent-soft-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);

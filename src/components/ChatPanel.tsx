@@ -9,6 +9,7 @@ import {
   SquarePen,
 } from 'lucide-react'
 import {
+  memo,
   useEffect,
   useId,
   useMemo,
@@ -23,6 +24,7 @@ import type { AppCopy } from '../lib/appCopy'
 import type { AgentStep } from '../lib/agent'
 import type { BusyTask } from '../lib/busyTask'
 import type { AgentSessionSummary } from '../hooks/useAgentSessionHistory'
+import { useVirtualWindow } from '../hooks/useVirtualWindow'
 import type { InteractionStreamItem } from '../lib/interactionStream'
 import type { AgentConversationMessage } from '../lib/openAiTypes'
 import type { AgentThreadSummary } from '../lib/threadStore'
@@ -36,38 +38,43 @@ import { PendingActionCard } from './PendingActionCard'
 type ChatPanelProps = {
   activeThreadId: string
   busyTask: BusyTask | null
-  chatInput: string
   conversation: AgentConversationMessage[]
+  deviceConnected?: boolean
+  hasModelConfig?: boolean
   interactionItems?: InteractionStreamItem[]
   historySidebarOpen: boolean
   pendingStep: AgentStep | null
   queuedChatMessageCount: number
   sessionSummary?: AgentSessionSummary
   threadSummaries: AgentThreadSummary[]
-  onChatInputChange: (value: string) => void
   onCloseHistorySidebar: () => void
+  onConfigureModel?: () => void
+  onConnectDevice?: () => void
   onDeleteThread: (threadId: string) => void
   onExecutePendingStep: () => void
   onSelectThread: (threadId: string) => void
   onStartNewChat: () => void
   onStopRun: () => void
-  onSubmitChatMessage: () => void
+  onSubmitChatMessage: (message: string) => void
   onToggleHistorySidebar: () => void
 }
 
 const MAX_RENDERED_CHAT_ITEMS = 160
+const CHAT_ITEM_ESTIMATE_PX = 148
 
 export function ChatPanel({
   activeThreadId,
   busyTask,
-  chatInput,
   conversation,
+  deviceConnected = false,
+  hasModelConfig = false,
   interactionItems,
   historySidebarOpen,
   pendingStep,
   threadSummaries,
-  onChatInputChange,
   onCloseHistorySidebar,
+  onConfigureModel,
+  onConnectDevice,
   onDeleteThread,
   onExecutePendingStep,
   onSelectThread,
@@ -83,7 +90,14 @@ export function ChatPanel({
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
   const chatStreamRef = useRef<HTMLDivElement | null>(null)
   const shouldFollowOutputRef = useRef(true)
+  const [composerThreadId, setComposerThreadId] = useState(activeThreadId)
+  const [chatInput, setChatInput] = useState('')
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  // Reset the draft when the active thread changes (new chat / history restore).
+  if (composerThreadId !== activeThreadId) {
+    setComposerThreadId(activeThreadId)
+    setChatInput('')
+  }
   const chatIsEmpty = chatInput.trim().length === 0
   const isBusy = Boolean(busyTask)
   const canStopRun = busyTask?.id === 'run-agent'
@@ -101,10 +115,21 @@ export function ChatPanel({
     Boolean(busyTask) ||
     visibleQueuedMessageCount > 0 ||
     Boolean(sessionSummary && shouldShowSessionSummary(sessionSummary))
+  const virtual = useVirtualWindow(visibleItems.length, {
+    estimateHeight: CHAT_ITEM_ESTIMATE_PX,
+    overscan: 5,
+  })
+
   const submitChatIfNotEmpty = () => {
-    if (!chatIsEmpty && !isBusy) {
-      onSubmitChatMessage()
+    if (chatIsEmpty) {
+      return
     }
+    const message = chatInput
+    setChatInput('')
+    if (chatInputRef.current) {
+      chatInputRef.current.style.height = 'auto'
+    }
+    onSubmitChatMessage(message)
   }
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) {
@@ -112,16 +137,16 @@ export function ChatPanel({
     }
 
     event.preventDefault()
-    if (!isBusy) {
-      submitChatIfNotEmpty()
-    }
+    // Allow queueing while busy; controller queues when a run is active.
+    submitChatIfNotEmpty()
   }
   const handleChatInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    onChatInputChange(event.target.value)
+    setChatInput(event.target.value)
     resizeComposer(event.currentTarget)
   }
   const handleStartNewChat = () => {
     onStartNewChat()
+    setChatInput('')
     chatInputRef.current?.focus()
   }
   const handleHistoryNewChat = () => {
@@ -137,6 +162,7 @@ export function ChatPanel({
     chatInputRef.current?.focus()
   }
   const handleStreamScroll = (event: UIEvent<HTMLDivElement>) => {
+    virtual.onScroll(event)
     const target = event.currentTarget
     const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight
     const isNearBottom = distanceFromBottom < 96
@@ -170,6 +196,10 @@ export function ChatPanel({
       scrollToBottom('auto')
     }
   }, [visibleItems.length, busyTask?.id, pendingStep?.index])
+
+  const windowedItems = visibleItems.slice(virtual.startIndex, virtual.endIndex)
+  const trailingSpacer =
+    Math.max(0, visibleItems.length - virtual.endIndex) * CHAT_ITEM_ESTIMATE_PX
 
   return (
     <section className="chat-shell" aria-label={copy.chat}>
@@ -269,26 +299,78 @@ export function ChatPanel({
             <div className="chat-empty-icon">
               <MessageSquare size={22} aria-hidden="true" />
             </div>
-            <strong>{copy.noMessages}</strong>
+            {!deviceConnected ? (
+              <>
+                <strong>{copy.chatEmptyNeedsDeviceTitle}</strong>
+                <p className="chat-empty-body">{copy.chatEmptyNeedsDeviceBody}</p>
+                {onConnectDevice ? (
+                  <Button variant="primary" size="sm" onClick={onConnectDevice}>
+                    {copy.chatEmptyConnectDevice}
+                  </Button>
+                ) : null}
+              </>
+            ) : !hasModelConfig ? (
+              <>
+                <strong>{copy.chatEmptyNeedsModelTitle}</strong>
+                <p className="chat-empty-body">{copy.chatEmptyNeedsModelBody}</p>
+                {onConfigureModel ? (
+                  <Button variant="primary" size="sm" onClick={onConfigureModel}>
+                    {copy.chatEmptyConfigureModel}
+                  </Button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <strong>{copy.chatEmptyReadyTitle}</strong>
+                <p className="chat-empty-body">{copy.chatEmptyReadyBody}</p>
+                <div className="chat-quick-starts" role="list">
+                  {copy.quickStartPrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="chat-quick-start"
+                      role="listitem"
+                      aria-label={copy.useExamplePrompt(prompt)}
+                      onClick={() => onSubmitChatMessage(prompt)}
+                      disabled={isBusy}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : null}
-        {visibleItems.map((item) =>
-          item.type === 'step' ? (
-            <AgentStepCard
-              copy={copy}
-              isActive={item.turn.id === activeStepId}
-              key={item.id}
-              turn={item.turn}
-            />
-          ) : (
-            <article className={`chat-message ${item.message.role}`} key={item.id}>
-              <span className="visually-hidden">
-                {formatConversationRole(item.message.role, copy)}
-              </span>
-              <LazyMarkdownContent className="chat-message-content" content={item.message.content} />
-            </article>
-          ),
-        )}
+        {visibleItems.length > 0 ? (
+          <div
+            className="chat-stream-virtual"
+            style={{ height: virtual.totalHeight, position: 'relative' }}
+          >
+            <div
+              className="chat-stream-window"
+              style={{
+                display: 'grid',
+                gap: 'var(--space-4)',
+                paddingTop: virtual.offsetTop,
+                paddingBottom: trailingSpacer,
+              }}
+            >
+              {windowedItems.map((item) =>
+                item.type === 'step' ? (
+                  <div className="chat-stream-item" key={item.id}>
+                    <AgentStepCard
+                      isActive={item.turn.id === activeStepId}
+                      turn={item.turn}
+                    />
+                  </div>
+                ) : (
+                  <ChatMessageItem key={item.id} item={item} copy={copy} />
+                ),
+              )}
+            </div>
+          </div>
+        ) : null}
         {isBusy ? (
           <div className="chat-run-status" role="status">
             <LoaderCircle className="chat-run-status-spinner" size={14} />
@@ -370,6 +452,23 @@ export function ChatPanel({
     </section>
   )
 }
+
+const ChatMessageItem = memo(function ChatMessageItem({
+  item,
+  copy,
+}: {
+  item: Extract<InteractionStreamItem, { type: 'message' }>
+  copy: AppCopy
+}) {
+  return (
+    <article className={`chat-message ${item.message.role} chat-stream-item`}>
+      <span className="visually-hidden">
+        {formatConversationRole(item.message.role, copy)}
+      </span>
+      <LazyMarkdownContent className="chat-message-content" content={item.message.content} />
+    </article>
+  )
+})
 
 function resizeComposer(textarea: HTMLTextAreaElement) {
   textarea.style.height = 'auto'

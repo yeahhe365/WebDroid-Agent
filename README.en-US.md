@@ -14,8 +14,11 @@ The goal is not to replace long-running human supervision. It is a local browser
 
 ```text
 Chromium WebUSB -> Tango/WebADB -> Android ADB
-Static deployment: browser fetch -> OpenAI-compatible /v1/chat/completions -> vision model
-Docker: browser fetch -> same-origin local proxy -> OpenAI-compatible /v1/chat/completions -> vision model
+Static deployment:
+  Official OpenAI: browser fetch -> /v1/responses -> vision model
+  Other providers: browser fetch -> /v1/chat/completions or Gemini generateContent
+Docker:
+  browser fetch -> same-origin local proxy (/chat/completions or /responses) -> model API
 ```
 
 ## What It Can Do
@@ -64,9 +67,9 @@ It is not a good fit for:
 - A Chromium-based browser with WebUSB support, such as Chrome or Edge.
 - An Android device with USB debugging enabled.
 - A USB data cable.
-- An OpenAI-compatible `/v1/chat/completions` API.
-- A vision model that accepts `image_url` input.
-- For static deployments, an API service configured to allow browser cross-origin requests. Docker deployments can avoid this requirement through the same-origin local proxy.
+- A vision model API: **Official OpenAI** (`/v1/responses`, default model `gpt-5.6`), **OpenAI-compatible** `/v1/chat/completions`, **Qwen** compatible endpoint, or **Gemini** native `generateContent`.
+- A vision model that accepts screenshot/image input.
+- For static deployments, an API service configured to allow browser cross-origin requests. Docker deployments can avoid this for OpenAI official and compatible providers through the same-origin local proxy (Gemini still calls Google directly).
 - A `localhost` or HTTPS environment so WebUSB can work.
 
 ## Quick Start
@@ -84,6 +87,7 @@ Common commands:
 npm test
 npm run lint
 npm run build
+npm run build:server   # required for Docker / npm start proxy
 npm run preview
 ```
 
@@ -91,10 +95,11 @@ npm run preview
 
 The app stores these values in the current browser's `localStorage`:
 
-- `Base URL`: OpenAI-compatible API endpoint, default `https://api.openai.com/v1`.
+- `Provider`: provider preset. `OpenAI` uses the Responses API; `OpenAI Compatible` / `Qwen` use chat completions; `Gemini` uses native generateContent.
+- `Base URL`: model API endpoint. Official OpenAI defaults to `https://api.openai.com/v1`; Qwen/Gemini have their own presets.
 - `API Key`: model API key.
-- `Model`: model name, default `gpt-5.5`.
-- `Thinking depth`: `reasoning_effort` for reasoning models such as GPT-5.5. Use the provider default, or choose `none`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
+- `Model`: model name. Official OpenAI defaults to `gpt-5.6`; the compatible fallback default remains `gpt-5.5`.
+- `Thinking depth` / reasoning options: `reasoning_effort` for compatible endpoints; official OpenAI also supports reasoning mode (standard/pro) and reasoning summary; Qwen/Gemini use their own thinking budget or thinking level.
 - `Action protocol`: model action protocol. `webdroid_json` uses screenshot pixel coordinates; `webdroid_normalized_json` uses 0-1000 normalized coordinates.
 - `Max steps`: maximum auto-execution steps, default `150`.
 - `Confirm sensitive actions`: whether sensitive taps require human confirmation, default on.
@@ -110,11 +115,12 @@ The API key stays in the browser only for static deployments. Docker deployments
 
 ## Docker Deployment
 
-The Docker image builds the same frontend app and enables a small local Node service:
+The Docker image builds the same frontend app and enables a small local Node service (TypeScript compiled to `dist-server/`):
 
 - WebUSB/WebADB still runs in the browser.
-- The frontend posts model calls to same-origin `/api/openai/chat/completions`.
-- The Node service reads the request `Base URL`, `API Key`, and OpenAI-compatible payload, then forwards the request to the model API.
+- The frontend posts through the same-origin `/api/openai/chat/completions` proxy envelope. Official OpenAI sets the upstream path to `/responses` inside that envelope; compatible providers use `/chat/completions`.
+- The Node service reads the request `Base URL`, `API Key`, and payload, then forwards them to the model API.
+- The Gemini preset bypasses this proxy and calls Google directly from the browser.
 - Cloudflare Pages does not use this Node service and does not set the proxy build variable, so the hosted static app still calls the configured model API directly from the browser.
 
 Build and run:
@@ -270,6 +276,7 @@ src/
     RunLog.tsx                # run log view
     ScreenshotLightbox.tsx    # screenshot preview modal
     SettingsDialog.tsx        # app settings, repository info, and editable resources
+    SetupHome.tsx             # first-run device/model setup onboarding
     TutorialPanel.tsx         # quick-start tutorial expanded from the topbar
   hooks/
     useAgentRunController.ts        # auto-run and pending-action control
@@ -278,12 +285,14 @@ src/
     useConfigTargetScroll.ts        # config sidebar target scrolling
     useDeviceBackendPreferences.ts  # device backend preference sync
     useDeviceController.ts          # device connection, screenshot, and direct action state
+    useDisplayImageUrl.ts           # screenshot blob URL lifecycle
     useDocumentPreferences.ts       # document theme and language attribute sync
     useLatestValue.ts               # ref for reading latest values inside async callbacks
     usePersistedSettings.ts         # settings persistence on changes
     useRepositoryStats.ts           # GitHub repository stats loading for settings
     useRunLog.ts                    # run-log state management
     useStorageEstimate.ts           # local storage quota estimate
+    useVirtualWindow.ts             # virtual window for long lists
   lib/
     actionDefaults.ts         # common screenshot action defaults
     actionParser.ts           # action parsing, normalization, and validation
@@ -303,12 +312,15 @@ src/
     deviceDoctor.ts           # device and model configuration diagnostics
     deviceState.ts            # device state display formatting
     interactionStream.ts      # combined chat message and agent step display stream
-    openAiClient.ts           # OpenAI-compatible network client
+    openAiClient.ts           # OpenAI-compatible chat completions client
     openAiErrors.ts           # OpenAI client error types
     openAiPayload.ts          # OpenAI-compatible request payload building
     openAiResponse.ts         # OpenAI-compatible response reading and error formatting
+    openAiResponsesClient.ts  # official OpenAI Responses API client
+    openAiResponsesTypes.ts   # Responses API request/response types
     openAiRuntimeConfig.ts    # OpenAI request runtime configuration
     openAiTypes.ts            # OpenAI client and message types
+    modelProviders.ts         # provider presets (OpenAI / Qwen / Gemini)
     promptContextFormatting.ts # model context formatting helpers
     prompts.ts                # prompts and action rules
     repository.ts             # repository links and GitHub stats parsing
@@ -344,13 +356,14 @@ src/
     run-log.css              # run-log styles
     screenshot-lightbox.css  # screenshot preview modal styles
     settings-dialog.css      # settings dialog styles
+    setup-home.css           # setup onboarding styles
     theme.css                # theme tokens and base reset
     tutorial-panel.css       # tutorial panel styles
   App.tsx                     # page state, workflow logic, and component composition
   main.tsx                    # React entrypoint and global style loading
 server/
-  index.js                    # static-file and API proxy server for Docker
-  openAiProxy.js              # local OpenAI-compatible proxy handler
+  index.ts                    # static-file and API proxy server for Docker (builds to dist-server/)
+  openAiProxy.ts              # local OpenAI-compatible / Responses proxy handler
 ```
 
 ## Verification
@@ -359,12 +372,14 @@ server/
 npm test
 npm run lint
 npm run build
+npm run build:server
 ```
 
 The current tests mainly cover:
 
 - Action parsing and action safety validation.
-- OpenAI-compatible request payload construction, response parsing, and network client errors.
+- OpenAI-compatible and Responses API request payload construction, response parsing, and network client errors.
+- Docker local proxy forwarding constraints for `/chat/completions` and `/responses`.
 - Single-step and continuous agent execution.
 - Failure feedback, transient model API and empty-model-response retries, and limited automatic recovery.
 - Settings persistence and compatibility migration.

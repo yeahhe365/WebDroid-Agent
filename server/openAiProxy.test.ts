@@ -1,25 +1,34 @@
-import { createServer } from 'node:http'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createOpenAiProxyHandler } from './openAiProxy.js'
 
-const servers = []
+const servers: Server[] = []
 
 afterEach(async () => {
   await Promise.all(
     servers.splice(0).map(
       (server) =>
-        new Promise((resolve, reject) => {
+        new Promise<void>((resolve, reject) => {
           server.close((error) => (error ? reject(error) : resolve()))
         }),
     ),
   )
 })
 
+interface UpstreamRequestRecord {
+  url: string | undefined
+  authorization?: string | undefined
+  contentType?: string | undefined
+  body: unknown
+}
+
 describe('createOpenAiProxyHandler', () => {
   it('forwards a local proxy request to the configured OpenAI-compatible base URL', async () => {
-    const upstreamRequests = []
-    const upstreamUrl = await listen((request, response) => {
+    const upstreamRequests: UpstreamRequestRecord[] = []
+    const upstreamUrl = await listen((_request, response) => {
       let body = ''
+      const request = _request as IncomingMessage
       request.on('data', (chunk) => {
         body += chunk
       })
@@ -64,6 +73,78 @@ describe('createOpenAiProxyHandler', () => {
         },
       },
     ])
+  })
+
+  it('forwards official OpenAI Responses requests when path is /responses', async () => {
+    const upstreamRequests: UpstreamRequestRecord[] = []
+    const upstreamUrl = await listen((_request, response) => {
+      let body = ''
+      const request = _request as IncomingMessage
+      request.on('data', (chunk) => {
+        body += chunk
+      })
+      request.on('end', () => {
+        upstreamRequests.push({
+          url: request.url,
+          authorization: request.headers.authorization,
+          contentType: request.headers['content-type'],
+          body: JSON.parse(body),
+        })
+        response.writeHead(200, { 'Content-Type': 'application/json' })
+        response.end(JSON.stringify({ output_text: '{"action":"done"}' }))
+      })
+    })
+    const proxyUrl = await listen(createOpenAiProxyHandler())
+
+    const response = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: `${upstreamUrl}/v1`,
+        apiKey: 'secret',
+        path: '/responses',
+        payload: {
+          model: 'gpt-5.6',
+          reasoning: { effort: 'high', mode: 'pro' },
+          input: [{ role: 'user', content: 'hello' }],
+        },
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ output_text: '{"action":"done"}' })
+    expect(upstreamRequests).toEqual([
+      {
+        url: '/v1/responses',
+        authorization: 'Bearer secret',
+        contentType: 'application/json',
+        body: {
+          model: 'gpt-5.6',
+          reasoning: { effort: 'high', mode: 'pro' },
+          input: [{ role: 'user', content: 'hello' }],
+        },
+      },
+    ])
+  })
+
+  it('rejects unsupported upstream paths', async () => {
+    const proxyUrl = await listen(createOpenAiProxyHandler())
+
+    const response = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'secret',
+        path: '/models',
+        payload: { model: 'gpt-5.6' },
+      }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({
+      error: { message: 'Upstream path must be /chat/completions or /responses.' },
+    })
   })
 
   it('rejects proxy requests without a valid payload', async () => {
@@ -123,14 +204,14 @@ describe('createOpenAiProxyHandler', () => {
   })
 
   it('aborts the upstream model request when the client disconnects', async () => {
-    let upstreamSignal
-    const upstreamStarted = deferred()
-    const upstreamAborted = deferred()
-    const fetcher = async (_url, init) => {
-      upstreamSignal = init.signal
+    let upstreamSignal: AbortSignal | null | undefined
+    const upstreamStarted = deferred<void>()
+    const upstreamAborted = deferred<void>()
+    const fetcher = async (_url: string, init?: RequestInit) => {
+      upstreamSignal = init?.signal
       upstreamStarted.resolve()
-      return new Promise((_resolve, reject) => {
-        upstreamSignal.addEventListener(
+      return new Promise<Response>((_resolve, reject) => {
+        upstreamSignal?.addEventListener(
           'abort',
           () => {
             upstreamAborted.resolve()
@@ -157,7 +238,7 @@ describe('createOpenAiProxyHandler', () => {
     }).catch((error) => error)
 
     await upstreamStarted.promise
-    expect(upstreamSignal.aborted).toBe(false)
+    expect(upstreamSignal?.aborted).toBe(false)
 
     controller.abort()
 
@@ -166,14 +247,14 @@ describe('createOpenAiProxyHandler', () => {
   })
 })
 
-function listen(handler) {
+function listen(handler: (request: IncomingMessage, response: ServerResponse) => void): Promise<string> {
   const server = createServer(handler)
   servers.push(server)
 
   return new Promise((resolve, reject) => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', () => {
-      const address = server.address()
+      const address = server.address() as AddressInfo | null
       if (!address || typeof address === 'string') {
         reject(new Error('Could not bind test server.'))
         return
@@ -183,10 +264,16 @@ function listen(handler) {
   })
 }
 
-function deferred() {
-  let resolve
-  let reject
-  const promise = new Promise((promiseResolve, promiseReject) => {
+interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason?: unknown) => void
+}
+
+function deferred<T = void>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve
     reject = promiseReject
   })

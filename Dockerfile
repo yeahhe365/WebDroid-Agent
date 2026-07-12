@@ -10,7 +10,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV VITE_OPENAI_PROXY_URL=/api/openai/chat/completions
-RUN npm run build
+RUN npm run build && npm run build:server
 
 FROM node:22-bookworm-slim AS runner
 
@@ -19,7 +19,7 @@ ENV NODE_ENV=production
 ENV PORT=8080
 COPY package*.json ./
 COPY --from=build /app/dist ./dist
-COPY server/index.js server/openAiProxy.js ./server/
+COPY --from=build /app/dist-server ./dist-server
 EXPOSE 8080
 
-CMD ["node", "server/index.js"]
+CMD ["node", "dist-server/index.js"]

@@ -105,7 +105,6 @@ describe('useAgentRunController', () => {
         backend,
         busyTask: null,
         canRunAgent: true,
-        chatInput: 'Finish the task.',
         client,
         copy: APP_COPY['en-US'],
         customTools: [],
@@ -134,7 +133,6 @@ describe('useAgentRunController', () => {
         },
         screenBlackoutDuringAutoControl: false,
         secrets: [],
-        setChatInput: vi.fn(),
         setError: vi.fn(),
         setPendingStep: vi.fn(),
         streamResponses: false,
@@ -144,7 +142,7 @@ describe('useAgentRunController', () => {
     )
 
     await act(async () => {
-      await result.current.submitChatMessage()
+      await result.current.submitChatMessage('Finish the task.')
     })
 
     expect(onRunEndNotification).toHaveBeenCalledWith({
@@ -171,7 +169,6 @@ describe('useAgentRunController', () => {
         backend,
         busyTask: null,
         canRunAgent: true,
-        chatInput: 'Finish the task.',
         client,
         copy: APP_COPY['en-US'],
         customTools: [],
@@ -199,7 +196,6 @@ describe('useAgentRunController', () => {
         },
         screenBlackoutDuringAutoControl: true,
         secrets: [],
-        setChatInput: vi.fn(),
         setError: vi.fn(),
         setPendingStep: vi.fn(),
         streamResponses: false,
@@ -209,7 +205,7 @@ describe('useAgentRunController', () => {
     )
 
     await act(async () => {
-      await result.current.submitChatMessage()
+      await result.current.submitChatMessage('Finish the task.')
     })
 
     const startScreenBlackout = vi.mocked(backend.startScreenBlackout!)
@@ -256,7 +252,6 @@ describe('useAgentRunController', () => {
         backend,
         busyTask: null,
         canRunAgent: true,
-        chatInput: 'Tap once.',
         client,
         copy: APP_COPY['en-US'],
         customTools: [],
@@ -277,7 +272,6 @@ describe('useAgentRunController', () => {
         },
         screenBlackoutDuringAutoControl: false,
         secrets: [],
-        setChatInput: vi.fn(),
         setError: vi.fn(),
         setPendingStep,
         streamResponses: false,
@@ -287,7 +281,7 @@ describe('useAgentRunController', () => {
     )
 
     await act(async () => {
-      await result.current.submitChatMessage()
+      await result.current.submitChatMessage('Tap once.')
     })
 
     const firstClearOrder = setPendingStep.mock.invocationCallOrder.find(
@@ -320,7 +314,6 @@ describe('useAgentRunController', () => {
         backend,
         busyTask: null,
         canRunAgent: true,
-        chatInput: 'Tap once.',
         client,
         copy: APP_COPY['en-US'],
         customTools: [],
@@ -348,7 +341,6 @@ describe('useAgentRunController', () => {
         },
         screenBlackoutDuringAutoControl: false,
         secrets: [],
-        setChatInput: vi.fn(),
         setError: vi.fn(),
         setPendingStep,
         streamResponses: false,
@@ -357,7 +349,7 @@ describe('useAgentRunController', () => {
       }),
     )
 
-    const submitPromise = result.current.submitChatMessage()
+    const submitPromise = result.current.submitChatMessage('Tap once.')
     await act(async () => {
       await Promise.resolve()
       await Promise.resolve()
@@ -389,7 +381,6 @@ describe('useAgentRunController', () => {
     const backend = createDevice()
     const session = createAgentSession('Current task')
     const addLog = vi.fn()
-    const setChatInput = vi.fn()
     const syncConversation = vi.fn()
     const client: OpenAiClient = {
       completeAction: vi.fn(async () => '{"action":"done","summary":"queued task done"}'),
@@ -406,7 +397,6 @@ describe('useAgentRunController', () => {
         backend,
         busyTask,
         canRunAgent: true,
-        chatInput: 'Run this after the current task.',
         client,
         copy: APP_COPY['en-US'],
         customTools: [],
@@ -434,7 +424,6 @@ describe('useAgentRunController', () => {
         },
         screenBlackoutDuringAutoControl: false,
         secrets: [],
-        setChatInput,
         setError: vi.fn(),
         setPendingStep: vi.fn(),
         streamResponses: false,
@@ -444,10 +433,8 @@ describe('useAgentRunController', () => {
     )
 
     await act(async () => {
-      await result.current.submitChatMessage()
+      await result.current.submitChatMessage('Run this after the current task.')
     })
-
-    expect(setChatInput).toHaveBeenCalledWith('')
     expect(result.current.queuedChatMessageCount).toBe(1)
     expect(session.messages.map((message) => message.content)).toEqual(['Current task'])
     expect(client.completeAction).not.toHaveBeenCalled()

@@ -47,7 +47,6 @@ type UseAgentRunControllerInput = {
   backend: DeviceBackend
   busyTask: BusyTask | null
   canRunAgent: boolean
-  chatInput: string
   client: OpenAiClient
   copy: AppCopy
   customTools: readonly CustomToolDefinition[]
@@ -68,7 +67,6 @@ type UseAgentRunControllerInput = {
   onRunEndNotification?: (notification: RunEndNotification) => void
   pendingStep: AgentStep | null
   runTask: RunTask
-  setChatInput: (value: string) => void
   setError: (value: string | null) => void
   setPendingStep: (step: AgentStep | null) => void
   secrets: readonly SecretRecord[]
@@ -87,7 +85,6 @@ export function useAgentRunController({
   backend,
   busyTask,
   canRunAgent,
-  chatInput,
   client,
   copy,
   customTools,
@@ -101,7 +98,6 @@ export function useAgentRunController({
   onRunEndNotification,
   pendingStep,
   runTask,
-  setChatInput,
   setError,
   setPendingStep,
   secrets,
@@ -390,30 +386,24 @@ export function useAgentRunController({
     syncConversation,
   ])
 
-  const submitChatMessage = useCallback(async () => {
-    const message = chatInput.trim()
-    if (!message) {
-      return
-    }
+  const submitChatMessage = useCallback(
+    async (rawMessage: string) => {
+      const message = rawMessage.trim()
+      if (!message) {
+        return
+      }
 
-    setChatInput('')
+      if (busyTask) {
+        queuedMessagesRef.current = [...queuedMessagesRef.current, message]
+        setQueuedChatMessages([...queuedMessagesRef.current])
+        addLog({ tone: 'info', title: copy.userMessageQueued, detail: message })
+        return
+      }
 
-    if (busyTask) {
-      queuedMessagesRef.current = [...queuedMessagesRef.current, message]
-      setQueuedChatMessages([...queuedMessagesRef.current])
-      addLog({ tone: 'info', title: copy.userMessageQueued, detail: message })
-      return
-    }
-
-    await sendChatMessage(message)
-  }, [
-    addLog,
-    busyTask,
-    chatInput,
-    copy,
-    sendChatMessage,
-    setChatInput,
-  ])
+      await sendChatMessage(message)
+    },
+    [addLog, busyTask, copy, sendChatMessage],
+  )
 
   const flushNextQueuedMessage = useCallback(async () => {
     if (flushingQueuedMessageRef.current || queuedMessagesRef.current.length === 0) {
