@@ -1,19 +1,15 @@
+/* Config lives in an overlay drawer; keep dense operational styles. */
+
 .config-panel {
-  transition:
-    width var(--duration-moderate) var(--ease-spring),
-    padding var(--duration-moderate) var(--ease-spring);
+  transition: none;
 }
 
 .config-panel-expanded {
   gap: 0;
-  max-height: calc(100dvh - 110px);
+  max-height: 100dvh;
   overflow: auto;
   scrollbar-color: var(--border-strong) transparent;
   scrollbar-width: thin;
-}
-
-.config-panel-expanded::after {
-  content: none;
 }
 
 .config-panel-expanded::-webkit-scrollbar {
@@ -29,31 +25,20 @@
   border-radius: var(--radius-full);
 }
 
-.config-panel-collapsed {
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-5) var(--space-3);
-}
-
 .config-sidebar-header {
   align-items: center;
   background: var(--chrome-bg);
-  border-bottom: 1px solid transparent;
+  border-bottom: 1px solid var(--border);
   display: flex;
   gap: var(--space-4);
   justify-content: space-between;
-  margin: -16px -16px 0;
+  margin: calc(var(--space-4) * -1) calc(var(--space-5) * -1) 0;
   min-height: 52px;
   min-width: 0;
-  padding: var(--space-4) var(--space-5) var(--space-4) var(--space-7);
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-5);
   position: sticky;
   top: 0;
-  transition: border-color var(--duration-normal) var(--ease-productive);
   z-index: 2;
-}
-
-.config-panel-expanded:not(:has(:first-child:hover)) .config-sidebar-header {
-  border-bottom-color: var(--border);
 }
 
 .config-sidebar-title {
@@ -73,7 +58,9 @@
   border-radius: var(--radius-md);
   height: 38px;
   min-height: 38px;
-  transition: background var(--duration-normal) var(--ease-productive), transform var(--duration-normal) var(--ease-spring);
+  transition:
+    background var(--duration-normal) var(--ease-productive),
+    transform var(--duration-normal) var(--ease-spring);
   width: 38px;
 }
 
@@ -86,7 +73,6 @@
   gap: var(--space-5);
   margin-top: var(--space-5);
   min-width: 0;
-  order: 2;
 }
 
 .config-panel-content > .config-panel-group + .config-panel-group {
@@ -100,17 +86,13 @@
   gap: var(--space-3);
   min-width: 0;
   padding: var(--space-5) 0;
+  scroll-margin: var(--space-5);
 }
 
 .config-panel-group:last-child {
   padding-bottom: 0;
 }
 
-.config-panel-group {
-  scroll-margin: var(--space-5);
-}
-
-/* C-style section heading: flat row, icon + title left, meta + action right */
 .config-section-heading {
   align-items: center;
   display: grid;
@@ -163,13 +145,10 @@
   width: 100%;
 }
 
-/* ponytail: revert badge to inline content width so it sits at the column end,
-   not stretched to the full 2nd grid column. */
 .config-section-heading > span.config-section-badge:not(:only-child) {
   width: fit-content;
 }
 
-/* C-style: kill the colored dot, use text-only status */
 .config-section-heading > span::before {
   content: none;
 }
@@ -203,11 +182,4 @@
 .config-section-badge.count {
   background: var(--accent-soft);
   color: var(--text-soft);
-}
-
-.config-panel-collapsed .config-sidebar-header {
-  background: transparent;
-  margin: 0;
-  min-height: auto;
-  padding: 0;
 }

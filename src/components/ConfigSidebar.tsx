@@ -1,16 +1,9 @@
-import {
-  Bot,
-  Wrench,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings2,
-  Usb,
-} from 'lucide-react'
+import { X } from 'lucide-react'
+import { useEffect } from 'react'
 import { useAppCopy } from './AppContext'
 import { IconButton } from './primitives'
 import type { ActionProtocol } from '../lib/actionProtocol'
 import type { ModelConfig } from '../lib/openAiTypes'
-import { ConfigRail, type ConfigRailItem } from './ConfigRail'
 import { CONFIG_TARGET_IDS, type ConfigTarget } from './configTargets'
 import { DeviceHomeOptionsSection } from './DeviceHomeOptionsSection'
 import { DevicePanel } from './DevicePanel'
@@ -56,44 +49,60 @@ export function ConfigSidebar({
   onModelConfigChange,
   onMemoryEnabledChange,
   onScreenBlackoutDuringAutoControlChange,
-  onSelectTarget,
+  onSelectTarget: _onSelectTarget,
   onStreamResponsesChange,
   onToggleOpen,
   screenBlackoutDuringAutoControl,
   streamResponses,
 }: ConfigSidebarProps) {
   const copy = useAppCopy()
-  const railItems: ConfigRailItem<ConfigTarget>[] = [
-    { icon: Bot, label: copy.model, target: 'model' },
-    { icon: Usb, label: copy.device, target: 'device' },
-    { icon: Wrench, label: copy.tools, target: 'tools' },
-    { icon: Settings2, label: copy.deviceOptions, target: 'options' },
-  ]
+  void _onSelectTarget
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onToggleOpen()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isOpen, onToggleOpen])
+
+  if (!isOpen) {
+    return null
+  }
 
   return (
-    <aside
-      aria-label={copy.configurationPanel}
-      className={
-        isOpen
-          ? 'panel config-panel config-panel-expanded'
-          : 'panel config-panel config-panel-collapsed'
-      }
-    >
-      <div className="config-sidebar-header">
-        {isOpen ? <span className="config-sidebar-title">{copy.configurationPanel}</span> : null}
-        <IconButton
-          size="md"
-          aria-expanded={isOpen}
-          aria-label={isOpen ? copy.collapseConfigurationPanel : copy.expandConfigurationPanel}
-          title={isOpen ? copy.collapseConfigurationPanel : copy.expandConfigurationPanel}
-          onClick={onToggleOpen}
-          className="config-sidebar-toggle"
-        >
-          {isOpen ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
-        </IconButton>
-      </div>
+    <div className="config-drawer-root">
+      <button
+        type="button"
+        className="config-drawer-backdrop"
+        aria-label={copy.closeConfigurationPanel}
+        onClick={onToggleOpen}
+      />
+      <aside
+        aria-label={copy.configurationPanel}
+        className="panel config-panel config-panel-expanded config-drawer"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="config-sidebar-header">
+          <span className="config-sidebar-title">{copy.configurationPanel}</span>
+          <IconButton
+            size="md"
+            aria-label={copy.closeConfigurationPanel}
+            title={copy.closeConfigurationPanel}
+            onClick={onToggleOpen}
+            className="config-sidebar-toggle"
+          >
+            <X size={17} />
+          </IconButton>
+        </div>
 
-      {isOpen ? (
         <div className="config-panel-content">
           <section
             className="config-panel-group"
@@ -136,13 +145,7 @@ export function ConfigSidebar({
             screenBlackoutDuringAutoControl={screenBlackoutDuringAutoControl}
           />
         </div>
-      ) : (
-        <ConfigRail
-          copy={copy}
-          items={railItems}
-          onSelect={onSelectTarget}
-        />
-      )}
-    </aside>
+      </aside>
+    </div>
   )
 }

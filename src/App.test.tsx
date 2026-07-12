@@ -116,7 +116,6 @@ function mockSystemColorScheme(matches: boolean) {
 const compactSectionCss = readFileSync('src/styles/compact-section.css', 'utf8')
 const chatPanelCss = readFileSync('src/styles/chat-panel.css', 'utf8')
 const configPanelCss = readFileSync('src/styles/config-panel.css', 'utf8')
-const configRailCss = readFileSync('src/styles/config-rail.css', 'utf8')
 const controlsCss = readFileSync('src/styles/controls.css', 'utf8')
 const primitivesCss = readFileSync('src/styles/primitives.css', 'utf8')
 const installedAppsCss = readFileSync('src/styles/installed-apps.css', 'utf8')
@@ -141,14 +140,22 @@ async function settleAsyncWork() {
 }
 
 function expandConfigurationPanel() {
-  const panel = document.querySelector('.config-panel')
-  if (!panel?.classList.contains('config-panel-collapsed')) {
+  if (document.querySelector('.config-panel')) {
     return
   }
-  const toggle = panel.querySelector('.config-sidebar-toggle')
-  if (toggle instanceof HTMLElement) {
-    fireEvent.click(toggle)
+  const openButton = screen.getByRole('button', {
+    name: /open configuration|打开配置/i,
+  })
+  fireEvent.click(openButton)
+}
+
+function openInspectDrawer() {
+  if (document.querySelector('.inspect-drawer')) {
+    return
   }
+  fireEvent.click(
+    screen.getByRole('button', { name: /open inspect|打开检查/i }),
+  )
 }
 
 function expectScreenshotSource(
@@ -363,47 +370,36 @@ describe('App', () => {
     })
   })
 
-  it('clears run log entries from the log section', async () => {
+  it('clears run log entries from the inspect drawer', async () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: /new chat/i }))
+    fireEvent.click(screen.getByRole('button', { name: /open inspect/i }))
     expect(screen.getAllByText('New chat started').length).toBeGreaterThan(0)
 
-    fireEvent.click(document.querySelector('.log-drawer > summary') as HTMLElement)
-    fireEvent.click(await screen.findByRole('button', { name: /clear/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^clear$/i }))
 
     expect(screen.queryByText('New chat started')).toBeNull()
     expect(screen.getAllByText('No events yet').length).toBeGreaterThan(0)
   })
 
-  it('scrolls the run log drawer into view when it opens', async () => {
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
-    const scrollIntoView = vi.fn()
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
+  it('opens inspect as a drawer from the command bar', async () => {
+    render(<App />)
+
+    expect(screen.queryByRole('dialog', { name: /^inspect$/i })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /open inspect/i }))
+    expect(await screen.findByRole('dialog', { name: /^inspect$/i })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /close inspect panel/i }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /^inspect$/i })).toBeNull()
     })
-
-    try {
-      render(<App />)
-
-      fireEvent.click(document.querySelector('.log-drawer > summary') as HTMLElement)
-
-      await waitFor(() =>
-        expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'end' }),
-      )
-    } finally {
-      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-        configurable: true,
-        value: originalScrollIntoView,
-      })
-    }
   })
 
   it('clears run log entries from settings', async () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: /new chat/i }))
+    openInspectDrawer()
     expect(screen.getAllByText('New chat started').length).toBeGreaterThan(0)
 
     fireEvent.click(screen.getByRole('button', { name: /settings/i }))
@@ -411,6 +407,8 @@ describe('App', () => {
     selectSettingsTab(settingsDialog, /data management/i)
     fireEvent.click(within(settingsDialog).getByRole('button', { name: /clear run log/i }))
 
+    fireEvent.click(within(settingsDialog).getByRole('button', { name: /close settings/i }))
+    openInspectDrawer()
     expect(screen.queryByText('New chat started')).toBeNull()
     expect(screen.getAllByText('No events yet').length).toBeGreaterThan(0)
   })
@@ -446,13 +444,12 @@ describe('App', () => {
     )
   })
 
-  it('keeps model and device connection controls in the left configuration panel', () => {
+  it('keeps model and device connection controls in the configuration drawer', () => {
     render(<App />)
     expandConfigurationPanel()
 
     const configPanel = document.querySelector('.config-panel')
     expect(configPanel).toBeTruthy()
-    expandConfigurationPanel()
     expect(within(configPanel as HTMLElement).getByText('Model settings')).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Device')).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Tools')).toBeTruthy()
@@ -473,7 +470,7 @@ describe('App', () => {
     expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
   })
 
-  it('keeps the left-panel status overview out of the configuration panel', () => {
+  it('keeps the status overview out of the configuration drawer', () => {
     render(<App />)
     expandConfigurationPanel()
 
@@ -486,38 +483,33 @@ describe('App', () => {
     expect(within(configPanel).queryByText('Device status')).toBeNull()
   })
 
-  it('keeps the collapsed configuration rail focused on left-panel sections', () => {
+  it('keeps configuration out of the main workspace until opened from the command bar', () => {
     render(<App />)
 
-    const configPanel = document.querySelector('.config-panel')
-    expect(configPanel).toBeTruthy()
-    // Config starts collapsed to keep the main workspace focused.
-    expect(configPanel?.classList.contains('config-panel-collapsed')).toBe(true)
+    expect(document.querySelector('.config-panel')).toBeNull()
     expect(screen.queryByText('Model settings')).toBeNull()
+    expect(screen.getByRole('button', { name: /open configuration|打开配置/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /open inspect|打开检查/i })).toBeTruthy()
 
-    const rail = screen.getByRole('navigation', { name: /configuration/i })
-    expect(within(rail).getByRole('button', { name: /^open model$/i })).toBeTruthy()
-    expect(within(rail).getByRole('button', { name: /^open device$/i })).toBeTruthy()
-    expect(within(rail).getByRole('button', { name: /^open tools$/i })).toBeTruthy()
-    expect(within(rail).getByRole('button', { name: /^open device options$/i })).toBeTruthy()
-    expect(within(rail).queryByRole('button', { name: /open toolbox/i })).toBeNull()
+    expandConfigurationPanel()
+    expect(document.querySelector('.config-panel')).toBeTruthy()
+    expect(screen.getByText('Model settings')).toBeTruthy()
   })
 
-  it('prioritizes chat over the phone preview in the desktop workspace layout', () => {
+  it('uses a two-column chat | phone operator workspace', () => {
     const compactWorkspaceBreakpoint = readMediaBlock(responsiveCss, 'max-width: 1199px')
 
     expect(layoutCss).toMatch(
-      /\.workspace\s*\{[\s\S]*grid-template-columns:\s*[\s\S]*minmax\(320px,\s*360px\)[\s\S]*minmax\(420px,\s*1fr\)[\s\S]*minmax\(320px,\s*420px\)/,
+      /\.workspace\s*\{[\s\S]*grid-template-columns:\s*minmax\(380px,\s*1fr\)\s+minmax\(360px,\s*0\.92fr\)/,
     )
-    expect(layoutCss).toMatch(/\.phone-column\s*\{[\s\S]*width:\s*min\(100%,\s*420px\)/)
     expect(layoutCss).toMatch(
-      /\.workspace-config-collapsed\s*\{[\s\S]*grid-template-columns:\s*64px\s+minmax\(420px,\s*1fr\)\s+minmax\(340px,\s*460px\)/,
+      /\.workspace-running\s*\{[\s\S]*grid-template-columns:\s*minmax\(320px,\s*0\.78fr\)\s+minmax\(400px,\s*1\.12fr\)/,
     )
+    expect(layoutCss).toMatch(/\.phone-column\s*\{[\s\S]*width:\s*100%/)
+    expect(layoutCss).toContain('.config-drawer')
+    expect(layoutCss).toContain('.inspect-drawer')
     expect(compactWorkspaceBreakpoint).toMatch(
-      /\.workspace\s*\{[\s\S]*grid-template-columns:\s*minmax\(280px,\s*340px\)\s+minmax\(360px,\s*1fr\)/,
-    )
-    expect(compactWorkspaceBreakpoint).toMatch(
-      /\.phone-column\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/,
+      /\.workspace[\s\S]*grid-template-columns:\s*minmax\(320px,\s*1fr\)\s+minmax\(300px,\s*0\.9fr\)/,
     )
   })
 
@@ -635,9 +627,8 @@ describe('App', () => {
     expect(within(configPanel as HTMLElement).queryByText('Direct commands')).toBeNull()
     expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
     expect(screen.queryByText('Advanced/debug')).toBeNull()
-    const logDrawer = document.querySelector('.log-drawer')
-    expect(logDrawer).toBeTruthy()
-    expect(logDrawer?.hasAttribute('open')).toBe(false)
+    expect(document.querySelector('.log-drawer')).toBeNull()
+    expect(document.querySelector('.inspect-drawer')).toBeNull()
     expect(document.querySelector('.chat-shell')).toBeTruthy()
   })
 
@@ -648,8 +639,9 @@ describe('App', () => {
     const quickControls = document.querySelector('.device-quick-controls') as HTMLElement
 
     expect(phoneColumn).toBeTruthy()
-    expect(phoneColumn.children[0]?.classList.contains('phone-stage')).toBe(true)
-    expect(phoneColumn.children[1]).toBe(quickControls)
+    expect(phoneColumn.querySelector('.phone-stage-chrome')).toBeTruthy()
+    expect(phoneColumn.querySelector('.phone-stage')).toBeTruthy()
+    expect(phoneColumn.children[phoneColumn.children.length - 1]).toBe(quickControls)
     expect(within(quickControls).getByLabelText(/^text$/i)).toBeTruthy()
     expect(within(quickControls).getByRole('button', { name: /run type/i })).toBeTruthy()
     expect(within(quickControls).getByRole('button', { name: /^back$/i })).toBeTruthy()
@@ -718,26 +710,23 @@ describe('App', () => {
     expect(configPanelCss).toMatch(
       /\.config-sidebar-toggle\s*\{[\s\S]*border-radius:\s*var\(--radius-md\)/,
     )
-    expect(configRailCss).toMatch(/\.config-rail-button\s*\{[\s\S]*border-radius:\s*var\(--radius-md\)/)
+    expect(layoutCss).toMatch(/\.config-drawer\s*\{[\s\S]*border-radius:/)
     expect(runLogCss).toMatch(/\.log-empty-state\s*\{[\s\S]*border-radius:\s*var\(--radius-lg\)/)
     expect(settingsDialogCss).toMatch(
       /\.settings-tool-search button\s*\{[\s\S]*border-radius:\s*var\(--radius-md\)/,
     )
   })
 
-  it('styles the left configuration panel as a dense operational rail', () => {
+  it('styles the configuration drawer as a dense operational panel', () => {
     expect(configPanelCss).toContain('.config-section-heading')
     expect(configPanelCss).not.toContain('.config-panel-expanded::before')
     expect(configPanelCss).not.toContain('.config-sidebar-header::after')
     expect(responsiveCss).not.toContain('.config-sidebar-header::after')
     expect(configPanelCss).toMatch(
-      /\.config-sidebar-header\s*\{[^}]*border-bottom:\s*1px solid transparent/,
+      /\.config-sidebar-header\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)/,
     )
     expect(configPanelCss).toMatch(
-      /\.config-panel-expanded::after\s*\{[\s\S]*position:\s*sticky/,
-    )
-    expect(configPanelCss).toMatch(
-      /\.config-panel-expanded::after\s*\{[\s\S]*bottom:\s*0/,
+      /\.config-sidebar-header\s*\{[\s\S]*position:\s*sticky/,
     )
     expect(configPanelCss).toMatch(
       /\.config-section-heading\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*minmax\(0,\s*min\(46%,\s*116px\)\)/,
@@ -1387,6 +1376,8 @@ describe('App', () => {
     await waitFor(() => expect(threadStoreMock.store.clear).toHaveBeenCalledTimes(1))
     expect(within(conversation).queryByText('Latest task')).toBeNull()
     expect(screen.queryByText('Older task')).toBeNull()
+    fireEvent.click(within(settingsDialog).getByRole('button', { name: /close settings/i }))
+    openInspectDrawer()
     expect(screen.getAllByText('Chat history cleared').length).toBeGreaterThan(0)
   })
 
@@ -1478,6 +1469,7 @@ describe('App', () => {
       4,
     ])
     expect(backendMock.enableAdbKeyboard).toHaveBeenCalled()
+    openInspectDrawer()
     expect((await screen.findAllByText('ADB text input enabled')).length).toBeGreaterThan(0)
   })
 
@@ -1695,12 +1687,19 @@ describe('App', () => {
     expect(mobileBreakpoint).not.toMatch(/\.tutorial-button,\s*[\r\n]+\.settings-button\s*\{[\s\S]*position:\s*absolute/)
   })
 
-  it('puts the device preview before chat and configuration in single-column layouts', () => {
+  it('uses tabbed chat and phone panes in single-column layouts', () => {
     const singleColumnBreakpoint = readMediaBlock(responsiveCss, 'max-width: 899px')
 
-    expect(singleColumnBreakpoint).toMatch(/\.phone-column\s*\{[\s\S]*order:\s*1/)
-    expect(singleColumnBreakpoint).toMatch(/\.conversation-panel\s*\{[\s\S]*order:\s*2/)
-    expect(singleColumnBreakpoint).toMatch(/\.config-panel\s*\{[\s\S]*order:\s*3/)
+    expect(singleColumnBreakpoint).toMatch(
+      /\.workspace-mobile-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    )
+    expect(singleColumnBreakpoint).toMatch(
+      /\.workspace\.workspace-tab-phone > \.phone-column/,
+    )
+    expect(singleColumnBreakpoint).toMatch(
+      /\.workspace\.workspace-tab-chat > \.conversation-panel/,
+    )
+    expect(singleColumnBreakpoint).toContain('.config-drawer')
   })
 
   it('keeps the empty mobile chat compact below the device preview', () => {
@@ -1719,17 +1718,17 @@ describe('App', () => {
     expect(narrowBreakpoint).toMatch(/\.chat-empty-icon\s*\{[\s\S]*height:\s*42px/)
   })
 
-  it('lets the configuration panel use normal page scrolling in single-column layouts', () => {
+  it('presents configuration as a bottom sheet on single-column layouts', () => {
     const singleColumnBreakpoint = readMediaBlock(responsiveCss, 'max-width: 899px')
 
     expect(singleColumnBreakpoint).toMatch(
-      /\.config-panel-expanded\s*\{[\s\S]*max-height:\s*none/,
+      /\.config-drawer\s*\{[\s\S]*max-height:\s*min\(88dvh,\s*920px\)/,
     )
     expect(singleColumnBreakpoint).toMatch(
-      /\.config-panel-expanded\s*\{[\s\S]*overflow:\s*visible/,
+      /\.config-drawer\s*\{[\s\S]*width:\s*100%/,
     )
     expect(singleColumnBreakpoint).toMatch(
-      /\.config-panel-expanded \.config-sidebar-header\s*\{[\s\S]*position:\s*static/,
+      /\.inspect-drawer\s*\{[\s\S]*max-height:\s*min\(82dvh,\s*860px\)/,
     )
   })
 

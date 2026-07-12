@@ -1,16 +1,26 @@
 .phone-stage {
   align-items: center;
-  background: var(--surface-muted);
-  background-image: radial-gradient(circle, var(--grid-line) 1px, transparent 1px);
-  background-size: 20px 20px;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 40%, rgba(91, 91, 214, 0.08), transparent 55%),
+    var(--surface-muted);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% 40%, rgba(91, 91, 214, 0.08), transparent 55%),
+    radial-gradient(circle, var(--grid-line) 1px, transparent 1px);
+  background-size: auto, 20px 20px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-panel);
   display: flex;
   justify-content: center;
+  min-height: min(720px, calc(100dvh - 180px));
   overflow: hidden;
-  padding: var(--space-6);
+  padding: var(--space-5) var(--space-4);
   position: relative;
+}
+
+.app-shell-running .phone-stage {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  box-shadow: var(--shadow-panel), 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .phone-stage-fullscreen::before {
@@ -39,7 +49,7 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.05),
     inset 0 1.5px 2px rgba(255, 255, 255, 0.08),
     inset 0 -1px 1px rgba(0, 0, 0, 0.4);
-  max-height: min(82vh, 820px);
+  max-height: min(86vh, 880px);
   max-width: 100%;
   overflow: hidden;
   padding: 9px 4px;
@@ -47,7 +57,11 @@
   transition:
     border-radius var(--duration-moderate) var(--ease-productive),
     box-shadow var(--duration-moderate) var(--ease-productive);
-  width: min(100%, 390px);
+  width: min(100%, 420px);
+}
+
+.workspace-running .phone-frame {
+  width: min(100%, 460px);
 }
 
 .phone-frame::after {

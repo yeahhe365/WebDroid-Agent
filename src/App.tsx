@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
 } from 'react'
 import { LazyWebAdbDeviceBackend } from './adapters/lazyWebAdbBackend'
 import type { AgentStep } from './lib/agent'
@@ -123,8 +122,8 @@ function App() {
   const [languageMode, setLanguageMode] = useState(settings.languageMode)
   const [configSidebarOpen, setConfigSidebarOpen] = useState(false)
   const openConfigTarget = useConfigTargetScroll(configSidebarOpen, setConfigSidebarOpen)
-  type WorkspaceTab = 'phone' | 'chat' | 'config'
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('phone')
+  type WorkspaceTab = 'phone' | 'chat'
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('chat')
   const [setupDismissed, setSetupDismissed] = useState(() => {
     try {
       return globalThis.localStorage?.getItem('webdroid-setup-dismissed') === '1'
@@ -148,7 +147,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [tutorialOpen, setTutorialOpen] = useState(false)
   const [runLogOpen, setRunLogOpen] = useState(false)
-  const runLogDrawerRef = useRef<HTMLDetailsElement | null>(null)
+  const runLogDrawerRef = useRef<HTMLElement | null>(null)
   const { repositoryStats, repositoryStatsStatus } = useRepositoryStats(settingsOpen)
   const { storageEstimate, storageEstimateStatus } = useStorageEstimate(settingsOpen)
 
@@ -248,12 +247,12 @@ function App() {
   }, [dismissSetup])
   const handleConfigureModelFromSetup = useCallback(() => {
     dismissSetup()
-    setWorkspaceTab('config')
+    setWorkspaceTab('chat')
     openConfigTarget('model')
   }, [dismissSetup, openConfigTarget])
   const handleConfigureDeviceFromSetup = useCallback(() => {
     dismissSetup()
-    setWorkspaceTab('config')
+    setWorkspaceTab('phone')
     openConfigTarget('device')
   }, [dismissSetup, openConfigTarget])
   const handleReadinessClick = useCallback(() => {
@@ -327,7 +326,11 @@ function App() {
   useDocumentPreferences(themeMode, activeLocale)
   useBusyTaskDocumentTitle(busyTask)
   usePersistedSettings(currentSettings)
-  const modalOverlayOpen = settingsOpen || sensitiveActionRequest !== null
+  const modalOverlayOpen =
+    settingsOpen ||
+    configSidebarOpen ||
+    runLogOpen ||
+    sensitiveActionRequest !== null
   useEffect(() => {
     if (!modalOverlayOpen) {
       return
@@ -461,25 +464,21 @@ function App() {
   )
   const handleOpenConfigTarget = useCallback(
     (target: Parameters<typeof openConfigTarget>[0]) => {
-      setWorkspaceTab('config')
       openConfigTarget(target)
     },
     [openConfigTarget],
   )
   const handleToggleConfigSidebar = useCallback(() => {
-    setConfigSidebarOpen((current) => {
-      const next = !current
-      if (next) {
-        setWorkspaceTab('config')
-      }
-      return next
-    })
+    setConfigSidebarOpen((current) => !current)
+  }, [])
+  const handleOpenConfig = useCallback(() => {
+    setConfigSidebarOpen((current) => !current)
+  }, [])
+  const handleToggleInspect = useCallback(() => {
+    setRunLogOpen((current) => !current)
   }, [])
   const handleSelectWorkspaceTab = useCallback((tab: WorkspaceTab) => {
     setWorkspaceTab(tab)
-    if (tab === 'config') {
-      setConfigSidebarOpen(true)
-    }
   }, [])
 
   function updateConfig<Key extends keyof ModelConfig>(key: Key, value: ModelConfig[Key]) {
@@ -621,9 +620,9 @@ function App() {
     setTutorialOpen((current) => !current)
   }
 
-  function toggleRunLog(event: MouseEvent<HTMLElement>) {
-    event.preventDefault()
-    setRunLogOpen((current) => !current)
+  function handleStopRun() {
+    stopCurrentRun()
+    settleSensitiveActionRequest(false)
   }
 
   useEffect(() => {
@@ -631,25 +630,41 @@ function App() {
       return
     }
 
-    runLogDrawerRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
-  }, [runLogOpen])
-
-  function handleStopRun() {
-    stopCurrentRun()
-    settleSensitiveActionRequest(false)
-  }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !configSidebarOpen && !settingsOpen) {
+        setRunLogOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [configSidebarOpen, runLogOpen, settingsOpen])
 
   return (
     <AppProvider value={{ copy, locale: activeLocale }}>
-      <main className="app-shell">
+      <main
+        className={[
+          'app-shell',
+          isAgentRunning ? 'app-shell-running' : '',
+          showSetupHome ? 'app-shell-setup' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
         <AppTopbar
           deviceConnected={device.connected}
           hasModelConfig={hasModelConfig}
           isAgentRunning={isAgentRunning}
+          isConfigOpen={configSidebarOpen}
+          isInspectOpen={runLogOpen}
           isTutorialOpen={tutorialOpen}
+          latestLogTitle={logs[0]?.title ?? null}
+          modelLabel={modelConfig.model}
           runningStep={sessionSummary?.stepNumber ?? null}
+          onOpenConfig={handleOpenConfig}
+          onOpenInspect={handleToggleInspect}
           onOpenSettings={openSettings}
           onReadinessClick={handleReadinessClick}
+          onStopRun={handleStopRun}
           onToggleTutorial={toggleTutorial}
         />
 
@@ -743,14 +758,6 @@ function App() {
             <nav className="workspace-mobile-tabs" aria-label={copy.workspaceTabs}>
               <button
                 type="button"
-                className={workspaceTab === 'phone' ? 'workspace-mobile-tab active' : 'workspace-mobile-tab'}
-                aria-current={workspaceTab === 'phone' ? 'page' : undefined}
-                onClick={() => handleSelectWorkspaceTab('phone')}
-              >
-                {copy.workspaceTabPhone}
-              </button>
-              <button
-                type="button"
                 className={workspaceTab === 'chat' ? 'workspace-mobile-tab active' : 'workspace-mobile-tab'}
                 aria-current={workspaceTab === 'chat' ? 'page' : undefined}
                 onClick={() => handleSelectWorkspaceTab('chat')}
@@ -759,42 +766,23 @@ function App() {
               </button>
               <button
                 type="button"
-                className={workspaceTab === 'config' ? 'workspace-mobile-tab active' : 'workspace-mobile-tab'}
-                aria-current={workspaceTab === 'config' ? 'page' : undefined}
-                onClick={() => handleSelectWorkspaceTab('config')}
+                className={workspaceTab === 'phone' ? 'workspace-mobile-tab active' : 'workspace-mobile-tab'}
+                aria-current={workspaceTab === 'phone' ? 'page' : undefined}
+                onClick={() => handleSelectWorkspaceTab('phone')}
               >
-                {copy.workspaceTabConfig}
+                {copy.workspaceTabPhone}
               </button>
             </nav>
 
             <section
               className={[
                 'workspace',
-                configSidebarOpen ? '' : 'workspace-config-collapsed',
+                isAgentRunning ? 'workspace-running' : '',
                 `workspace-tab-${workspaceTab}`,
               ]
                 .filter(Boolean)
                 .join(' ')}
             >
-              <ConfigSidebar
-                deviceActions={{ ...device.actions, onUnrestrictedModeChange: handleUnrestrictedModeChange }}
-                deviceOptions={device.options}
-                deviceState={device.state}
-                isOpen={configSidebarOpen}
-                memoryEnabled={memoryEnabled}
-                modelConfig={modelConfig}
-                actionProtocol={actionProtocol}
-                onModelConfigChange={updateConfig}
-                onActionProtocolChange={setActionProtocol}
-                onMemoryEnabledChange={setMemoryEnabled}
-                onScreenBlackoutDuringAutoControlChange={setScreenBlackoutDuringAutoControl}
-                onSelectTarget={handleOpenConfigTarget}
-                onStreamResponsesChange={setStreamResponses}
-                onToggleOpen={handleToggleConfigSidebar}
-                screenBlackoutDuringAutoControl={screenBlackoutDuringAutoControl}
-                streamResponses={streamResponses}
-              />
-
               <ConversationPanel
                 activeThreadId={activeThreadId}
                 busyTask={busyTask}
@@ -826,18 +814,28 @@ function App() {
               />
 
               <div className="phone-column">
-                {device.connected ||
-                (device.currentApp && device.currentApp !== copy.unknownApp) ? (
-                  <div
-                    className="status current-app-status phone-current-app"
-                    title={`${copy.currentApp}: ${device.currentApp || copy.unknownApp}`}
-                  >
-                    <span className="status-label">
-                      <span className="status-prefix">{copy.currentApp}: </span>
-                      {device.currentApp || copy.unknownApp}
+                <div className="phone-stage-chrome">
+                  {device.connected ||
+                  (device.currentApp && device.currentApp !== copy.unknownApp) ? (
+                    <div
+                      className="status current-app-status phone-current-app"
+                      title={`${copy.currentApp}: ${device.currentApp || copy.unknownApp}`}
+                    >
+                      <span className="status-label">
+                        <span className="status-prefix">{copy.currentApp}: </span>
+                        {device.currentApp || copy.unknownApp}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="phone-stage-idle-label">{copy.workspaceTabPhone}</div>
+                  )}
+                  {sessionSummary?.stepNumber ? (
+                    <span className="phone-step-chip">
+                      {copy.step} {sessionSummary.stepNumber}
+                      {maxSteps ? ` / ${maxSteps}` : ''}
                     </span>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
                 <PhoneStage
                   busyTask={busyTask}
                   copy={copy}
@@ -858,22 +856,67 @@ function App() {
                 />
               </div>
             </section>
+
+            <ConfigSidebar
+              deviceActions={{ ...device.actions, onUnrestrictedModeChange: handleUnrestrictedModeChange }}
+              deviceOptions={device.options}
+              deviceState={device.state}
+              isOpen={configSidebarOpen}
+              memoryEnabled={memoryEnabled}
+              modelConfig={modelConfig}
+              actionProtocol={actionProtocol}
+              onModelConfigChange={updateConfig}
+              onActionProtocolChange={setActionProtocol}
+              onMemoryEnabledChange={setMemoryEnabled}
+              onScreenBlackoutDuringAutoControlChange={setScreenBlackoutDuringAutoControl}
+              onSelectTarget={handleOpenConfigTarget}
+              onStreamResponsesChange={setStreamResponses}
+              onToggleOpen={handleToggleConfigSidebar}
+              screenBlackoutDuringAutoControl={screenBlackoutDuringAutoControl}
+              streamResponses={streamResponses}
+            />
+
+            {runLogOpen ? (
+              <div className="inspect-drawer-root">
+                <button
+                  type="button"
+                  className="inspect-drawer-backdrop"
+                  aria-label={copy.closeInspect}
+                  onClick={() => setRunLogOpen(false)}
+                />
+                <section
+                  className="inspect-drawer panel"
+                  aria-label={copy.inspect}
+                  role="dialog"
+                  aria-modal="true"
+                  ref={runLogDrawerRef}
+                >
+                  <div className="inspect-drawer-header">
+                    <div>
+                      <span className="inspect-drawer-title">{copy.inspect}</span>
+                      <small className="inspect-drawer-subtitle">
+                        {logs[0]?.title ?? copy.noEvents}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      className="button icon-button icon-button--md"
+                      aria-label={copy.closeInspectPanel}
+                      onClick={() => setRunLogOpen(false)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <RunLog
+                    logs={logs}
+                    onClear={clearLogs}
+                    labels={runLogLabels}
+                  />
+                </section>
+              </div>
+            ) : null}
           </>
         )}
-
-        <details className="log-drawer compact-section" open={runLogOpen} ref={runLogDrawerRef}>
-          <summary onClick={toggleRunLog}>
-            <span>{copy.runLog}</span>
-            <small>{logs[0]?.title ?? copy.noEvents}</small>
-          </summary>
-          {runLogOpen ? (
-            <RunLog
-              logs={logs}
-              onClear={clearLogs}
-              labels={runLogLabels}
-            />
-          ) : null}
-        </details>
       </main>
     </AppProvider>
   )
