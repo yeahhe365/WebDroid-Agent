@@ -17,8 +17,6 @@ dist-server
 build
 *.tsbuildinfo
 
-# Local planning docs
-docs/
 
 # Local env files
 .env
