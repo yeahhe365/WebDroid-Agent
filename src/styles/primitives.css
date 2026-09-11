@@ -1,3 +1,7 @@
+/* ════════════════════════════════════════════════════════════
+   Primitives — Base form elements, utilities and animations
+   ════════════════════════════════════════════════════════════ */
+
 /* ═══ Base Form Elements ═══ */
 
 label {
@@ -242,14 +246,15 @@ button.danger:hover:not(:disabled) {
   animation: spin 0.8s linear infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .spin {
-    animation: none;
-  }
-}
-
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Respect user motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
   }
 }

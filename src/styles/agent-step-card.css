@@ -11,10 +11,10 @@
 
 @keyframes running-pulse {
   0%, 100% {
-    box-shadow: inset 3px 0 0 var(--accent), var(--shadow-accent-sm);
+    border-left: 3px solid var(--accent);
   }
   50% {
-    box-shadow: inset 3px 0 0 var(--accent), inset 6px 0 0 rgba(59, 130, 246, 0.15), var(--glow-accent);
+    border-left: 3px solid var(--accent-hover);
   }
 }
 
@@ -42,19 +42,19 @@
 }
 
 .agent-step-card.success {
+  border-left: 3px solid var(--primary);
   border-color: var(--status-ok-border);
-  box-shadow: inset 3px 0 0 var(--primary), var(--shadow-primary-sm);
 }
 
 .agent-step-card.failed {
+  border-left: 3px solid var(--danger);
   border-color: var(--danger-border);
-  box-shadow: inset 3px 0 0 var(--danger), 0 2px 8px rgba(244, 63, 94, 0.12);
 }
 
 .agent-step-card.review,
 .agent-step-card.takeover {
+  border-left: 3px solid var(--warn);
   border-color: var(--warn-border);
-  box-shadow: inset 3px 0 0 var(--warn), 0 2px 8px rgba(245, 158, 11, 0.12);
 }
 
 .agent-step-header {

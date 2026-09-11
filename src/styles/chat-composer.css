@@ -98,6 +98,18 @@
   width: 38px;
 }
 
+.chat-send:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 50%;
+}
+
+.chat-scroll-bottom:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 50%;
+}
+
 .chat-send.button--primary {
   background: var(--gradient-accent);
   border-color: transparent;

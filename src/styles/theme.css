@@ -283,7 +283,7 @@
   /* Text — bright, clean */
   --text: #fafafa;
   --text-muted: #a1a1aa;
-  --text-soft: #71717a;
+  --text-soft: #8b8b93;
   --text-secondary: #d4d4d8;
 
   /* Shadows — deeper on dark */
@@ -378,7 +378,7 @@
 
     --text: #fafafa;
     --text-muted: #a1a1aa;
-    --text-soft: #71717a;
+    --text-soft: #8b8b93;
     --text-secondary: #d4d4d8;
 
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -498,6 +498,21 @@ details:not([open]) > :not(summary) {
   }
   :root:not([data-theme='light']):not([data-theme='dark'])::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.26);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   GLOBAL REDUCED MOTION — disable animations for accessibility
+   ════════════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

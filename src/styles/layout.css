@@ -276,6 +276,34 @@ button.status:focus-visible {
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
 }
 
+.run-strip::before {
+  animation: run-strip-pulse 2s ease-in-out infinite;
+  background: var(--accent);
+  border-radius: 50%;
+  content: "";
+  flex: 0 0 auto;
+  height: 6px;
+  width: 6px;
+}
+
+@keyframes run-strip-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(91, 91, 214, 0.45);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(91, 91, 214, 0);
+    opacity: 0.8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-strip::before {
+    animation: none;
+    box-shadow: none;
+  }
+}
+
 .run-strip-label {
   flex: 1 1 auto;
   font-size: var(--text-sm);
@@ -318,6 +346,11 @@ button.status:focus-visible {
   background: var(--button-bg);
   border-color: var(--border);
   color: var(--text);
+}
+
+.topbar-button:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 
 /* ═══ Alert Banner ═══ */

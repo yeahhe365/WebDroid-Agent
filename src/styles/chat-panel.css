@@ -269,7 +269,7 @@
 .chat-message.user .chat-message-content {
   background: var(--accent-soft);
   border: 1px solid var(--accent-soft-border);
-  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-accent-sm);
   color: var(--text);
   max-width: min(82%, 520px);
@@ -280,7 +280,7 @@
 .chat-message.assistant .chat-message-content {
   background: var(--surface-muted);
   border: 1px solid var(--surface-muted-border);
-  border-radius: var(--radius-sm) var(--radius-xl) var(--radius-xl) var(--radius-xl);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
   color: var(--text);
   max-width: min(100%, 580px);
