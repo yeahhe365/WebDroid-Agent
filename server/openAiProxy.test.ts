@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createOpenAiProxyHandler } from './openAiProxy.js'
 
 const servers: Server[] = []
@@ -201,6 +201,117 @@ describe('createOpenAiProxyHandler', () => {
     expect(await response.json()).toEqual({
       error: { message: 'Request body is too large.' },
     })
+  })
+
+  it('rejects proxy requests without the configured shared token', async () => {
+    const fetcher = vi.fn(async () => new Response('{"ok":true}', { status: 200 }))
+    const proxyUrl = await listen(
+      createOpenAiProxyHandler(fetcher as unknown as typeof fetch, { proxyToken: 'letmein' }),
+    )
+
+    const noToken = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'secret',
+        payload: { model: 'agent-model' },
+      }),
+    })
+    expect(noToken.status).toBe(401)
+    expect(await noToken.json()).toEqual({
+      error: { message: 'Proxy token is required or invalid.' },
+    })
+
+    const wrongToken = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-proxy-token': 'wrong' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'secret',
+        payload: { model: 'agent-model' },
+      }),
+    })
+    expect(wrongToken.status).toBe(401)
+
+    const bearer = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer letmein' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'secret',
+        payload: { model: 'agent-model' },
+      }),
+    })
+    expect(bearer.status).toBe(200)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it('allows proxy requests with the shared token via x-proxy-token header', async () => {
+    const fetcher = vi.fn(async () => new Response('{"ok":true}', { status: 200 }))
+    const proxyUrl = await listen(
+      createOpenAiProxyHandler(fetcher as unknown as typeof fetch, { proxyToken: 'letmein' }),
+    )
+
+    const response = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-proxy-token': 'letmein' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'secret',
+        payload: { model: 'agent-model' },
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects upstream base URLs outside the configured host allowlist', async () => {
+    const fetcher = vi.fn(async () => new Response('{"ok":true}', { status: 200 }))
+    const proxyUrl = await listen(
+      createOpenAiProxyHandler(fetcher as unknown as typeof fetch, {
+        allowedHosts: ['api.openai.com', '*.example.com'],
+      }),
+    )
+
+    const blocked = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://evil.internal.corp/v1',
+        apiKey: 'secret',
+        payload: { model: 'agent-model' },
+      }),
+    })
+    expect(blocked.status).toBe(403)
+    expect(await blocked.json()).toEqual({
+      error: { message: 'Upstream host "evil.internal.corp" is not in the allowed hosts list.' },
+    })
+
+    const wildcardAllowed = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'secret',
+        payload: { model: 'agent-model' },
+      }),
+    })
+    expect(wildcardAllowed.status).toBe(200)
+
+    const portMismatch = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.openai.com:8443/v1',
+        apiKey: 'secret',
+        payload: { model: 'agent-model' },
+      }),
+    })
+    expect(portMismatch.status).toBe(403)
+
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
   it('aborts the upstream model request when the client disconnects', async () => {

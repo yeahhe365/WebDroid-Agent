@@ -17,6 +17,9 @@ FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
+# The server defaults to loopback; inside a container it must listen on all
+# interfaces so the published port mapping works.
+ENV HOST=0.0.0.0
 COPY package*.json ./
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-server ./dist-server

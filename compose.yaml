@@ -6,7 +6,15 @@ services:
     container_name: webdroid-agent
     restart: unless-stopped
     ports:
-      - "8083:8080"
+      # Loopback-only by default; change to "8083:8080" (or run behind a
+      # reverse proxy) when other machines must reach this server.
+      - "127.0.0.1:8083:8080"
     environment:
       NODE_ENV: production
       PORT: 8080
+      # Required inside the container so the published port works.
+      HOST: 0.0.0.0
+      # Optional proxy hardening (see README "Docker 部署 / Proxy hardening"):
+      # PROXY_TOKEN: change-me
+      # PROXY_ALLOW_HOSTS: api.openai.com,dashscope.aliyuncs.com
+      # CSP_CONNECT_SRC: https://api.moonshot.cn

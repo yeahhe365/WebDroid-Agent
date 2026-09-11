@@ -74,6 +74,34 @@ describe('createWebDroidServer', () => {
     expect(htmlResponse.headers.get('cache-control')).toBe('no-cache')
   })
 
+  it('appends extra CSP connect-src origins from server options', async () => {
+    const serverUrl = await listen(
+      createWebDroidServer({ distDir: distDir!, extraConnectOrigins: ['https://api.moonshot.cn'] }),
+    )
+
+    const response = await fetch(`${serverUrl}/`)
+
+    expect(response.status).toBe(200)
+    await response.text()
+    const csp = response.headers.get('content-security-policy') ?? ''
+    expect(csp).toContain("connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://dashscope.aliyuncs.com https://api.moonshot.cn")
+  })
+
+  it('keeps the default CSP connect-src list when no extra origins are provided', async () => {
+    const serverUrl = await listen(createWebDroidServer({ distDir: distDir! }))
+
+    const response = await fetch(`${serverUrl}/`)
+
+    expect(response.status).toBe(200)
+    await response.text()
+    const csp = response.headers.get('content-security-policy') ?? ''
+    expect(csp).toContain(
+      "connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://dashscope.aliyuncs.com",
+    )
+    expect(csp).toContain("default-src 'self'")
+    expect(csp).toContain("frame-ancestors 'none'")
+  })
+
   it('serves the health check even when a query string is present', async () => {
     const serverUrl = await listen(createWebDroidServer({ distDir: distDir! }))
 

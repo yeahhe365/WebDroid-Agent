@@ -3,10 +3,22 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 export const OPENAI_PROXY_PATH = '/api/openai/chat/completions'
 export const MAX_PROXY_BODY_BYTES = 10 * 1024 * 1024 // 10 MiB — room for multi-message conversations with image data URLs
 
+/**
+ * Hardening knobs (all optional; unset = permissive local development):
+ * - PROXY_TOKEN:        when set, proxy requests must present this shared secret
+ * - PROXY_ALLOW_HOSTS:  when set, upstream baseUrl hosts must match this allowlist
+ */
+const DEFAULT_PROXY_TOKEN = process.env.PROXY_TOKEN ?? ''
+const DEFAULT_ALLOWED_HOSTS = parseAllowedHosts(process.env.PROXY_ALLOW_HOSTS)
+
 type Fetcher = (input: string, init?: RequestInit) => Promise<Response>
 
 export interface OpenAiProxyHandlerOptions {
   maxBodyBytes?: number
+  /** Shared secret required from proxy clients when set. Defaults to the PROXY_TOKEN env var. */
+  proxyToken?: string
+  /** Allowed upstream hosts; empty means no restriction. Defaults to PROXY_ALLOW_HOSTS env var. */
+  allowedHosts?: string[]
 }
 
 export type OpenAiProxyHandler = (
@@ -16,9 +28,14 @@ export type OpenAiProxyHandler = (
 
 export function createOpenAiProxyHandler(
   fetcher: Fetcher = fetch,
-  options: OpenAiProxyHandlerOptions = {},
+  {
+    maxBodyBytes,
+    proxyToken = DEFAULT_PROXY_TOKEN,
+    allowedHosts = DEFAULT_ALLOWED_HOSTS,
+  }: OpenAiProxyHandlerOptions = {},
 ): OpenAiProxyHandler {
-  const maxBodyBytes = options.maxBodyBytes ?? MAX_PROXY_BODY_BYTES
+  const resolvedMaxBodyBytes = maxBodyBytes ?? MAX_PROXY_BODY_BYTES
+  const normalizedAllowedHosts = normalizeAllowedHosts(allowedHosts)
 
   return async function openAiProxyHandler(request, response) {
     const url = parseRequestUrl(request.url)
@@ -41,9 +58,14 @@ export function createOpenAiProxyHandler(
       return
     }
 
+    if (!isAuthorizedProxyRequest(request, proxyToken)) {
+      sendJson(response, 401, { error: { message: 'Proxy token is required or invalid.' } })
+      return
+    }
+
     let body: unknown
     try {
-      body = JSON.parse(await readRequestBody(request, maxBodyBytes))
+      body = JSON.parse(await readRequestBody(request, resolvedMaxBodyBytes))
     } catch (caught) {
       if (isRequestBodyTooLargeError(caught)) {
         sendJson(response, 413, { error: { message: 'Request body is too large.' } })
@@ -68,6 +90,11 @@ export function createOpenAiProxyHandler(
       return
     }
     const upstreamUrl = `${normalizeBaseUrl(validatedBody.baseUrl)}${upstreamPath}`
+    const allowedHostError = resolveAllowedHostError(upstreamUrl, normalizedAllowedHosts)
+    if (allowedHostError) {
+      sendJson(response, 403, { error: { message: allowedHostError } })
+      return
+    }
     const abortController = new AbortController()
     const abortUpstream = () => {
       if (!abortController.signal.aborted) {
@@ -163,6 +190,62 @@ function isHttpBaseUrl(baseUrl: string): boolean {
   } catch {
     return false
   }
+}
+
+function parseAllowedHosts(raw: string | undefined): string[] {
+  if (!raw) {
+    return []
+  }
+  return raw
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function normalizeAllowedHosts(hosts: readonly string[]): string[] {
+  return Array.from(new Set(hosts.map((host) => host.trim().toLowerCase()).filter(Boolean)))
+}
+
+function isAuthorizedProxyRequest(request: IncomingMessage, proxyToken: string): boolean {
+  if (!proxyToken) {
+    return true
+  }
+  const authorization = request.headers.authorization
+  if (authorization === `Bearer ${proxyToken}`) {
+    return true
+  }
+  const headerToken = request.headers['x-proxy-token']
+  if (typeof headerToken === 'string') {
+    return headerToken === proxyToken
+  }
+  if (Array.isArray(headerToken)) {
+    return headerToken.includes(proxyToken)
+  }
+  return false
+}
+
+function hostMatchesAllowlistEntry(host: string, entry: string): boolean {
+  if (entry.startsWith('*.')) {
+    const suffix = entry.slice(1) // '.example.com'
+    return host.endsWith(suffix) && host.length > suffix.length
+  }
+  return host === entry
+}
+
+function resolveAllowedHostError(upstreamUrl: string, allowedHosts: string[]): string | null {
+  if (allowedHosts.length === 0) {
+    return null
+  }
+  let host: string | null = null
+  try {
+    host = new URL(upstreamUrl).host.toLowerCase()
+  } catch {
+    return 'Upstream URL is invalid.'
+  }
+  if (host && allowedHosts.some((entry) => hostMatchesAllowlistEntry(host, entry))) {
+    return null
+  }
+  return `Upstream host "${host}" is not in the allowed hosts list.`
 }
 
 function readRequestBody(request: IncomingMessage, maxBodyBytes: number): Promise<string> {

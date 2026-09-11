@@ -9,16 +9,27 @@ import { createOpenAiProxyHandler, isOpenAiProxyRequest } from './openAiProxy.js
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const defaultDistDir = path.resolve(__dirname, '../dist')
 const port = Number(process.env.PORT || 8080)
-const host = process.env.HOST || '0.0.0.0'
+// Default to loopback so the proxy is not exposed to the LAN by accident;
+// set HOST=0.0.0.0 explicitly (e.g. Docker) to listen on all interfaces.
+const host = process.env.HOST || '127.0.0.1'
 
 export interface WebDroidServerOptions {
   distDir?: string
   openAiProxyHandler?: (request: IncomingMessage, response: ServerResponse) => Promise<void>
+  /**
+   * Extra origins appended to the CSP `connect-src` directive, e.g. custom
+   * OpenAI-compatible provider endpoints. Space-separated origins from the
+   * CSP_CONNECT_SRC environment variable are used by default.
+   */
+  extraConnectOrigins?: string[]
 }
+
+const DEFAULT_EXTRA_CONNECT_ORIGINS = parseConnectOrigins(process.env.CSP_CONNECT_SRC)
 
 export function createWebDroidServer({
   distDir = defaultDistDir,
   openAiProxyHandler = createOpenAiProxyHandler(),
+  extraConnectOrigins = DEFAULT_EXTRA_CONNECT_ORIGINS,
 }: WebDroidServerOptions = {}): Server {
   return createServer((request, response) => {
     const handler = async () => {
@@ -39,7 +50,7 @@ export function createWebDroidServer({
         return
       }
 
-      await serveStatic(request, response, distDir)
+      await serveStatic(request, response, distDir, extraConnectOrigins)
     }
 
     handler().catch((error) => {
@@ -63,6 +74,7 @@ async function serveStatic(
   request: IncomingMessage,
   response: ServerResponse,
   distDir: string,
+  extraConnectOrigins: readonly string[],
 ): Promise<void> {
   const requestPath = safeRequestPath(request.url)
   if (!requestPath) {
@@ -88,7 +100,7 @@ async function serveStatic(
     return
   }
 
-  response.writeHead(200, responseHeaders(pathToServe, distDir))
+  response.writeHead(200, responseHeaders(pathToServe, distDir, extraConnectOrigins))
   if (request.method === 'HEAD') {
     response.end()
     return
@@ -167,7 +179,11 @@ interface StaticResponseHeaders extends OutgoingHttpHeaders {
   'Content-Security-Policy': string
 }
 
-function responseHeaders(filePath: string, distDir: string): StaticResponseHeaders {
+function responseHeaders(
+  filePath: string,
+  distDir: string,
+  extraConnectOrigins: readonly string[] = [],
+): StaticResponseHeaders {
   return {
     'Content-Type': contentType(filePath),
     'Cache-Control': cacheControl(filePath, distDir),
@@ -175,9 +191,63 @@ function responseHeaders(filePath: string, distDir: string): StaticResponseHeade
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'usb=(self), camera=(), microphone=(), geolocation=()',
-    'Content-Security-Policy':
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://dashscope.aliyuncs.com; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+    'Content-Security-Policy': contentSecurityPolicy(extraConnectOrigins),
   }
+}
+
+/**
+ * Space-separated extra origins (CSP_CONNECT_SRC). Entries are sanitized:
+ * only http(s) origins and 'self' survive; duplicates are removed.
+ */
+function parseConnectOrigins(raw: string | undefined): string[] {
+  if (!raw) {
+    return []
+  }
+  const seen = new Set<string>()
+  const origins: string[] = []
+  for (const entry of raw.split(/\s+/)) {
+    const trimmed = entry.trim()
+    if (!trimmed || seen.has(trimmed)) {
+      continue
+    }
+    if (trimmed === "'self'") {
+      seen.add(trimmed)
+      origins.push(trimmed)
+      continue
+    }
+    try {
+      const url = new URL(trimmed)
+      if (url.protocol === 'https:' || url.protocol === 'http:') {
+        seen.add(trimmed)
+        origins.push(trimmed)
+      }
+    } catch {
+      // ignore malformed entries
+    }
+  }
+  return origins
+}
+
+function contentSecurityPolicy(extraConnectOrigins: readonly string[]): string {
+  const connectSrc = [
+    "'self'",
+    'https://generativelanguage.googleapis.com',
+    'https://api.openai.com',
+    'https://dashscope.aliyuncs.com',
+    ...extraConnectOrigins,
+  ].join(' ')
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    `connect-src ${connectSrc}`,
+    "font-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+  ].join('; ')
 }
 
 function cacheControl(filePath: string, distDir: string): string {
