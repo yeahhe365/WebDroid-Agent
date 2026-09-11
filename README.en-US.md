@@ -150,6 +150,28 @@ http://localhost:8083/
 
 You do not need to pass the API key as an environment variable. Continue entering it in the model settings panel. Do not expose this container proxy directly to an untrusted public network because it forwards arbitrary OpenAI-compatible `Base URL` values submitted by the browser.
 
+### Proxy hardening (optional)
+
+The defaults are deliberately conservative: the published port binds to `127.0.0.1` on the host, the process inside the container listens on `0.0.0.0` so the port mapping works, and the server itself defaults to a loopback bind. For shared networks or stricter setups:
+
+| Variable | Effect |
+| --- | --- |
+| `PROXY_TOKEN` | When set, proxy requests must carry `x-proxy-token: <token>` or `Authorization: Bearer <token>`; otherwise the proxy answers 401. |
+| `PROXY_ALLOW_HOSTS` | Comma-separated upstream host allowlist (e.g. `api.openai.com,dashscope.aliyuncs.com`; supports `host:port` and `*.example.com`). Non-matching `Base URL` hosts receive 403. |
+| `CSP_CONNECT_SRC` | Extra space-separated origins appended to the frontend `Content-Security-Policy` `connect-src`, for custom OpenAI-compatible provider endpoints. |
+| `HOST` | Server listen address, default `127.0.0.1`; the Docker image sets `0.0.0.0`. |
+
+Example:
+
+```bash
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -e PROXY_TOKEN=change-me \
+  -e PROXY_ALLOW_HOSTS=api.openai.com,dashscope.aliyuncs.com \
+  webdroid-agent
+```
+
+It is still recommended not to expose the proxy to an untrusted public network.
+
 ## Action Protocol
 
 The model should return a single JSON object and avoid Markdown or explanatory prose:
@@ -236,6 +258,8 @@ The frontend tries to constrain and confirm actions before execution:
 - The user can stop the run at any time.
 - Sensitive taps can require human confirmation; unrestricted mode skips those confirmations.
 - `take_over`, `note`, and `done` do not directly control the device; legacy `interact` and `call_api` are converted to human takeover unless unrestricted mode is enabled.
+- In Docker/Node deployments the server binds to loopback by default and can be further restricted with `PROXY_TOKEN` and `PROXY_ALLOW_HOSTS` (see "Docker Deployment · Proxy hardening").
+- Server responses carry CSP, `X-Frame-Options: DENY`, and `X-Content-Type-Options: nosniff`; the CSP `connect-src` list can be extended with `CSP_CONNECT_SRC`.
 
 It is still strongly recommended to avoid letting the agent handle account login, payments, checkout, deletions, authorization, verification codes, or privacy-sensitive pages. By default, when the model returns `take_over`, auto-execution stops and waits for a human; unrestricted mode does not stop on takeover requests.
 

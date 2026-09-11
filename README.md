@@ -191,6 +191,28 @@ http://localhost:8083/
 
 Docker 运行时不需要把 API Key 写进环境变量；继续在页面里的模型配置中填写。请不要把这个容器代理直接暴露到不可信公网，因为它会转发浏览器提交的任意 OpenAI-compatible `Base URL`。
 
+### 代理加固（可选）
+
+默认配置已经尽量保守：发布端口只绑定 `127.0.0.1`（宿主侧），容器内进程监听 `0.0.0.0` 以便端口映射生效；服务端监听地址默认也是回环。部署在共享网络或需要更强约束时，可用以下环境变量：
+
+| 变量 | 作用 |
+| --- | --- |
+| `PROXY_TOKEN` | 设置后，代理请求必须携带 `x-proxy-token: <token>` 或 `Authorization: Bearer <token>`，否则返回 401。 |
+| `PROXY_ALLOW_HOSTS` | 逗号分隔的上游主机白名单（如 `api.openai.com,dashscope.aliyuncs.com`；支持 `host:port` 与 `*.example.com` 通配）。设置后，不在名单内的 `Base URL` 返回 403。 |
+| `CSP_CONNECT_SRC` | 追加到前端 `Content-Security-Policy` 的 `connect-src` 的额外来源（空格分隔），用于自定义 OpenAI 兼容提供商端点。 |
+| `HOST` | 服务端监听地址，默认 `127.0.0.1`；Docker 镜像内已设为 `0.0.0.0`。 |
+
+示例：
+
+```bash
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -e PROXY_TOKEN=change-me \
+  -e PROXY_ALLOW_HOSTS=api.openai.com,dashscope.aliyuncs.com \
+  webdroid-agent
+```
+
+仍然建议不要将该代理暴露到不可信公网。
+
 ## 模型动作协议
 
 推荐让模型只返回一个 JSON 对象，不要包含 Markdown 或解释性文本：
@@ -277,6 +299,8 @@ canonical JSON 推荐使用的标准动作：
 - 用户可以随时停止运行。
 - 敏感点击可要求人工确认；开启完全无限制模式时会跳过这些确认。
 - `take_over`、`note`、`done` 不会直接操作设备；遗留 `interact` 和 `call_api` 会转成人工接管。
+- Docker / Node 部署时服务端默认只监听回环地址，并可用 `PROXY_TOKEN`、`PROXY_ALLOW_HOSTS` 限制代理访问（见「Docker 部署 · 代理加固」）。
+- 服务端响应带有 CSP、`X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff` 等安全头；CSP 的 `connect-src` 可用 `CSP_CONNECT_SRC` 扩展。
 
 仍然建议避免让 Agent 操作账号登录、支付、下单、删除、授权、验证码、隐私页面等高风险流程。默认情况下模型返回 `take_over` 时，自动执行会停止并等待人工接管；开启完全无限制模式后不会因接管请求停止。
 
