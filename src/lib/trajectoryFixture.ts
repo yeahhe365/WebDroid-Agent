@@ -52,9 +52,11 @@ export type CommandFixtureSource =
   | { action: 'dump_screen_tree' }
 
 /**
- * A recorded device command, keyed by the action that produced it. The shape
- * mirrors `deviceCommands` in a recorded trajectory step, so a fixture derived
- * from a real run and one written by hand are interchangeable.
+ * A recorded device command, keyed by the action that produced it. A recorded
+ * trajectory step stores `deviceCommands` as bare `string[][]`, with no action
+ * attribution, so this is a *wrapper* around one argv rather than a mirror of
+ * that field: `input.action` is what links the argv back to the action. A
+ * fixture derived from a real run and one written by hand are interchangeable.
  */
 export type CommandFixture = {
   schemaVersion: typeof FIXTURE_SCHEMA_VERSION

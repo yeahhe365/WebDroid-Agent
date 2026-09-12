@@ -93,6 +93,19 @@ describe('retryDeviceOperation error kinds', () => {
     expect(error).toBeInstanceOf(DeviceBackendError)
     expect((error as DeviceBackendError).kind).toBe('io')
   })
+
+  it('forwards the kind of a DeviceBackendError that exhausts every attempt', async () => {
+    const error = await retryDeviceOperation(
+      async () => {
+        throw new DeviceBackendError('adb command failed')
+      },
+      { label: 'device state', maxAttempts: 2, retryDelaysMs: [0], wait: async () => {} },
+    ).catch((caught) => caught)
+
+    expect(error).toBeInstanceOf(DeviceBackendError)
+    // Not the hardcoded fallback: a non-timeout DeviceBackendError keeps 'io'.
+    expect((error as DeviceBackendError).kind).toBe('io')
+  })
 })
 
 describe('DeviceBackendError.kind', () => {

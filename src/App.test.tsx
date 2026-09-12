@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { createAgentThread, startThreadTurn } from './lib/agentThread'
 import * as fileExport from './lib/fileExport'
+import type { TrajectoryArtifact } from './lib/trajectory'
 
 const backendMock = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -278,6 +279,9 @@ describe('App', () => {
   })
 
   afterEach(() => {
+    // A failing assertion must not leak a spy (e.g. a download mock) into the
+    // next test in this file.
+    vi.restoreAllMocks()
     cleanup()
     localStorage.clear()
   })
@@ -417,11 +421,8 @@ describe('App', () => {
   it('exports the most recent run as a trajectory file', async () => {
     const download = vi.spyOn(fileExport, 'downloadJsonFile').mockImplementation(() => {})
     const thread = createAgentThread('Export this run', { id: 'trajectory-thread', now: 1000 })
-    startThreadTurn(thread, {
-      index: 1,
-      runId: 'run_export',
+    const turnBase = {
       task: thread.task,
-      promptContext: 'PROMPT-CONTEXT-MUST-NOT-BE-EXPORTED',
       deviceSnapshot: {
         currentApp: 'Chrome',
         deviceState: { app: 'Chrome', packageName: 'com.android.chrome' },
@@ -435,8 +436,41 @@ describe('App', () => {
       executionAction: { action: 'wait' as const, ms: 1 },
       preview: 'wait 1ms',
       timing: { captureMs: 1, currentAppMs: 2, modelMs: 3, parseMs: 4, totalMs: 10 },
-      status: 'done',
+      status: 'done' as const,
+    }
+    // Two runs in one thread: only a fixture with an older run can prove that
+    // "newest run wins" rather than "first matching turn wins".
+    startThreadTurn(thread, {
+      ...turnBase,
+      index: 1,
+      runId: 'run_older',
+      promptContext: 'OLDER-RUN-CONTEXT-MUST-NOT-BE-EXPORTED',
     })
+    const newestTurn = startThreadTurn(thread, {
+      ...turnBase,
+      index: 2,
+      runId: 'run_newest',
+      promptContext: 'PROMPT-CONTEXT-MUST-NOT-BE-EXPORTED',
+    })
+    // Only `screenshotReferences` can carry pixels into the projection, so this
+    // reference is what gives the "no inline image" half of the test teeth.
+    thread.screenshotReferences = [
+      {
+        id: 'screenshot-step-2',
+        step: 2,
+        title: 'Step #2',
+        currentApp: 'Chrome',
+        deviceState: { app: 'Chrome', packageName: 'com.android.chrome' },
+        screenshot: {
+          bytes: new Uint8Array([1, 2, 3]),
+          dataUrl: 'data:image/png;base64,INLINE-SCREENSHOT-MUST-NOT-BE-EXPORTED',
+          modelDataUrl: 'data:image/png;base64,INLINE-SCREENSHOT-MUST-NOT-BE-EXPORTED',
+          screen: { width: 1080, height: 2400 },
+          modelScreen: { width: 540, height: 1200 },
+        },
+        createdAt: 1000,
+      },
+    ]
     threadStoreMock.store.loadLatest.mockResolvedValue(thread)
 
     render(<App />)
@@ -452,10 +486,21 @@ describe('App', () => {
       'webdroid-agent-trajectory.json',
       expect.objectContaining({ kind: 'webdroid.trajectory', schemaVersion: 1 }),
     )
-    const serialized = JSON.stringify(download.mock.calls[0]?.[1])
+    const artifact = download.mock.calls[0]?.[1] as TrajectoryArtifact
+    expect(artifact.run.runId).toBe('run_newest')
+    expect(artifact.steps.map((step) => step.turnId)).toEqual([newestTurn.id])
+    const serialized = JSON.stringify(artifact)
     expect(serialized).not.toContain('PROMPT-CONTEXT-MUST-NOT-BE-EXPORTED')
+    expect(serialized).not.toContain('OLDER-RUN-CONTEXT-MUST-NOT-BE-EXPORTED')
     expect(serialized).not.toContain('INLINE-SCREENSHOT-MUST-NOT-BE-EXPORTED')
-    download.mockRestore()
+    expect(serialized).not.toContain('data:image')
+    // The reference itself survives — geometry only, no pixels.
+    expect(artifact.steps[0]?.screenshot).toStrictEqual({
+      id: 'screenshot-step-2',
+      step: 2,
+      screen: { width: 1080, height: 2400 },
+      modelScreen: { width: 540, height: 1200 },
+    })
   })
 
   it('logs instead of exporting a trajectory when there is no run yet', async () => {
@@ -471,7 +516,6 @@ describe('App', () => {
     expect(download).not.toHaveBeenCalled()
     openInspectDrawer()
     expect(screen.getAllByText('No run to export yet.').length).toBeGreaterThan(0)
-    download.mockRestore()
   })
 
   it('renders advanced optimization controls', () => {
