@@ -1400,12 +1400,14 @@ git commit -m "feat(agent): project a run into a versioned, sanitised trajectory
 **Files:**
 - Modify: `src/lib/appCopy.en-US.ts`、`src/lib/appCopy.zh-CN.ts`
 - Modify: `src/components/SettingsDialog.tsx:347` 附近
-- Modify: `src/App.tsx`（`:522` 的 `exportChatHistory` handler 旁）
+- Modify: `src/App.tsx:520` 的 `handleExportChatHistory` 旁
 - Test: `src/App.test.tsx`
 
 **Interfaces:**
-- Consumes: `buildTrajectoryArtifact` / `serializeTrajectory`（Task 7）、`downloadJsonFile`（`src/lib/fileExport.ts:8`）
+- Consumes: `buildTrajectoryArtifact`（Task 7）、`downloadJsonFile`（`src/lib/fileExport.ts:8`）、`ensureSession()`（`useAgentSessionHistory` 暴露的当前线程访问器，`src/hooks/useAgentSessionHistory.ts:313`）、App 内部的 `addLog`（`useRunLog()`，`App.tsx:164`）与 `copy`
 - Produces: 设置面板中的「导出最近一次运行的 trajectory」动作
+
+> **真实标识符（已核实，勿凭印象改写）**：App.tsx 里**没有** `sessionRef`，当前线程通过 `ensureSession()` 取得；文案是局部变量 `copy`（不是 `copyRef.current`）；该文件的导出处理器是普通 `function`（不是 `useCallback`），照 `handleExportChatHistory`（`:520`）的风格写。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -1433,27 +1435,29 @@ Expected: FAIL —— 找不到名为 `exportTrajectory` 的按钮
 
 - [ ] **Step 3: 实现**
 
-`src/lib/appCopy.en-US.ts` / `appCopy.zh-CN.ts` 各加两个键（两份必须同名同数量，`appCopy.test.ts` 会强制）：
+`src/lib/appCopy.en-US.ts` / `appCopy.zh-CN.ts` 各加三个键（两份必须同名同数量，`appCopy.test.ts` 会强制）：
 
 ```ts
   exportTrajectory: 'Export trajectory',
   exportTrajectoryUnavailable: 'No run to export yet.',
+  trajectoryExported: 'Trajectory exported',
 ```
 
 ```ts
   exportTrajectory: '导出本次运行轨迹',
   exportTrajectoryUnavailable: '还没有可导出的运行记录。',
+  trajectoryExported: '运行轨迹已导出',
 ```
 
-`src/App.tsx` —— 在 `exportChatHistory`（`:522`）旁加 handler：
+`src/App.tsx` —— 在 `handleExportChatHistory`（`:520`）**旁**加一个同风格的普通函数：
 
 ```ts
-  const exportTrajectory = useCallback(() => {
-    const session = sessionRef.current
+  function handleExportTrajectory() {
+    const session = ensureSession()
     const lastTurn = [...session.turns].reverse().find((turn) => turn.runId)
     if (!lastTurn?.runId) {
-      addLog({ tone: 'warn', title: copyRef.current.exportTrajectoryUnavailable })
-      return false
+      addLog({ tone: 'warn', title: copy.exportTrajectoryUnavailable })
+      return
     }
     downloadJsonFile(
       'webdroid-agent-trajectory.json',
@@ -1467,11 +1471,11 @@ Expected: FAIL —— 找不到名为 `exportTrajectory` 的按钮
         },
       }),
     )
-    return true
-  }, [actionProtocol, addLog, modelConfig.model, modelConfig.provider])
+    addLog({ tone: 'info', title: copy.trajectoryExported })
+  }
 ```
 
-把 `exportTrajectory` 传进 `SettingsDialog`（参照该组件已有的 `onExportChatHistory` prop 传法），并在 `SettingsDialog.tsx:347` 的导出按钮旁渲染同名按钮。
+`ensureSession` 已在 App 的解构里（`:401`）；顶部加 `import { buildTrajectoryArtifact } from './lib/trajectory'`。把 `handleExportTrajectory` 作为 `onExportTrajectory` 传给 `SettingsDialog`（参照该组件已有的 `onExportChatHistory` prop 传法），并在 `SettingsDialog.tsx:347` 的导出按钮旁渲染同名按钮。
 
 - [ ] **Step 4: 跑测试确认通过**
 
