@@ -124,6 +124,13 @@ failureClass?: FailureClass
 
 ### 4.3 `TrajectoryArtifact` v1
 
+> **实现期更正（与本文件同步维护）**：以下为**实际交付**的形状。相对初稿有五处更正，理由见决策记录 14 / 15：
+> - **删除 `step.uiTree`**：截图与 `deviceState` 已足够还原现场，UI tree 会让 artifact 体积翻倍且无消费方，故不交付。
+> - **删除 `outcome.finalResponse`**：`AgentConversationMessage` 没有 run/turn 归属，无法把某条消息可靠地算作「本次 run 的最终回复」；成功的终态消息已作为 `outcome.reason` 存在。见决策记录 15。
+> - **`run.status` 改为 `AgentThreadStatus`**（`'idle' | 'running' | 'awaiting_review' | 'awaiting_takeover' | 'done' | 'stopped' | 'error'`）：投影输入本来就是**线程状态**，初稿写成 `AgentRunStatus` 反而声明了投影永远不会产出的 `max_steps` / `loop_guard`；穷尽映射 + `assertNever` 兜底，非终态不再被折叠成 `'done'`。见决策记录 14。
+> - **`device.name` 是固定字面量 `'android-device'`（无实际语义，属遗留字段）**：`AgentTurn` 根本不携带设备名或 serial，短名是结构性脱敏而非过滤器。本次**没有**接入真实设备名，字段保留只为兼容既有 artifact 形状。
+> - **新增 `step.compacted`**（可选）：上下文压缩已把该 turn 的 `promptContext` / `modelOutput` 清空，导出标记该事实，避免读成「本来就没有上下文」。保留策略本身未变。
+
 ```ts
 export type TrajectoryArtifact = {
   schemaVersion: 1
@@ -134,20 +141,20 @@ export type TrajectoryArtifact = {
     runId: string
     threadId: string
     task: string
-    status: AgentRunStatus
+    status: AgentThreadStatus        // idle / running / awaiting_review / awaiting_takeover / done / stopped / error
     startedAt: number
     endedAt?: number
     partial: boolean                 // 被 stop 中断时为 true
     stepTurnIds: string[]
   }
   model: {
-    provider: string
+    provider?: string
     model: string
     actionProtocol: ActionProtocol
     coordinateMode: ActionCoordinateMode
   }                                  // 不含 baseUrl / apiKey
   device: {
-    name: string                     // 不含 serial
+    name: string                     // 固定字面量 'android-device'，不含 serial
     screen: ScreenSize
     modelScreen?: ScreenSize
     orientation?: string
@@ -155,9 +162,8 @@ export type TrajectoryArtifact = {
   steps: TrajectoryStep[]
   outcome: {
     failureClass?: FailureClass
-    reason?: string
-    finalResponse?: string
-  }
+    reason?: string                  // 需 includeDiagnostics: true 才写入，见决策记录 15
+  }                                  // 无 finalResponse，见上文更正
 }
 
 export type TrajectoryStep = {
@@ -166,7 +172,6 @@ export type TrajectoryStep = {
   timing: AgentTurnTiming
   currentApp: string
   deviceState: DeviceState
-  uiTree?: ScreenTreeSummary
   context: { chars: number; digest: string } | { text: string }
   modelOutput: string
   action: AgentAction
@@ -177,9 +182,15 @@ export type TrajectoryStep = {
   failure?: { class: FailureClass; message: string }
   safetyDecision?: ActionSafetyDecision
   deviceCommands?: string[][]
+  compacted?: boolean
   screenshot?: { id: string; step: number; screen: ScreenSize; modelScreen?: ScreenSize }
 }
 ```
+
+**`deviceCommands` 的两条边界（实现期核实，消费方必读）**：
+
+1. **不含 secret 步骤**：`type_secret` 分支解析出的 argv 本身就是密钥，因此该字段在**任何** secret-bearing 步骤（含 `sequence` / `repeat` 嵌套、以及 `executionAction` 一侧）上都不出现。判定按动作形状，不匹配 argv 字符串。
+2. **只覆盖「动作执行漏斗」**：只有经 `#executeCommandStep` 真正下发的动作命令会被记录。设备剪贴板同步、ADB Keyboard 输入路径（非 ASCII 文本与 `preferAdbKeyboard`）、屏幕遮黑/常亮/IME 等设备设置类命令**不在其中**。此外回调在 `#requireAdb()` 之前触发，因此该字段应读作「尝试发送的 argv」，而非「已在设备上执行」。
 
 **为什么是 `digest` 而不是 `sha256`**：投影是**同步纯函数**，而加密级哈希在两个运行环境里都没有同步实现 —— 浏览器只有异步 `crypto.subtle`，Node 侧要 `node:crypto`。为避免把投影改成异步或引入新依赖，摘要统一使用 10 行实现的便携同步 **FNV-1a 32 位**（字段名 `digest`，形如 `fnv1a32:1a2b3c4d`）。它只用于「上下文/夹具是否变化」的比对，不承担安全语义；若日后需要加密级完整性校验，由 Node 侧生成器对**文件**用 `node:crypto` 计算，与内存投影解耦。
 
@@ -191,7 +202,7 @@ export type TrajectoryStep = {
 2. **只记引用，不记像素** —— 截图只存 `ScreenshotRef`（id + sha256 + 尺寸）。像素仅在本地调试导出时可选内联。
 3. **脱敏是一等公民** —— 不记 `device.serial`、不记 `model.baseUrl` / `apiKey`、secret 只记 descriptor id；`promptContext` 默认只存 `{ chars, sha256 }` 摘要，全文仅在 `includeContext: true` 时写入（默认关闭，供本地调试）。
    - **实现期补充的例外（安全发现，必须保留）**：`toolRegistry` 会把 `type_secret` 解析成携带**真实密钥值**的 `input_text` 命令（`toolRegistry.ts:497-509`），因此那一步的 `deviceCommands` **本身就是密钥**。投影必须**按动作形状**（而非匹配 argv 字符串）丢弃这类步骤的 `deviceCommands`，并覆盖 `action` 与 `executionAction` 两处、以及 `sequence` / `repeat` 的嵌套情形。`type_secret` 的投影动作只保留 descriptor id。
-   - 与之配套：`promptContext` 摘要算法在实现期定为 **FNV-1a 32 位**（非 sha256，见决策记录 10）；artifact 的 `run.status` 扩展为 `AgentRunStatus | 'error'`，以免把 `error` 误报为 `done`（见决策记录 14）。
+   - 与之配套：`promptContext` 摘要算法在实现期定为 **FNV-1a 32 位**（非 sha256，见决策记录 10）；artifact 的 `run.status` 按线程状态穷尽映射（含 `error`，非终态不再折叠成 `done`，见决策记录 14）；`outcome.reason` 因可能含 provider 错误原文而改为显式 opt-in，`finalResponse` 不交付（见决策记录 15）。
 
 ### 4.5 向后兼容
 
@@ -262,8 +273,10 @@ const AUTO_RECOVERABLE_FAILURES: ReadonlySet<FailureClass> =
 
 ### 5.3 UI 落点
 
-- **不加新档位**：`StepTone`（`AgentStepCard.tsx:23`）保持 `planned` / `running` / `success` / `failed` / `review` / `takeover`，失败类作为 `failed` 的副标题展示。
-- `RunLog` 的 detail 追加分类标签；`LogEntry.tone` 四档不变。
+- **不加新档位**：`StepTone`（`AgentStepCard.tsx:23`）保持 `planned` / `running` / `success` / `failed` / `review` / `takeover`，失败类作为副标题展示（`agent-step-failure-class`，文案键 `stepFailureClass`）。
+- `RunLog` 的 step timeline 追加 `failureClass` 字段并渲染为独立一行（文案键 `failureClassLabel`）；`LogEntry.tone` 四档不变。
+- **实现期更正**：初稿写的是「`RunLog` 的 detail 追加分类标签」，实际落在 timeline 上 —— 执行后那条日志的 `detail` 是命令结果原文，把分类混进字符串会污染它；timeline 是结构化字段，三个写入点（`onStep` / `onExecuted` / `execute-action`）都能带上分类。
+- **旧数据**：`failureClass` 缺失时（旧 turn、未分类路径）两个界面都**不渲染任何占位文本**，与本次改动前逐字一致。
 
 ### 5.4 run 级结局的分类来源
 
@@ -319,7 +332,9 @@ const AUTO_RECOVERABLE_FAILURES: ReadonlySet<FailureClass> =
 
 ## 7. Layer 2：fake `DeviceBackend` 离线重放
 
-- 实现 `DeviceBackend` 的 6 个必需方法，数据来自 trajectory：
+> **实现期澄清（与交付一致）**：本节初稿写的是「数据来自 trajectory」，**实际交付不是这样**。Layer 2 的输入是一份**专用的 run 脚本**（`test/helpers/fakeDeviceBackend.ts` 的 `FakeRunScript`，落盘在 `test/fixtures/runs/*.json`），由 `test/fixtureReplay/deviceLoop.test.ts` 直接喂给 fake backend 与离线 `OpenAiClient`；它只描述每一步的设备返回值、模型输出、时序与中止驱动，**不是** `TrajectoryArtifact`。因此 **trajectory → fixture 的链条目前止于 Layer 1**：`scripts/trajectory-to-fixture.mjs` 只产出 action / coordinate / command 三类夹具，没有任何投影把真实 artifact 变成 run 脚本。要让真实 run 驱动 Layer 2，需要另写 `trajectoryToRunFixtures`（范围另议）。
+
+- 实现 `DeviceBackend` 的 6 个必需方法，数据来自**该 run 脚本**（初稿写「来自 trajectory」，见上方澄清）：
   - `getCurrentApp()` / `getDeviceState()` → 该步记录的 `currentApp` / `deviceState`
   - `screenshot()` → 该步记录的尺寸几何
   - `execute(action)` → 成功返回记录的 `executionResult`；失败按记录的 `failure.class` 抛 `DeviceBackendError` 或超时
@@ -343,13 +358,17 @@ const AUTO_RECOVERABLE_FAILURES: ReadonlySet<FailureClass> =
 
 ```
 src/lib/failureTaxonomy.ts          FailureClass、分类函数、AUTO_RECOVERABLE_FAILURES
+src/lib/actionSecrets.ts            secret-bearing 动作谓词（trajectory 与 threadStore 共用）
 src/lib/trajectory.ts               TrajectoryArtifact 类型 + 从 AgentThread 投影 + 脱敏
 src/lib/trajectoryFixture.ts        trajectory → fixture 投影（含期望草案）
 scripts/trajectory-to-fixture.mjs   Node 侧生成器
 test/fixtures/actions/*.json
 test/fixtures/coordinates/*.json
-test/fixtures/trajectories/*.json   仅元数据的真实 run 记录
+test/fixtures/commands/*.json
+test/fixtures/runs/*.json           手写 run 脚本（Layer 2 输入，见 §7 澄清）
 ```
+
+> 初稿列的 `test/fixtures/trajectories/*.json`（仅元数据的真实 run 记录）**没有创建**：交付环境无真机，没有任何真实 run 可记录（见 §11 验收说明）。
 
 **修改**
 
@@ -358,11 +377,14 @@ src/lib/agent.ts               runId 透传、onDeviceCommand 收集、失败分
 src/lib/agentThread.ts         新字段 + startThreadTurn / recordThreadTurnExecution 接收
                                runId / failureClass / safetyDecision / deviceCommands
                                （isAgentThread 浅校验，无需改动）
-src/lib/toolRegistry.ts        ActionToolResult.failureKind
+src/lib/toolRegistry.ts        ActionToolResult.failureKind；type_secret 分支不再转发
+                               onDeviceCommand（其 argv 即密钥）
+src/lib/threadStore.ts         写入/读取两条路径按动作形状剥离 secret-bearing 的 deviceCommands
 src/adapters/deviceTypes.ts    DeviceBackendError 增加 kind（'io' | 'timeout'）
 src/adapters/deviceRetry.ts    withTimeout 以 kind: 'timeout' 构造错误
-src/components/AgentStepCard.tsx  failed tone 副标题显示分类
-src/lib/runLogEntries.ts       日志 detail 追加分类标签
+src/components/AgentStepCard.tsx  失败类副标题（旧数据不渲染占位）
+src/components/RunLog.tsx       timeline 渲染 failureClass 一行
+src/lib/runLogEntries.ts       timeline 增加 failureClass 字段
 src/lib/appCopy.ts (+ zh-CN/en-US) 新增文案
 package.json                   新增脚本 trajectory:fixture
 test/repo-hardening.test.ts     像素守卫 + fixture schemaVersion 守卫
@@ -392,6 +414,7 @@ README.md / README.en-US.md    路线图与结构树同步
 **手动**
 
 - 真机跑一次完整流程并导出 trajectory，走通 §6.5 的四步回路（需要物理设备）。
+- **状态：未执行。** 交付环境无可用硬件，全部已提交夹具的 `source` 均为 `"handwritten"`；详见 §11 的验收说明。本 milestone 不声称真机链路已验证。
 
 ---
 
@@ -417,6 +440,12 @@ README.md / README.en-US.md    路线图与结构树同步
 5. 失败分类在 `AgentStepCard` 与 `RunLog` 可见，且 `unknown` 在主路径用例中不出现。
 6. 现有 544 用例全绿，lint / build 干净。
 7. README 路线图与结构树同步更新。
+
+> **验收 1 / 2 的真机部分未演示（不得声称已验证）**：本次交付环境**没有可用的物理 Android 设备**，因此没有任何一次真机 run 被导出成 trajectory。证据是仓库内**每一个** Layer 1 夹具的 `source` 字段都是 `"handwritten"`（12 个夹具、0 个 `trajectory:*`），即 §6.5 的四步人工回路**从未跑通**。
+> - 验收 1（真实 run 导出且不含敏感项）只在**单测层面**成立：`src/lib/trajectory.test.ts` 的投影/脱敏用例、`src/lib/secretContainment.test.ts` 的 secret 用例，以及 App 层的导出按钮用例（用构造的 thread，而非真机产物）。
+> - 验收 2（导出 → `npm run trajectory:fixture` → CI 重放）中，**夹具生成器与重放**已在 CI 通过，但「导出」那一端拿的是构造数据而非真机数据。
+> - Layer 2 同理：`test/fixtures/runs/*.json` 是手写 run 脚本（见 §7 澄清），不是真机 trajectory 的产物。
+> - §9 的「手动」一项因此**未执行**，留待有硬件时补做。
 
 ---
 
@@ -449,3 +478,5 @@ README.md / README.en-US.md    路线图与结构树同步
 | 11 | `isAgentThread` | 更正 §4.5：经核查为浅校验，无需修改；改用例锁定该行为 |
 | 12 | `deviceCommands` 收集点 | 更正 §7：收集在执行处（runner 循环 / 控制器），不在 `runAgentStep()`（后者不执行动作） |
 | 13 | run 级结局 | 更正 §4.1：`loop_guard` / `aborted` 不是步骤失败（`loop_guard` 拦在**执行之前**，前一步是成功的），且控制器把 `loop_guard` 折叠成 `stopped` 无法与中止区分 —— 故 run 级 `failureClass` 记在 `status_change` 事件上，投影进 `outcome.failureClass` |
+| 14 | `run.status` 的类型与映射 | 更正 §4.3：artifact 的 `status` 初稿写成 `AgentRunStatus`，但投影的真实输入是**线程状态** —— 该类型声明了投影永远不会产出的 `max_steps` / `loop_guard`，而实现里的 `default: return 'done'` 会把 `idle` / `running`（中途导出、单步动作）连同 `error` 一起报成成功。改为 `AgentThreadStatus`（`idle` / `running` / `awaiting_review` / `awaiting_takeover` / `done` / `stopped` / `error`）逐分支映射，`default` 走 `assertNever`，非终态如实上报并由 `run.partial` 标记 |
+| 15 | `outcome.reason` 改为 opt-in、`finalResponse` 不交付 | 更正 §4.3：`reason` 是 run 最后一条 `status_change` 的 `message`，错误路径上就是捕获到的 `Error.message` —— 模型 provider 的错误原文可能点名 key 前缀或回显请求端点（`baseUrl`、Gemini 的 key 均为用户配置），无法在不制造虚假安全感的前提下正则清洗，故与 `promptContext` 一样改为显式 `includeDiagnostics: true` 才写入。`finalResponse` 彻底移除：`AgentConversationMessage` 是 `{ id, role, content }`，没有 run / turn 归属，任何「哪条消息是本次 run 的最终回复」都只能是猜测；成功 run 的终态消息已由 `recordThreadStatus` 存为 `reason` |

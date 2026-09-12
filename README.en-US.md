@@ -30,7 +30,7 @@ Docker:
 - Use WebDroid JSON-family action protocols and canonical JSON action format: `webdroid_json` uses screenshot pixels, while `webdroid_normalized_json` uses Vision-Pointer-style 0-1000 normalized coordinates.
 - Parse, normalize, and validate the next action returned by the model.
 - Execute app launches, taps, swipes, text input, Back, Home, long press, double tap, and wait actions through ADB, including model-controlled wait duration.
-- Support clear-before-type input, fixed post-action settle delay, transient model API and empty-model-response retries, and limited automatic recovery from non-sensitive execution failures.
+- Support clear-before-type input, fixed post-action settle delay, transient model API and empty-model-response retries, and automatic recovery limited to transient device errors (`device_io` / `device_timeout`, three attempts before `awaiting_review`); every other failure class stops after one attempt.
 - Support editable App Cards, local Custom Tools, and safe Secret typing that exposes only IDs/labels to the model.
 - Support continuous auto-execution as well as step-by-step human confirmation.
 - Send chat messages to run automatically, with one-step planning kept in advanced debug controls.
@@ -60,7 +60,7 @@ It is not a good fit for:
 4. Type a natural-language instruction in the chat, such as "Open Settings and go to Wi-Fi".
 5. Sending the message captures the screen and asks the model for one action.
 6. The frontend parses and validates the action, then executes safe actions automatically while sensitive actions ask for confirmation by default.
-7. If a non-sensitive action execution fails, the failure feedback is added to the next model context and the model gets a small number of automatic recovery attempts.
+7. Only transient device errors (`device_io` / `device_timeout`) are retried automatically: the failure feedback is added to the next model context and the run moves to `awaiting_review` after three attempts. Every other failure class stops after one attempt.
 8. The loop continues until the model returns `done`, requests `take_over`, the max step count is reached, or the user stops execution; unrestricted mode does not stop on `take_over`.
 
 ## Requirements
@@ -471,7 +471,7 @@ The current tests mainly cover:
 - OpenAI-compatible and Responses API request payload construction, response parsing, and network client errors.
 - Docker local proxy forwarding constraints for `/chat/completions` and `/responses`.
 - Single-step and continuous agent execution.
-- Failure feedback, transient model API and empty-model-response retries, and limited automatic recovery.
+- Failure feedback and automatic recovery for transient device errors (`device_io` / `device_timeout`: three attempts before `awaiting_review`; every other failure class stops after one attempt), plus transient model API and empty-model-response retries.
 - Failure classification, trajectory projection and sanitisation, and offline replay of action, coordinate, and command fixtures plus the device loop (three `device_timeout` attempts before `awaiting_review`; an abort keeps the steps already executed).
 - Settings persistence and compatibility migration.
 - Agent thread/turn persistence.
