@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.action-fixture",
+  "name": "non-json-prose",
+  "source": "handwritten",
+  "input": {
+    "modelOutput": "I will open Settings and tap the Wi-Fi row.",
+    "screen": { "width": 1080, "height": 2316 },
+    "actionProtocol": "webdroid_json",
+    "coordinateMode": "screenshot_pixels"
+  },
+  "expected": { "error": { "messageIncludes": "JSON" } },
+  "note": "observed: the prose contains no '{'/'}' pair, so extractJsonObject throws 'Model response did not contain a JSON object.', which parseActionCandidate's catch replaces with 'Model response did not contain valid action JSON.'. The assertion matches the message the caller actually sees; it pins a rejection, never an action shape."
+}

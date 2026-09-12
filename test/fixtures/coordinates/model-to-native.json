@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.coordinate-fixture",
+  "name": "model-to-native",
+  "source": "handwritten",
+  "input": {
+    "action": { "action": "tap", "x": 719, "y": 1543 },
+    "fromScreen": { "width": 720, "height": 1544 },
+    "toScreen": { "width": 1080, "height": 2316 }
+  },
+  "expected": { "action": { "action": "tap", "x": 1078, "y": 2314 } },
+  "note": "captured from a real run: mapPoint is round(x / from.width * (to.width - 1)) clamped to [0, to.width - 1], not a scale by toScreen.width. The far corner of the model screenshot gives round(719 / 720 * 1079) = round(1077.5014) = 1078 and round(1543 / 1544 * 2315) = round(2313.5006) = 2314; scaling by 1080/720 and 2316/1544 would have produced 1079 — the last pixel — which is exactly what the (axis - 1) target avoids. First pass guessed 1079 and the run corrected it."
+}

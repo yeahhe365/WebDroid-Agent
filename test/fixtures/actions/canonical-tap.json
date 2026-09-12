@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.action-fixture",
+  "name": "canonical-tap",
+  "source": "handwritten",
+  "input": {
+    "modelOutput": "{\"action\":\"tap\",\"x\":100,\"y\":200}",
+    "screen": { "width": 1080, "height": 2316 },
+    "actionProtocol": "webdroid_json",
+    "coordinateMode": "screenshot_pixels"
+  },
+  "expected": { "action": { "action": "tap", "x": 100, "y": 200 } },
+  "note": "hand-provable, and it passed on the first run: screenshot_pixels mode keeps the integers as given, (100, 200) is inside 1080x2316 so assertPointWithinScreen accepts it, and the validator adds nothing the model did not send (no reason, message or risk)."
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.coordinate-fixture",
+  "name": "boundary-clamp",
+  "source": "handwritten",
+  "input": {
+    "action": {
+      "action": "swipe",
+      "fromX": 0,
+      "fromY": 0,
+      "toX": 1079,
+      "toY": 2315,
+      "durationMs": 300
+    },
+    "fromScreen": { "width": 1080, "height": 2316 },
+    "toScreen": { "width": 720, "height": 1544 }
+  },
+  "expected": {
+    "action": {
+      "action": "swipe",
+      "fromX": 0,
+      "fromY": 0,
+      "toX": 718,
+      "toY": 1542,
+      "durationMs": 300
+    }
+  },
+  "note": "captured from a real run, and the only fixture that replays the four-coordinate swipe shape. mapActionCoordinates maps a swipe point by point (mapPoint on from and on to) and keeps every other field, so durationMs 300 survives. The origin maps to itself (the 0 clamp), and the last valid coordinate of 1080x2316 maps to (round(1079 / 1080 * 719), round(2315 / 2316 * 1543)) = (718, 1542) — inside 720x1544 and, again, not the last pixel (719, 1543). First pass guessed 719/1543 and the run corrected it."
+}

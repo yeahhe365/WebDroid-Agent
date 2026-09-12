@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.command-fixture",
+  "name": "dump-screen-tree",
+  "source": "handwritten",
+  "input": { "action": { "action": "dump_screen_tree" } },
+  "expected": {
+    "argv": ["uiautomator", "dump", "--compressed", "/sdcard/webdroid-window-dump.xml"]
+  },
+  "note": "argv captured from buildDumpScreenTreeCommand(): four tokens, the last being the default UI_AUTOMATOR_DUMP_PATH '/sdcard/webdroid-window-dump.xml'. No user-supplied text reaches this argv, so it is the control case next to the set_clipboard escaping fixture."
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.action-fixture",
+  "name": "normalized-0-1000",
+  "source": "handwritten",
+  "input": {
+    "modelOutput": "{\"action\":\"tap\",\"x\":500,\"y\":500}",
+    "screen": { "width": 1080, "height": 2316 },
+    "actionProtocol": "webdroid_normalized_json",
+    "coordinateMode": "normalized_0_1000"
+  },
+  "expected": { "action": { "action": "tap", "x": 540, "y": 1158 } },
+  "note": "captured from a real run: normalizedCoordinateToPixel(value, axis) = round(value / 1000 * (axis - 1)), so 500/500 on 1080x2316 becomes (round(0.5 * 1079), round(0.5 * 2315)) = (540, 1158), the pixels nearest the screen centre (539.5, 1157.5). The naive 'keep the normalized number as pixels' reading, (500, 500), is what the first run disproved."
+}

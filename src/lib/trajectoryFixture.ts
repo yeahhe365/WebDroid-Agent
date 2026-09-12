@@ -38,6 +38,21 @@ export type CoordinateFixture = {
   note?: string
 }
 
+/**
+ * A recorded device command, keyed by the action that produced it. The shape
+ * mirrors `deviceCommands` in a recorded trajectory step, so a fixture derived
+ * from a real run and one written by hand are interchangeable.
+ */
+export type CommandFixture = {
+  schemaVersion: typeof FIXTURE_SCHEMA_VERSION
+  kind: 'webdroid.command-fixture'
+  name: string
+  source: string
+  input: { action: AgentAction }
+  expected: { argv: readonly string[] }
+  note?: string
+}
+
 export function trajectoryToActionFixtures(artifact: TrajectoryArtifact): ActionFixture[] {
   const coordinateMode = artifact.model.coordinateMode
   return artifact.steps

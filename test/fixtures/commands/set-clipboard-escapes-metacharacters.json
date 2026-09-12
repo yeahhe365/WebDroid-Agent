@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.command-fixture",
+  "name": "set-clipboard-escapes-metacharacters",
+  "source": "handwritten",
+  "input": { "action": { "action": "set_clipboard", "text": "hello; rm -rf / && echo 'pwned'" } },
+  "expected": {
+    "argv": ["cmd", "clipboard", "set", "'hello; rm -rf / && echo '\\''pwned'\\'''"]
+  },
+  "note": "argv captured from buildSetClipboardCommand(\"hello; rm -rf / && echo 'pwned'\"): ['cmd', 'clipboard', 'set', <escaped text>]. escapeShellArg wraps the whole text in single quotes, so the raw ';' and '&&' stay inside one argument instead of becoming separate tokens, and each embedded single quote becomes '\\'' (close quote, escaped quote, reopen). The text and argv came from a real execution, not from reading the helper."
+}

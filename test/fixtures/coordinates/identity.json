@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.coordinate-fixture",
+  "name": "identity",
+  "source": "handwritten",
+  "input": {
+    "action": { "action": "tap", "x": 100, "y": 200 },
+    "fromScreen": { "width": 1080, "height": 2316 },
+    "toScreen": { "width": 1080, "height": 2316 }
+  },
+  "expected": { "action": { "action": "tap", "x": 100, "y": 200 } },
+  "note": "hand-provable, so no capture was needed: mapPoint computes round(x / from.width * (to.width - 1)) with a [0, to.width - 1] clamp, which returns x unchanged while x <= from.width / 2 — round(100 / 1080 * 1079) = round(99.9074) = 100 and round(200 / 2316 * 2315) = round(199.9136) = 200. It is deliberately NOT a general identity: the same 1080-wide screen maps x = 1079 to 1078, so this fixture pins only mid-range points."
+}

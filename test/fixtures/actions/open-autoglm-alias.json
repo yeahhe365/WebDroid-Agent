@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.action-fixture",
+  "name": "open-autoglm-alias",
+  "source": "handwritten",
+  "input": {
+    "modelOutput": "<answer>{\"action\":\"Tap\",\"x\":10,\"y\":20}</answer>",
+    "screen": { "width": 1080, "height": 2316 },
+    "actionProtocol": "webdroid_json",
+    "coordinateMode": "screenshot_pixels"
+  },
+  "expected": { "action": { "action": "tap", "x": 10, "y": 20 } },
+  "note": "calibrated from a real run. The Open-AutoGLM function-call shape is NOT accepted: '<answer>do(action=\"Tap\", element=[10, 20])</answer>' throws 'Model response did not contain valid action JSON.', and the element form '{\"action\":\"Tap\",\"element\":[10,20]}' throws 'Action must include x/y coordinates.'. The alias surface the parser does accept is the action NAME: normalizeActionName lowercases and turns spaces/hyphens into underscores, so 'Tap' parses to tap (this fixture) and 'Long Press' to long_press with the default durationMs 800. The <answer> wrapper is kept because that is how AutoGLM-style models emit JSON."
+}

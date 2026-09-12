@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.action-fixture",
+  "name": "invalid-package",
+  "source": "handwritten",
+  "input": {
+    "modelOutput": "{\"action\":\"launch\",\"packageName\":\"not a package!\"}",
+    "screen": { "width": 1080, "height": 2316 },
+    "actionProtocol": "webdroid_json",
+    "coordinateMode": "screenshot_pixels"
+  },
+  "expected": { "error": { "messageIncludes": "app must be a non-empty string." } },
+  "note": "calibrated from a real run. launch reads `app` before it validates packageName, so this input is rejected with 'app must be a non-empty string.' and the packageName check is never reached; the brief's expected /package/i message is unreachable for its own input. Adding \"app\":\"Chrome\" to the same packageName does report 'packageName must be a valid Android package name.' (captured too, and that path is already unit-covered in src/lib/actionValidation.packageName.test.ts). The input is replayed exactly as the brief prescribes; only the expectation follows the observed message."
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.action-fixture",
+  "name": "markdown-wrapped",
+  "source": "handwritten",
+  "input": {
+    "modelOutput": "```json\n{\"action\":\"tap\",\"x\":100,\"y\":200}\n```",
+    "screen": { "width": 1080, "height": 2316 },
+    "actionProtocol": "webdroid_json",
+    "coordinateMode": "screenshot_pixels"
+  },
+  "expected": { "action": { "action": "tap", "x": 100, "y": 200 } },
+  "note": "observed: extractJsonObject strips the ```json fence with /```(?:json)?\\s*([\\s\\S]*?)\\s*```/i and then slices from the first '{' to the last '}', so the fenced reply parses to exactly the same action as the bare JSON in canonical-tap. Passed on the first run."
+}
