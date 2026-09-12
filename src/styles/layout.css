@@ -391,12 +391,69 @@ button.status:focus-visible {
   max-width: 1600px;
   min-height: min(820px, calc(100dvh - 96px));
   min-width: 0;
+  position: relative;
   transition: grid-template-columns var(--duration-moderate) var(--ease-productive);
   width: min(100%, 1600px);
 }
 
 .workspace-running {
   grid-template-columns: minmax(320px, 0.78fr) minmax(400px, 1.12fr);
+}
+
+/* ═══ Workspace split divider (wide viewports only) ═══ */
+
+.workspace-split-handle {
+  display: none;
+}
+
+@media (min-width: 1200px) {
+  .workspace {
+    grid-template-columns: minmax(380px, var(--workspace-split, 52%)) minmax(320px, 1fr);
+  }
+
+  .workspace-running {
+    grid-template-columns: minmax(320px, var(--workspace-split, 44%)) minmax(360px, 1fr);
+  }
+
+  .workspace-split-handle {
+    align-items: center;
+    bottom: 0;
+    cursor: col-resize;
+    display: flex;
+    justify-content: center;
+    position: absolute;
+    top: 0;
+    touch-action: none;
+    transform: translateX(-50%);
+    width: 18px;
+    z-index: 2;
+  }
+
+  .workspace:not(.workspace-running) .workspace-split-handle {
+    left: calc(var(--workspace-split, 52%) + (var(--space-3) / 2));
+  }
+
+  .workspace-running .workspace-split-handle {
+    left: calc(var(--workspace-split, 44%) + (var(--space-3) / 2));
+  }
+
+  .workspace-split-handle span {
+    background: var(--border);
+    border-radius: 999px;
+    height: 56px;
+    transition: background var(--duration-fast) var(--ease-productive);
+    width: 3px;
+  }
+
+  .workspace-split-handle:hover span,
+  .workspace-split-handle:focus-visible span {
+    background: var(--accent);
+  }
+
+  .workspace-split-handle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 .phone-column {

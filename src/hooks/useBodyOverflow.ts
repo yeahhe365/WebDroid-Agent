@@ -1,31 +1,40 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 
 /**
- * Manages document.body.style.overflow as a stack.
- * Multiple consumers (fullscreen, lightbox) can lock independently;
- * overflow is only restored when the last lock is released.
+ * Manages document.body scroll locking as a shared stack.
+ * Consumers (fullscreen preview, lightbox, modal dialogs) can lock
+ * independently; body styles are only restored when the last lock is
+ * released, no matter which component released it first.
  */
-export function useBodyOverflow(lock: boolean) {
-  const lockCountRef = useRef(0)
-  const previousOverflowRef = useRef<string | null>(null)
+type BodyScrollLockState = {
+  count: number
+  overflow: string
+  overscrollBehavior: string
+}
 
+const lockState: BodyScrollLockState = { count: 0, overflow: '', overscrollBehavior: '' }
+
+export function useBodyOverflow(lock: boolean) {
   useEffect(() => {
     if (!lock) {
       return
     }
 
-    if (lockCountRef.current === 0) {
-      previousOverflowRef.current = document.body.style.overflow
+    if (lockState.count === 0) {
+      lockState.overflow = document.body.style.overflow
+      lockState.overscrollBehavior = document.body.style.overscrollBehavior
     }
 
-    lockCountRef.current += 1
+    lockState.count += 1
     document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'contain'
 
     return () => {
-      lockCountRef.current -= 1
-      if (lockCountRef.current <= 0) {
-        lockCountRef.current = 0
-        document.body.style.overflow = previousOverflowRef.current || ''
+      lockState.count -= 1
+      if (lockState.count <= 0) {
+        lockState.count = 0
+        document.body.style.overflow = lockState.overflow
+        document.body.style.overscrollBehavior = lockState.overscrollBehavior
       }
     }
   }, [lock])

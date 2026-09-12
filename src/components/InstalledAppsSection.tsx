@@ -5,6 +5,7 @@ import {
   getInstalledAppSearchValues,
 } from '../adapters/installedApps'
 import type { InstalledApp } from '../adapters/deviceTypes'
+import { useBodyOverflow } from '../hooks/useBodyOverflow'
 import type { AppCopy } from '../lib/appCopy'
 import type { BusyTask } from '../lib/busyTask'
 import { LazyDetails } from './LazyDetails'
@@ -67,6 +68,7 @@ export function InstalledAppsDialog({
   onLaunchInstalledApp,
 }: InstalledAppsDialogProps) {
   const titleId = useId()
+  useBodyOverflow(true)
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -75,15 +77,9 @@ export function InstalledAppsDialog({
       }
     }
 
-    const previousOverflow = document.body.style.overflow
-    const previousOverscrollBehavior = document.body.style.overscrollBehavior
-    document.body.style.overflow = 'hidden'
-    document.body.style.overscrollBehavior = 'contain'
     window.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      document.body.style.overflow = previousOverflow
-      document.body.style.overscrollBehavior = previousOverscrollBehavior
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [onClose])

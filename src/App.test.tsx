@@ -1803,4 +1803,48 @@ describe('App', () => {
     expect(container.querySelector('.phone-frame')).toBeTruthy()
     expect(container.querySelector('.phone-screen-placeholder')).toBeTruthy()
   })
+
+  it('focuses the chat composer from the global focus shortcut', () => {
+    render(<App />)
+
+    const composer = screen.getByRole('textbox', { name: /chat message/i })
+    composer.blur()
+    expect(document.activeElement).not.toBe(composer)
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: 'k' })
+
+    expect(document.activeElement).toBe(composer)
+  })
+
+  it('toggles the configuration drawer and inspect drawer from shortcuts', () => {
+    render(<App />)
+
+    expect(document.querySelector('.config-panel')).toBeNull()
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: 'b' })
+    expect(document.querySelector('.config-panel')).toBeTruthy()
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: 'b' })
+    expect(document.querySelector('.config-panel')).toBeNull()
+
+    expect(document.querySelector('.inspect-drawer')).toBeNull()
+    fireEvent.keyDown(window, { ctrlKey: true, key: 'j' })
+    expect(document.querySelector('.inspect-drawer')).toBeTruthy()
+    fireEvent.keyDown(window, { ctrlKey: true, key: 'j' })
+    expect(document.querySelector('.inspect-drawer')).toBeNull()
+  })
+
+  it('resizes the workspace panes with the split divider', () => {
+    render(<App />)
+
+    const handle = screen.getByRole('separator', { name: /resize panes/i })
+    expect(handle.getAttribute('aria-valuenow')).toBe('52')
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+
+    expect(Number(handle.getAttribute('aria-valuenow'))).toBeGreaterThan(52)
+    expect(document.querySelector('.workspace')?.getAttribute('style')).toContain(
+      '--workspace-split',
+    )
+  })
 })

@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from 'react'
 import { LazyWebAdbDeviceBackend } from './adapters/lazyWebAdbBackend'
 import type { AgentStep } from './lib/agent'
@@ -40,6 +41,9 @@ import { useAgentRunController } from './hooks/useAgentRunController'
 import { useConfigTargetScroll } from './hooks/useConfigTargetScroll'
 import { useDeviceController } from './hooks/useDeviceController'
 import { useAgentSessionHistory } from './hooks/useAgentSessionHistory'
+import { useBodyOverflow } from './hooks/useBodyOverflow'
+import { useHotkeys } from './hooks/useHotkeys'
+import { useSplitPane, WORKSPACE_SPLIT_STORAGE_KEY } from './hooks/useSplitPane'
 import { useBusyTask } from './hooks/useBusyTask'
 import { useBusyTaskDocumentTitle } from './hooks/useBusyTaskDocumentTitle'
 import { useDocumentPreferences } from './hooks/useDocumentPreferences'
@@ -50,6 +54,7 @@ import { useRunLog } from './hooks/useRunLog'
 import { useStorageEstimate } from './hooks/useStorageEstimate'
 import { AppProvider } from './components/AppContext'
 import { AppTopbar } from './components/AppTopbar'
+import { focusChatComposer } from './lib/chatComposer'
 import { ConfigSidebar } from './components/ConfigSidebar'
 import { DeviceQuickControls } from './components/DeviceQuickControls'
 import { PhoneStage } from './components/PhoneStage'
@@ -128,6 +133,15 @@ function App() {
   const [themeMode, setThemeMode] = useState(settings.themeMode)
   const [languageMode, setLanguageMode] = useState(settings.languageMode)
   const [configSidebarOpen, setConfigSidebarOpen] = useState(false)
+  const {
+    containerRef: workspaceSplitRef,
+    handleProps: workspaceSplitHandleProps,
+    isCustom: workspaceSplitIsCustom,
+    splitPercent: workspaceSplitPercent,
+  } = useSplitPane({
+    defaultSplit: 52,
+    storageKey: WORKSPACE_SPLIT_STORAGE_KEY,
+  })
   const openConfigTarget = useConfigTargetScroll(configSidebarOpen, setConfigSidebarOpen)
   type WorkspaceTab = 'phone' | 'chat'
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('chat')
@@ -339,21 +353,7 @@ function App() {
     configSidebarOpen ||
     runLogOpen ||
     sensitiveActionRequest !== null
-  useEffect(() => {
-    if (!modalOverlayOpen) {
-      return
-    }
-
-    const previousOverflow = document.body.style.overflow
-    const previousOverscrollBehavior = document.body.style.overscrollBehavior
-    document.body.style.overflow = 'hidden'
-    document.body.style.overscrollBehavior = 'contain'
-
-    return () => {
-      document.body.style.overflow = previousOverflow
-      document.body.style.overscrollBehavior = previousOverscrollBehavior
-    }
-  }, [modalOverlayOpen])
+  useBodyOverflow(modalOverlayOpen)
   const rememberMemory = useCallback((information: string) => {
     setMemoryItems((current) => {
       const next = rememberMemoryItem(current, information)
@@ -633,6 +633,22 @@ function App() {
     settleSensitiveActionRequest(false)
   }
 
+  // Enter already sends from the composer, so no modifier is bound to send.
+  useHotkeys([
+    { handler: focusChatComposer, key: 'k', metaOrCtrl: true },
+    { handler: handleToggleConfigSidebar, key: 'b', metaOrCtrl: true },
+    { handler: handleToggleInspect, key: 'j', metaOrCtrl: true },
+    {
+      handler: () => {
+        if (modalOverlayOpen || !isAgentRunning) {
+          return
+        }
+        handleStopRun()
+      },
+      key: 'Escape',
+    },
+  ])
+
   useEffect(() => {
     if (!runLogOpen) {
       return
@@ -790,6 +806,12 @@ function App() {
               ]
                 .filter(Boolean)
                 .join(' ')}
+              ref={workspaceSplitRef}
+              style={
+                workspaceSplitIsCustom
+                  ? ({ '--workspace-split': `${workspaceSplitPercent}%` } as CSSProperties)
+                  : undefined
+              }
             >
               <ConversationPanel
                 activeThreadId={activeThreadId}
@@ -820,6 +842,10 @@ function App() {
                 queuedChatMessageCount={queuedChatMessageCount}
                 threadSummaries={threadSummaries}
               />
+
+              <div className="workspace-split-handle" {...workspaceSplitHandleProps}>
+                <span aria-hidden="true" />
+              </div>
 
               <div className="phone-column">
                 <div className="phone-stage-chrome">
