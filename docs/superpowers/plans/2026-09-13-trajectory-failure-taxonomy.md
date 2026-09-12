@@ -448,7 +448,7 @@ import { classifyThrownFailure, type FailureClass } from './failureTaxonomy'
   onDeviceCommand?: (argv: readonly string[]) => void
 ```
 
-`call_api` 分支（`:312`）——**只加 `failureKind`，保持 `safetyDecision` 原样**：
+`call_api` 分支（`:312`）—— **`failureKind` 与 `safetyDecision` 必须二选一**，因为安全拒绝不是失败（spec §5.1）。受限模式下这是"请用户接管"的拒绝路径，不得带 `failureKind`；只有非受限模式（动作确实是被当作不受支持而失败）才带：
 
 ```ts
     if (action.action === 'call_api') {
@@ -456,11 +456,14 @@ import { classifyThrownFailure, type FailureClass } from './failureTaxonomy'
         toolName,
         success: false,
         summary: `Unsupported call_api action: ${action.instruction}`,
-        failureKind: 'unsupported_action',
-        ...(context.unrestrictedMode ? {} : { safetyDecision: 'take_over' as const }),
+        ...(context.unrestrictedMode
+          ? { failureKind: 'unsupported_action' as const }
+          : { safetyDecision: 'take_over' as const }),
       }
     }
 ```
+
+> 这个形状同时满足三件事：① 约束「安全拒绝不得带 `failureKind`」；② Task 4 的用例（用 `unrestrictedMode: true`，期望 `unsupported_action` 走到 `awaiting_review`）；③ `toolRegistry.test.ts` 里那条既有 `take_over` 精确断言**无需修改**。原计划写成无条件 `failureKind` + 条件 `safetyDecision`，会让拒绝路径同时带上两者 —— 该缺陷由 Task 3 评审发现（I1）。
 
 兜底 catch（`:414` 的 `catch (caught)` 分支）——设备异常在这里落地：
 
