@@ -82,6 +82,7 @@ export async function retryDeviceOperation<T>(
 
   throw new DeviceBackendError(
     `Failed to get ${label} after ${maxAttempts} attempts: ${describeError(lastError)}`,
+    lastError instanceof DeviceBackendError ? lastError.kind : 'io',
   )
 }
 

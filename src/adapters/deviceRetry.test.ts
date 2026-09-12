@@ -68,6 +68,33 @@ describe('retryDeviceOperation timeouts', () => {
   })
 })
 
+describe('retryDeviceOperation error kinds', () => {
+  it('keeps kind timeout when a hung operation exhausts every attempt', async () => {
+    const error = await retryDeviceOperation(() => new Promise<never>(() => {}), {
+      label: 'device state',
+      timeoutMs: 5,
+      maxAttempts: 2,
+      retryDelaysMs: [0],
+      wait: async () => {},
+    }).catch((caught) => caught)
+
+    expect(error).toBeInstanceOf(DeviceBackendError)
+    expect((error as DeviceBackendError).kind).toBe('timeout')
+  })
+
+  it('reports kind io when the exhausted failure is not a timeout', async () => {
+    const error = await retryDeviceOperation(
+      async () => {
+        throw new Error('dumpsys unavailable')
+      },
+      { label: 'device state', maxAttempts: 3, retryDelaysMs: [0], wait: async () => {} },
+    ).catch((caught) => caught)
+
+    expect(error).toBeInstanceOf(DeviceBackendError)
+    expect((error as DeviceBackendError).kind).toBe('io')
+  })
+})
+
 describe('DeviceBackendError.kind', () => {
   it('defaults to io so existing call sites keep their meaning', () => {
     expect(new DeviceBackendError('boom').kind).toBe('io')
