@@ -1,5 +1,11 @@
 # WebDroid-Agent Bug Fix Implementation Plan
 
+> **状态（2026-09-12 回填）**：19 项修复已由 `5f8d24d` / `80104c3` / `6df6a89` / `0230bbf`（合并 `06d49f3`）落地，
+> 逐项证据见 `docs/bugfix-2026-06-24.md`。本次回填时补齐了三处收尾：`SensitiveActionDialog` 的 Tab 焦点陷阱、
+> `set_clipboard` 转义测试、停止运行（abort）回归测试。仍开放：F.3 真机手动冒烟（需物理 Android 设备）。
+> 偏差说明：Task 4.1「Enter 忙时守卫」在 `0230bbf` 加入后又被 `bca7168` 有意移除，改为消息排队机制，请勿回退；
+> 本计划正文称「27 confirmed bugs」，实际仅枚举 19 项修复，口径差异已在汇总文档中说明。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix all 27 confirmed bugs across security, agent loop, safety policy, and UI subsystems
@@ -31,7 +37,7 @@
 **Interfaces:**
 - Produces: `escapeShellArg(value: string): string` — wraps value in single quotes, escapes internal single quotes
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // src/adapters/shellEscape.test.ts
@@ -61,12 +67,12 @@ describe('escapeShellArg', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npm test src/adapters/shellEscape.test.ts`
 Expected: FAIL with "Cannot find module './shellEscape'"
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```typescript
 // src/adapters/shellEscape.ts
@@ -79,12 +85,12 @@ export function escapeShellArg(value: string): string {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npm test src/adapters/shellEscape.test.ts`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/adapters/shellEscape.ts src/adapters/shellEscape.test.ts
@@ -102,7 +108,7 @@ git commit -m "feat(adapters): add shell argument escaping utility"
 - Consumes: `escapeShellArg` from Task 1.1
 - Produces: Safe `open_url` command with escaped URL
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // src/adapters/inputCommands.test.ts
@@ -124,12 +130,12 @@ describe('buildInputCommandSequence', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npm test src/adapters/inputCommands.test.ts`
 Expected: FAIL — URL not escaped
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```typescript
 // src/adapters/inputCommands.ts
@@ -141,12 +147,12 @@ case 'open_url':
   return [['am', 'start', '-a', 'android.intent.action.VIEW', '-d', escapeShellArg(action.url)]]
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npm test src/adapters/inputCommands.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/adapters/inputCommands.ts src/adapters/inputCommands.test.ts
@@ -162,7 +168,7 @@ git commit -m "fix(adapters): escape URL in open_url to prevent command injectio
 **Interfaces:**
 - Consumes: `escapeShellArg` from Task 1.1
 
-- [ ] **Step 1: Write integration test**
+- [x] **Step 1: Write integration test**
 
 ```typescript
 // src/adapters/webAdbBackend.clipboard.test.ts
@@ -194,12 +200,12 @@ describe('WebAdbDeviceBackend set_clipboard escaping', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npm test src/adapters/webAdbBackend.clipboard.test.ts`
 Expected: FAIL — text not escaped
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```typescript
 // src/adapters/webAdbBackend.ts
@@ -217,12 +223,12 @@ async #setDeviceClipboard(text: string, signal?: AbortSignal) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npm test src/adapters/webAdbBackend.clipboard.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/adapters/webAdbBackend.ts src/adapters/webAdbBackend.clipboard.test.ts
@@ -238,7 +244,7 @@ git commit -m "fix(adapters): escape clipboard text to prevent command injection
 **Interfaces:**
 - Produces: Validated packageName matching `^[a-zA-Z][\w.]*$`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // src/lib/actionValidation.packageName.test.ts
@@ -280,12 +286,12 @@ describe('validateAction packageName', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npm test src/lib/actionValidation.packageName.test.ts`
 Expected: FAIL — invalid packageName accepted
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```typescript
 // src/lib/actionValidation.ts
@@ -311,12 +317,12 @@ function optionalPackageNameFromApp(app: string): string | undefined {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npm test src/lib/actionValidation.packageName.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/actionValidation.ts src/lib/actionValidation.packageName.test.ts
@@ -332,7 +338,7 @@ git commit -m "fix(validation): validate packageName format to prevent injection
 **Interfaces:**
 - Produces: `escapeInputText` that escapes backslash
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // src/adapters/adbKeyboard.escape.test.ts
@@ -351,12 +357,12 @@ describe('escapeInputText', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npm test src/adapters/adbKeyboard.escape.test.ts`
 Expected: FAIL — backslash not escaped
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```typescript
 // src/adapters/adbKeyboard.ts
@@ -365,12 +371,12 @@ export function escapeInputText(text: string) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npm test src/adapters/adbKeyboard.escape.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/adapters/adbKeyboard.ts src/adapters/adbKeyboard.escape.test.ts
@@ -393,7 +399,7 @@ git commit -m "fix(adb-keyboard): escape backslash in input text"
 
 **Root cause:** `executePendingStep` runs the model's final-response request (line 127-132) without any AbortSignal, so `stopCurrentRun()` (which aborts `abortRef.current` — only set by `runAutoLoop`) cannot interrupt it. When the user clicks Stop during a manual done-step, the network request continues and writes to a thread whose status is already `stopped`.
 
-- [ ] **Step 1: Give executePendingStep its own AbortController**
+- [x] **Step 1: Give executePendingStep its own AbortController**
 
 ```typescript
 // src/hooks/useAgentRunController.ts
@@ -435,7 +441,7 @@ const executePendingStep = useCallback(async () => {
 }, [/* existing deps */])
 ```
 
-- [ ] **Step 2: Make stopCurrentRun abort both controllers**
+- [x] **Step 2: Make stopCurrentRun abort both controllers**
 
 ```typescript
 // src/hooks/useAgentRunController.ts (around line 429):
@@ -445,11 +451,11 @@ const stopCurrentRun = useCallback(() => {
 }, [])
 ```
 
-- [ ] **Step 3: Verify agent.ts auto-loop already passes signal**
+- [x] **Step 3: Verify agent.ts auto-loop already passes signal**
 
 Confirm `src/lib/agent.ts:786-792` already passes `signal: input.signal` (it does). No change needed there.
 
-- [ ] **Step 4: Add hook test**
+- [x] **Step 4: Add hook test**
 
 ```typescript
 // src/hooks/useAgentRunController.test.ts (new or existing)
@@ -461,7 +467,7 @@ it('aborts pending final response when stop is called', async () => {
 })
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/hooks/useAgentRunController.ts src/hooks/useAgentRunController.test.ts
@@ -476,11 +482,11 @@ git commit -m "fix(agent): abort manual final-response request on stop"
 **Interfaces:**
 - Produces: Mutex-protected queue flush
 
-- [ ] **Step 1: Identify the race condition**
+- [x] **Step 1: Identify the race condition**
 
 Read lines 400-427: The issue is `setQueuedChatMessages` based on stale closure.
 
-- [ ] **Step 2: Implement mutex-based flush**
+- [x] **Step 2: Implement mutex-based flush**
 
 ```typescript
 // src/hooks/useAgentRunController.ts
@@ -536,7 +542,7 @@ useEffect(() => {
 }, [busyTask, flushQueuedMessages])
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/hooks/useAgentRunController.ts
@@ -551,7 +557,7 @@ git commit -m "fix(agent): use ref + mutex to prevent queue flush race"
 **Interfaces:**
 - Produces: In-flight task guard
 
-- [ ] **Step 1: Add in-flight check**
+- [x] **Step 1: Add in-flight check**
 
 ```typescript
 // src/hooks/useBusyTask.ts
@@ -593,7 +599,7 @@ export function useBusyTask(onError?: (error: BusyTaskError) => void) {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/hooks/useBusyTask.ts
@@ -610,7 +616,7 @@ git commit -m "fix(busy-task): prevent concurrent runTask execution"
 - Consumes: `setPendingStep(null)` from controller
 - Produces: Clean state on thread switch
 
-- [ ] **Step 1: Pass clearPendingStep to history hook**
+- [x] **Step 1: Pass clearPendingStep to history hook**
 
 ```typescript
 // In App.tsx or wherever useAgentSessionHistory is called:
@@ -627,7 +633,7 @@ const { startNewSession, selectHistoryThread } = useAgentSessionHistory({
 
 Actually, easier solution: just add the clear in the hook itself.
 
-- [ ] **Step 2: Implement in hook**
+- [x] **Step 2: Implement in hook**
 
 ```typescript
 // src/hooks/useAgentSessionHistory.ts
@@ -660,7 +666,7 @@ const selectHistoryThread = useCallback(
 )
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/hooks/useAgentSessionHistory.ts
@@ -675,13 +681,13 @@ git commit -m "fix(session): clear pending step on thread switch"
 **Interfaces:**
 - Produces: Separate counters for model errors vs execution errors
 
-- [ ] **Step 1: Analyze the counter logic**
+- [x] **Step 1: Analyze the counter logic**
 
 Current: `recoverableExecutionFailures` counts both InvalidModelAction and failed execution.
 
 Expected: Reset counter on success, separate or properly count.
 
-- [ ] **Step 2: Implement fix**
+- [x] **Step 2: Implement fix**
 
 ```typescript
 // src/lib/agent.ts
@@ -704,7 +710,7 @@ recoverableExecutionFailures = 0
 consecutiveModelErrors = 0  // Also reset on successful execution
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/lib/agent.ts
@@ -724,7 +730,7 @@ git commit -m "fix(agent): separate counters for model vs execution failures"
 **Interfaces:**
 - Produces: Whitelisted URI schemes: `http`, `https`, `mailto`, `tel`, `market`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // Add to src/lib/actionValidation.packageName.test.ts
@@ -745,12 +751,12 @@ it('rejects dangerous URI schemes in open_url', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npm test src/lib/actionValidation.packageName.test.ts`
 Expected: FAIL — dangerous schemes accepted
 
-- [ ] **Step 3: Implement whitelist**
+- [x] **Step 3: Implement whitelist**
 
 ```typescript
 // src/lib/actionValidation.ts
@@ -774,12 +780,12 @@ if (!hasAllowedUriScheme(url)) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npm test src/lib/actionValidation.packageName.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/actionValidation.ts
@@ -794,7 +800,7 @@ git commit -m "fix(validation): whitelist allowed URI schemes in open_url"
 **Interfaces:**
 - Produces: Consistent control character validation
 
-- [ ] **Step 1: Implement fix**
+- [x] **Step 1: Implement fix**
 
 ```typescript
 // src/lib/actionValidation.ts
@@ -811,7 +817,7 @@ case 'set_clipboard': {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/lib/actionValidation.ts
@@ -826,7 +832,7 @@ git commit -m "fix(validation): use hasControlCharacters for set_clipboard"
 **Interfaces:**
 - Produces: NFKC-normalized evidence before regex matching
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // Add to src/lib/actionSafetyPolicy.test.ts
@@ -859,12 +865,12 @@ it('normalizes Unicode equivalents before pattern matching', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npm test src/lib/actionSafetyPolicy.test.ts`
 Expected: FAIL — Unicode variants not caught
 
-- [ ] **Step 3: Implement NFKC normalization**
+- [x] **Step 3: Implement NFKC normalization**
 
 ```typescript
 // src/lib/actionSafetyPolicy.ts
@@ -901,12 +907,12 @@ function collectPolicyEvidence(action: AgentAction, context: ActionSafetyContext
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npm test src/lib/actionSafetyPolicy.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/actionSafetyPolicy.ts
@@ -921,7 +927,7 @@ git commit -m "fix(safety): normalize evidence with NFKC before pattern matching
 **Interfaces:**
 - Produces: Safety check on each child action in sequence/repeat
 
-- [ ] **Step 1: Analyze current flow**
+- [x] **Step 1: Analyze current flow**
 
 Current: `#executeCompositeAction` calls `this.execute(childAction, context)`, which will check safety if child is atomic.
 
@@ -933,7 +939,7 @@ Let me re-read the bug report... "sequence/repeat 内的 type_secret 不检查�
 
 The issue is that `type_secret` is not in `MUTATING_ACTIONS` (line 56), so it's not safety-checked at all!
 
-- [ ] **Step 2: Add `type_secret` to MUTATING_ACTIONS**
+- [x] **Step 2: Add `type_secret` to MUTATING_ACTIONS**
 
 ```typescript
 // src/lib/actionSafetyPolicy.ts
@@ -951,7 +957,7 @@ const MUTATING_ACTIONS = new Set<AgentAction['action']>([
 ])
 ```
 
-- [ ] **Step 3: Write test**
+- [x] **Step 3: Write test**
 
 ```typescript
 // Add to src/lib/actionSafetyPolicy.test.ts
@@ -969,7 +975,7 @@ it('checks type_secret safety based on context', () => {
 })
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/lib/actionSafetyPolicy.ts src/lib/actionSafetyPolicy.test.ts
@@ -988,7 +994,7 @@ git commit -m "fix(safety): add type_secret to mutating actions for safety check
 **Interfaces:**
 - Produces: Disabled Enter when busy
 
-- [ ] **Step 1: Implement fix**
+- [x] **Step 1: Implement fix**
 
 ```typescript
 // src/components/ChatPanel.tsx
@@ -1011,7 +1017,7 @@ const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/components/ChatPanel.tsx
@@ -1027,7 +1033,7 @@ git commit -m "fix(ui): prevent Enter submit when agent is busy"
 **Interfaces:**
 - Produces: Confirmation dialog before delete
 
-- [ ] **Step 1: Add confirm dialog**
+- [x] **Step 1: Add confirm dialog**
 
 ```typescript
 // src/components/ChatHistorySidebar.tsx
@@ -1039,7 +1045,7 @@ onClick={() => {
 }}
 ```
 
-- [ ] **Step 2: Add copy strings**
+- [x] **Step 2: Add copy strings**
 
 ```typescript
 // src/lib/appCopy.en-US.ts
@@ -1049,7 +1055,7 @@ deleteThreadConfirm: (title: string) => `Delete thread "${title}"? This cannot b
 deleteThreadConfirm: (title: string) => `删除会话"${title}"?此操作无法撤销。`,
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/ChatHistorySidebar.tsx src/lib/appCopy.*.ts
@@ -1064,7 +1070,7 @@ git commit -m "fix(ui): add confirmation dialog before deleting thread"
 **Interfaces:**
 - Produces: Focus-trapped modal with confirm button auto-focused
 
-- [ ] **Step 1: Implement focus trap**
+- [x] **Step 1: Implement focus trap**
 
 ```typescript
 // src/components/SensitiveActionDialog.tsx
@@ -1115,7 +1121,7 @@ useEffect(() => {
 <button type="button" className="primary" onClick={onConfirm} ref={confirmButtonRef}>
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/components/SensitiveActionDialog.tsx
@@ -1132,7 +1138,7 @@ git commit -m "fix(ui): add focus trap and auto-focus to sensitive action dialog
 **Interfaces:**
 - Produces: Stack-managed body overflow
 
-- [ ] **Step 1: Create overflow management hook**
+- [x] **Step 1: Create overflow management hook**
 
 ```typescript
 // src/hooks/useBodyOverflow.ts
@@ -1164,7 +1170,7 @@ export function useBodyOverflow(lock: boolean) {
 }
 ```
 
-- [ ] **Step 2: Use in PhoneStage**
+- [x] **Step 2: Use in PhoneStage**
 
 ```typescript
 // src/components/PhoneStage.tsx
@@ -1174,7 +1180,7 @@ import { useBodyOverflow } from '../hooks/useBodyOverflow'
 useBodyOverflow(isFullscreenPreview)
 ```
 
-- [ ] **Step 3: Use in ScreenshotLightbox**
+- [x] **Step 3: Use in ScreenshotLightbox**
 
 ```typescript
 // src/components/ScreenshotLightbox.tsx
@@ -1184,7 +1190,7 @@ import { useBodyOverflow } from '../hooks/useBodyOverflow'
 useBodyOverflow(open)
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/hooks/useBodyOverflow.ts src/components/PhoneStage.tsx src/components/ScreenshotLightbox.tsx
@@ -1200,7 +1206,7 @@ git commit -m "fix(ui): use stack-managed body overflow to prevent conflicts"
 **Interfaces:**
 - Produces: Proper ellipsis on nested span
 
-- [ ] **Step 1: Move ellipsis to inner span**
+- [x] **Step 1: Move ellipsis to inner span**
 
 ```typescript
 // src/components/AppTopbar.tsx
@@ -1227,7 +1233,7 @@ git commit -m "fix(ui): use stack-managed body overflow to prevent conflicts"
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/components/AppTopbar.tsx src/styles/
@@ -1242,7 +1248,7 @@ git commit -m "fix(ui): apply text-overflow to inner status label span"
 **Interfaces:**
 - Produces: Debounced search input
 
-- [ ] **Step 1: Add debounce hook**
+- [x] **Step 1: Add debounce hook**
 
 ```typescript
 // src/components/ChatHistorySidebar.tsx
@@ -1263,7 +1269,7 @@ const trimmedQuery = debouncedQuery.trim()
 // Use trimmedQuery for filtering instead of query
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/components/ChatHistorySidebar.tsx
@@ -1276,7 +1282,7 @@ git commit -m "perf(ui): debounce history search input"
 
 ### Task F.1: Run full test suite
 
-- [ ] **Step 1: Run all tests**
+- [x] **Step 1: Run all tests**
 
 Run: `npm test`
 Expected: All tests pass
@@ -1285,7 +1291,7 @@ If failures, fix them before proceeding.
 
 ### Task F.2: Create summary document
 
-- [ ] **Step 1: Create bugfix summary**
+- [x] **Step 1: Create bugfix summary**
 
 Create: `docs/bugfix-2026-06-24.md`
 
@@ -1322,7 +1328,7 @@ Create: `docs/bugfix-2026-06-24.md`
 All fixes tested and committed.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/bugfix-2026-06-24.md

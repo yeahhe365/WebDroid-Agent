@@ -64,6 +64,7 @@ Docker:
 - 发送聊天消息后默认自动执行，也保留单步计划等高级调试能力。
 - 支持敏感动作确认、完全无限制模式、最大步数限制、停止运行，以及高级区中的上下文重置和运行日志导出。
 - 页面配置持久化到本机浏览器 `localStorage`，Agent thread/turn 历史持久化到 IndexedDB。
+- 操作台快捷键：`Cmd/Ctrl+K` 聚焦输入框、`Cmd/Ctrl+B` 开关配置面板、`Cmd/Ctrl+J` 开关运行日志、`Esc` 停止运行；手机预览与聊天区之间的分隔条可拖拽调整宽度并记住比例（双击复位）。
 
 ## 适合谁使用
 
@@ -315,56 +316,81 @@ src/
     deviceRetry.ts            # 设备读取重试和延迟工具
     deviceTiming.ts           # 设备执行时序默认值
     deviceTypes.ts            # 设备后端共享类型和错误
-    inputCommands.ts          # ADB 输入命令构建
+    inputCommands.ts          # ADB 输入命令构建（含 shell 转义）
     installedApps.ts          # 已安装应用解析、搜索和显示名
-    sensitiveActions.ts       # 敏感动作确认
+    lazyWebAdbBackend.ts      # 按需加载 WebADB 后端
+    screenBlackoutCommands.ts # 自动控制期间的屏幕变暗命令
     screenshotPreprocess.ts   # 截图预处理
+    sensitiveActions.ts       # 敏感动作确认
+    shellEscape.ts            # Shell 参数转义工具
     stayAwakeCommands.ts      # ADB 连接期间保持唤醒命令
+    uiAutomator.ts            # uiautomator dump 解析和 UI 层级格式化
     webAdbBackend.ts          # WebADB/WebUSB 实现
+    webUsbSupport.ts          # WebUSB 可用性检测
   components/
+    AgentCursor.tsx           # Agent 光标动画
     AgentStepCard.tsx         # Agent 步骤卡片
+    AppContext.tsx            # 文案和语言上下文
+    AppErrorBoundary.tsx      # 渲染错误兜底
     AppTopbar.tsx             # 顶栏品牌和状态
     ChatHistorySidebar.tsx    # 历史会话侧栏
     ChatPanel.tsx             # 聊天记录和输入区外壳
-    ConfigRail.tsx            # 收起状态下的配置快捷栏
     ConfigSidebar.tsx         # 设备和模型配置侧栏编排
     ConversationPanel.tsx     # 聊天、历史会话和待执行动作
-    DeviceOptionsSection.tsx  # 设备输入、确认和时序选项
+    DeviceHomeOptionsSection.tsx # 设备输入、确认和时序选项
     DevicePanel.tsx           # 设备连接和执行设置面板
-    DirectCommandsSection.tsx # 直接 ADB 动作面板
+    DeviceQuickControls.tsx   # 手机预览下方的直接操作条
+    DeviceToolsSection.tsx    # 设备工具区（应用列表、键盘等）
     InstalledAppsSection.tsx  # 已安装应用搜索和启动
     LazyDetails.tsx           # 延迟渲染的折叠区域
+    LazyMarkdownContent.tsx   # 延迟加载的 Markdown 渲染
     MarkdownContent.tsx       # 聊天消息 Markdown 渲染
     ModelPanel.tsx            # 模型配置面板
     PendingActionCard.tsx     # 待执行动作确认卡片
     PhoneStage.tsx            # 手机截图和动作覆盖层
     RunLog.tsx                # 运行日志
     ScreenshotLightbox.tsx    # 截图预览弹窗
+    SensitiveActionDialog.tsx # 敏感动作确认对话框（含焦点陷阱）
     SettingsDialog.tsx        # 应用设置、仓库信息和可编辑资源
     SetupHome.tsx             # 首次连接设备/配置模型引导页
     TutorialPanel.tsx         # 顶部栏展开的快速上手教程
+    UnrestrictedModeConfirmDialog.tsx # 完全无限制模式确认对话框
+    actionDisplay.ts          # 动作展示文案辅助
+    configTargets.ts          # 配置面板定位目标
+    deviceDisplay.ts          # 设备展示文案辅助
+    primitives/               # 按钮、图标按钮等基础控件
   hooks/
     useAgentRunController.ts        # Agent 自动运行和待执行动作控制
     useAgentSessionHistory.ts       # 会话恢复、保存和历史列表状态
+    useBodyOverflow.ts              # 弹窗/全屏期间共享的 body 滚动锁
     useBusyTask.ts                  # 运行中任务和错误状态管理
+    useBusyTaskDocumentTitle.ts     # 运行中任务写入页面标题
     useConfigTargetScroll.ts        # 配置侧栏目标定位
     useDeviceBackendPreferences.ts  # 设备后端偏好同步
     useDeviceController.ts          # 设备连接、截图和直接动作控制
     useDisplayImageUrl.ts           # 截图 blob URL 生命周期
     useDocumentPreferences.ts       # 文档主题和语言属性同步
+    useHotkeys.ts                   # 全局快捷键注册
     useLatestValue.ts               # 异步回调读取最新值的 ref
+    useLocalResourcesState.ts       # App Cards / Custom Tools / Secrets 状态
     usePersistedSettings.ts         # 设置变更持久化
     useRepositoryStats.ts           # 设置弹窗中的 GitHub 仓库统计加载
     useRunLog.ts                    # 运行日志状态管理
+    useSplitPane.ts                 # 工作区左右分栏拖拽和持久化
     useStorageEstimate.ts           # 本地存储容量估算
     useVirtualWindow.ts             # 长列表虚拟窗口
   lib/
+    abortSignal.ts            # 中止信号工具
+    actionAliases.ts          # 动作别名归一化
+    actionCoordinates.ts      # 动作坐标换算辅助
     actionDefaults.ts         # 常用截图动作默认值
-    actionParser.ts           # 动作解析、规范化和校验
+    actionFormats.ts          # 动作格式定义
+    actionParser.ts           # 动作解析和规范化
     actionPreview.ts          # 动作预览文案格式化
     actionProtocol.ts         # 显式动作协议枚举
     actionSafetyPolicy.ts     # 本地动作安全策略
     actionTypes.ts            # 动作类型和校验错误定义
+    actionValidation.ts       # 动作字段校验（包名、URI、控制字符）
     agentResources.ts         # App 外的本地 Secret 和 Custom Tool 资源
     agent.ts                  # Agent 循环调度
     agentThread.ts            # 持久化 Agent thread/turn/event 模型
@@ -372,11 +398,21 @@ src/
     appCopy.ts                # 界面文案聚合和语言解析
     appCopy.en-US.ts          # 英文界面文案
     appCopy.zh-CN.ts          # 中文界面文案
+    auditLog.ts               # 本地操作审计日志
     busyTask.ts               # 页面运行中任务标识
+    chatComposer.ts           # 聊天输入框聚焦辅助
     contextBuilder.ts         # 本轮模型上下文构建和压缩
+    coordinateSystems.ts      # 截图像素与设备像素坐标系统
+    cursorMotion.ts           # Agent 光标运动路径计算
+    deviceControlTypes.ts     # 设备控制共享类型
     deviceDoctor.ts           # 设备和模型配置诊断
     deviceState.ts            # 设备状态展示格式化
+    fileExport.ts             # 本地 JSON 文件导入导出
+    geminiClient.ts           # Gemini 原生 generateContent 客户端
+    geminiTypes.ts            # Gemini 请求/响应类型
+    httpRetry.ts              # HTTP 重试工具
     interactionStream.ts      # 聊天消息和 Agent 步骤合并展示
+    memory.ts                 # 本地 Agent 记忆条目
     openAiClient.ts           # OpenAI 兼容 chat completions 客户端
     openAiErrors.ts           # OpenAI 客户端错误类型
     openAiPayload.ts          # OpenAI 兼容请求体构造
@@ -394,7 +430,10 @@ src/
       coordinates.ts
       index.ts
       retention.ts
+    secretVault.ts            # 本地 Secret 加密存储（AES-GCM）
     settings.ts               # 本地设置读写
+    taskNotifications.ts      # 任务完成系统通知
+    textRetention.ts          # 长文本保留策略
     threadStore.ts            # Agent thread 持久化存储
     toolRegistry.ts           # Agent 动作工具注册和执行入口
   styles/                    # 按页面区域拆分的样式
@@ -404,7 +443,6 @@ src/
     chat-panel.css           # 聊天面板样式
     compact-section.css      # 折叠工具区样式
     config-panel.css         # 设备和模型配置面板样式
-    config-rail.css          # 收起配置栏样式
     controls.css             # 表单、按钮和通用控件样式
     conversation-panel.css   # 会话面板外壳和待执行动作样式
     device-doctor.css        # 设备诊断结果样式
@@ -417,9 +455,11 @@ src/
     markdown-content.css     # Markdown 内容样式
     model-panel.css          # 模型配置区样式
     phone-stage.css          # 手机预览和动作覆盖层样式
+    primitives.css           # 基础控件和排版样式
     responsive.css           # 响应式布局调整
     run-log.css              # 运行日志样式
     screenshot-lightbox.css  # 截图预览弹窗样式
+    sensitive-action-dialog.css # 敏感动作确认对话框样式
     settings-dialog.css      # 设置弹窗样式
     setup-home.css           # 启动引导页样式
     theme.css                # 主题变量和基础 reset
@@ -429,7 +469,11 @@ src/
 server/
   index.ts                    # Docker 中的静态文件和 API 代理服务（编译到 dist-server/）
   openAiProxy.ts              # OpenAI 兼容 / Responses 本地代理
+test/
+  repo-hardening.test.ts      # 仓库级安全与构建约束守卫
 ```
+
+> 单元测试与被测模块同目录（`*.test.ts` / `*.test.tsx`），完整清单见各目录。
 
 ## 验证
 
@@ -452,6 +496,7 @@ npm run build:server
 - 已安装应用解析、匹配和完整上下文注入。
 - 截图坐标映射。
 - 运行日志、截图预览和主界面布局组件。
+- 全局快捷键、分栏拖拽、对话框焦点陷阱和 body 滚动锁。
 
 真实设备控制仍需要连接 Android 设备进行手动验证。
 

@@ -36,6 +36,7 @@ Docker:
 - Send chat messages to run automatically, with one-step planning kept in advanced debug controls.
 - Support sensitive-action confirmation, unrestricted mode, max-step limits, stop controls, and advanced reset/run-log export.
 - Persist page settings in the local browser `localStorage`, and persist agent thread/turn history in IndexedDB.
+- Operate the console from the keyboard: `Cmd/Ctrl+K` focuses the composer, `Cmd/Ctrl+B` toggles the configuration panel, `Cmd/Ctrl+J` toggles the run log, and `Esc` stops a running task. The divider between the phone preview and the chat pane can be dragged (double-click resets it).
 
 ## Good Fits
 
@@ -274,56 +275,81 @@ src/
     deviceRetry.ts            # device-read retry and delay helpers
     deviceTiming.ts           # device execution timing defaults
     deviceTypes.ts            # shared device backend types and errors
-    inputCommands.ts          # ADB input command building
+    inputCommands.ts          # ADB input command building (with shell escaping)
     installedApps.ts          # installed-app parsing, search, and display names
+    lazyWebAdbBackend.ts      # on-demand WebADB backend loading
+    screenBlackoutCommands.ts # screen blackout commands for automatic control
     sensitiveActions.ts       # sensitive action confirmation
     screenshotPreprocess.ts   # screenshot preprocessing
+    shellEscape.ts            # shell argument escaping helper
     stayAwakeCommands.ts      # stay-awake commands while ADB is connected
+    uiAutomator.ts            # uiautomator dump parsing and UI hierarchy formatting
     webAdbBackend.ts          # WebADB/WebUSB implementation
+    webUsbSupport.ts          # WebUSB availability detection
   components/
+    AgentCursor.tsx           # agent cursor animation
     AgentStepCard.tsx         # agent step card
+    AppContext.tsx            # copy and locale context
+    AppErrorBoundary.tsx      # render error boundary
     AppTopbar.tsx             # brand and status topbar
     ChatHistorySidebar.tsx    # chat-history sidebar
     ChatPanel.tsx             # chat transcript and composer shell
-    ConfigRail.tsx            # collapsed configuration shortcuts
     ConfigSidebar.tsx         # device and model configuration sidebar composition
     ConversationPanel.tsx     # chat, history, and pending action view
-    DeviceOptionsSection.tsx  # device input, confirmation, and timing options
+    DeviceHomeOptionsSection.tsx # device input, confirmation, and timing options
     DevicePanel.tsx           # device connection and execution settings panel
-    DirectCommandsSection.tsx # direct ADB action panel
+    DeviceQuickControls.tsx   # direct action strip under the phone preview
+    DeviceToolsSection.tsx    # device tools (app list, keyboard, and more)
     InstalledAppsSection.tsx  # installed-app search and launch controls
     LazyDetails.tsx           # lazily rendered collapsible sections
+    LazyMarkdownContent.tsx   # lazily loaded Markdown rendering
     MarkdownContent.tsx       # chat message Markdown rendering
     ModelPanel.tsx            # model configuration panel
     PendingActionCard.tsx     # pending action confirmation card
     PhoneStage.tsx            # phone screenshot and action overlay
     RunLog.tsx                # run log view
     ScreenshotLightbox.tsx    # screenshot preview modal
+    SensitiveActionDialog.tsx # sensitive action confirmation dialog (with focus trap)
     SettingsDialog.tsx        # app settings, repository info, and editable resources
     SetupHome.tsx             # first-run device/model setup onboarding
     TutorialPanel.tsx         # quick-start tutorial expanded from the topbar
+    UnrestrictedModeConfirmDialog.tsx # unrestricted-mode confirmation dialog
+    actionDisplay.ts          # action display text helpers
+    configTargets.ts          # configuration panel scroll targets
+    deviceDisplay.ts          # device display text helpers
+    primitives/               # button and icon-button primitives
   hooks/
     useAgentRunController.ts        # auto-run and pending-action control
     useAgentSessionHistory.ts       # session restore, persistence, and history state
+    useBodyOverflow.ts              # shared body scroll lock for dialogs and fullscreen
     useBusyTask.ts                  # busy-task and error state management
+    useBusyTaskDocumentTitle.ts     # busy task reflected in the document title
     useConfigTargetScroll.ts        # config sidebar target scrolling
     useDeviceBackendPreferences.ts  # device backend preference sync
     useDeviceController.ts          # device connection, screenshot, and direct action state
     useDisplayImageUrl.ts           # screenshot blob URL lifecycle
     useDocumentPreferences.ts       # document theme and language attribute sync
+    useHotkeys.ts                   # global keyboard shortcut registration
     useLatestValue.ts               # ref for reading latest values inside async callbacks
+    useLocalResourcesState.ts       # app cards / custom tools / secrets state
     usePersistedSettings.ts         # settings persistence on changes
     useRepositoryStats.ts           # GitHub repository stats loading for settings
     useRunLog.ts                    # run-log state management
+    useSplitPane.ts                 # workspace split dragging and persistence
     useStorageEstimate.ts           # local storage quota estimate
     useVirtualWindow.ts             # virtual window for long lists
   lib/
+    abortSignal.ts            # abort-signal helpers
+    actionAliases.ts          # action alias normalization
+    actionCoordinates.ts      # action coordinate conversion helpers
     actionDefaults.ts         # common screenshot action defaults
-    actionParser.ts           # action parsing, normalization, and validation
+    actionFormats.ts          # action format definitions
+    actionParser.ts           # action parsing and normalization
     actionPreview.ts          # action preview text formatting
     actionProtocol.ts         # explicit action protocol enum
     actionSafetyPolicy.ts     # local action safety policy
     actionTypes.ts            # action types and validation error definitions
+    actionValidation.ts       # action field validation (package names, URIs, control chars)
     agentResources.ts         # local Secret and Custom Tool resources
     agent.ts                  # agent loop orchestration
     agentThread.ts            # persistent agent thread/turn/event model
@@ -331,11 +357,21 @@ src/
     appCopy.ts                # localized copy aggregation and locale resolution
     appCopy.en-US.ts          # English UI copy
     appCopy.zh-CN.ts          # Chinese UI copy
+    auditLog.ts               # local audit log
     busyTask.ts               # in-page busy task identifiers
+    chatComposer.ts           # chat composer focus helper
     contextBuilder.ts         # model context building and compaction
+    coordinateSystems.ts      # screenshot and device pixel coordinate systems
+    cursorMotion.ts           # agent cursor motion path calculation
+    deviceControlTypes.ts     # shared device control types
     deviceDoctor.ts           # device and model configuration diagnostics
     deviceState.ts            # device state display formatting
+    fileExport.ts             # local JSON import/export helpers
+    geminiClient.ts           # native Gemini generateContent client
+    geminiTypes.ts            # Gemini request/response types
+    httpRetry.ts              # HTTP retry helpers
     interactionStream.ts      # combined chat message and agent step display stream
+    memory.ts                 # local agent memory items
     openAiClient.ts           # OpenAI-compatible chat completions client
     openAiErrors.ts           # OpenAI client error types
     openAiPayload.ts          # OpenAI-compatible request payload building
@@ -353,7 +389,10 @@ src/
       coordinates.ts
       index.ts
       retention.ts
+    secretVault.ts            # encrypted local secret storage (AES-GCM)
     settings.ts               # local settings persistence
+    taskNotifications.ts      # task completion system notifications
+    textRetention.ts          # long-text retention policy
     threadStore.ts            # agent thread persistent storage
     toolRegistry.ts           # agent action tool registration and execution
   styles/                    # styles split by page area
@@ -363,7 +402,6 @@ src/
     chat-panel.css           # chat panel styles
     compact-section.css      # collapsible tool-section styles
     config-panel.css         # device and model configuration panel styles
-    config-rail.css          # collapsed config rail styles
     controls.css             # forms, buttons, and shared control styles
     conversation-panel.css   # conversation-panel shell and pending-action styles
     device-doctor.css        # device doctor result styles
@@ -376,9 +414,11 @@ src/
     markdown-content.css     # Markdown content styles
     model-panel.css          # model configuration section styles
     phone-stage.css          # phone preview and action-overlay styles
+    primitives.css           # primitive controls and typography styles
     responsive.css           # responsive layout adjustments
     run-log.css              # run-log styles
     screenshot-lightbox.css  # screenshot preview modal styles
+    sensitive-action-dialog.css # sensitive action dialog styles
     settings-dialog.css      # settings dialog styles
     setup-home.css           # setup onboarding styles
     theme.css                # theme tokens and base reset
@@ -388,7 +428,11 @@ src/
 server/
   index.ts                    # static-file and API proxy server for Docker (builds to dist-server/)
   openAiProxy.ts              # local OpenAI-compatible / Responses proxy handler
+test/
+  repo-hardening.test.ts      # repository-level security and build guards
 ```
+
+> Unit tests live next to the modules they cover (`*.test.ts` / `*.test.tsx`).
 
 ## Verification
 
