@@ -1271,7 +1271,6 @@ function buildThread() {
     task: '打开设置',
     promptContext: 'SECRET-CONTEXT-CONTENT',
     deviceSnapshot: {
-      index: 1,
       currentApp: 'Chrome',
       deviceState: { app: 'Chrome', packageName: 'com.android.chrome' },
       screenshot: { dataUrl: '', screen: { width: 1080, height: 2316 } },
@@ -1368,7 +1367,6 @@ describe('run-level outcome fallback', () => {
       task: '打开设置',
       promptContext: 'ctx',
       deviceSnapshot: {
-        index: 1,
         currentApp: 'Chrome',
         deviceState: { app: 'Chrome' },
         screenshot: { dataUrl: '', screen: { width: 1080, height: 2316 } },
@@ -1492,7 +1490,7 @@ export type BuildTrajectoryInput = {
 7. `outcome.failureClass`：**先**最后一个带 `failureClass` 的 turn → **否则**该 run 起点（`turns[0].createdAt`）之后最后一个带 `failureClass` 的 `status_change` 事件（覆盖 `loop_guard` / `aborted` 这两个 run 级结局，见 spec §5.4）→ 否则 `undefined`。
 8. 每个 step 逐字段复制允许列表：`index`、`turnId`、`timing`、`currentApp`、`deviceState`、`context`、`modelOutput`、`action`、`executionAction`、`toolName`、`executionResult`（缺省 `''`）、`success`、`safetyDecision`、`deviceCommands`、`screenshot`；`failure` 仅在 `turn.failureClass` 存在时写入 `{ class, message: turn.executionResult ?? '' }`。
 9. `app.version`：`typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0'`。
-10. `coordinateMode`：`input.coordinateMode ?? coordinateModeForActionProtocol(input.model.actionProtocol)`（从 `./actionProtocol` 导入）。
+10. `coordinateMode`：`input.coordinateMode ?? coordinateModeForActionProtocol(input.model.actionProtocol)` —— **从 `./coordinateSystems` 导入**（`src/lib/coordinateSystems.ts:5`），不是 `./actionProtocol`。
 11. `isTrajectoryArtifact(value)`：校验 `schemaVersion === 1` 且 `kind === 'webdroid.trajectory'` 且 `steps` 是数组。
 12. `serializeTrajectory`：`JSON.stringify(artifact, null, 2)`。
 

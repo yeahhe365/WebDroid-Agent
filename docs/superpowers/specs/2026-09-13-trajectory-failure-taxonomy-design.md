@@ -190,6 +190,8 @@ export type TrajectoryStep = {
 1. **只记事实，不记期望** —— 期望值属于 fixture 层（§6.1）。trajectory 里不出现任何「应该是什么」，杜绝「金文件自我实现」。
 2. **只记引用，不记像素** —— 截图只存 `ScreenshotRef`（id + sha256 + 尺寸）。像素仅在本地调试导出时可选内联。
 3. **脱敏是一等公民** —— 不记 `device.serial`、不记 `model.baseUrl` / `apiKey`、secret 只记 descriptor id；`promptContext` 默认只存 `{ chars, sha256 }` 摘要，全文仅在 `includeContext: true` 时写入（默认关闭，供本地调试）。
+   - **实现期补充的例外（安全发现，必须保留）**：`toolRegistry` 会把 `type_secret` 解析成携带**真实密钥值**的 `input_text` 命令（`toolRegistry.ts:497-509`），因此那一步的 `deviceCommands` **本身就是密钥**。投影必须**按动作形状**（而非匹配 argv 字符串）丢弃这类步骤的 `deviceCommands`，并覆盖 `action` 与 `executionAction` 两处、以及 `sequence` / `repeat` 的嵌套情形。`type_secret` 的投影动作只保留 descriptor id。
+   - 与之配套：`promptContext` 摘要算法在实现期定为 **FNV-1a 32 位**（非 sha256，见决策记录 10）；artifact 的 `run.status` 扩展为 `AgentRunStatus | 'error'`，以免把 `error` 误报为 `done`（见决策记录 14）。
 
 ### 4.5 向后兼容
 
@@ -324,6 +326,12 @@ const AUTO_RECOVERABLE_FAILURES: ReadonlySet<FailureClass> =
 - 配离线 fake `OpenAiClient`，离线重放 `runAgentStep()` / `createAgentRunner().run()`，无网络。
 - **`deviceCommands` 的真正用途**：不是驱动 fake，而是**断言命令构造没有回归** —— 用现成的纯函数构造器（`buildSetClipboardCommand`、`buildDumpScreenTreeCommand`、`buildStayAwakeCommand` 等）从动作重建 argv，与该步记录的 argv 逐项比对，覆盖 `shellEscape` 相关安全路径。
 - 采集方式：`ExecuteActionOptions.onDeviceCommand?: (argv: readonly string[]) => void`，由 backend 在真正发出命令处（`webAdbBackend.ts:503` 的 `#executeCommandStep`）回调；`{ waitMs }` 定时项不记录。
+- **已知覆盖边界（实现期核实，诚实记录）**：只有经过 `#executeCommandStep` 漏斗的命令会被记录，即**动作执行序列** —— 其中包含 shell 转义最相关的输入文本广播（`inputCommands.ts` 的 `['input','text', escapeInputText(text)]`）。以下路径**不记录**：
+  - `set_clipboard` 的设备剪贴板同步（`#setDeviceClipboard`，直接 `spawnWaitText`）；
+  - **ADB Keyboard 路径**（`#inputTextWithAdbKeyboard`）—— 非 ASCII 文本与启用 `preferAdbKeyboard` 后都走这里，**因此中文输入基本不在记录范围内**；
+  - 屏幕遮黑、常亮设置、IME 启用等设备设置类命令。
+  本 milestone **接受**该边界：§7 的目标（用记录的 argv 锁住**动作命令**构造、覆盖 shell 转义）已达成，其余属设备设置旁路。若要全覆盖，需把回调下沉到每个 `spawnWait*` 调用点（十余处），范围另议。
+- 另需注意：回调在 `#requireAdb()` **之前**触发，因此一个**从未真正发出命令**的步骤（设备未连接）也会带上 `deviceCommands`。这是为换取"wait 规则可离线验证"而做的有意取舍；消费方应把它读作"尝试发送"，而非"已执行"。
 - **收集点在「动作执行处」，不是 `runAgentStep()`**：核查确认 `runAgentStep()` 只负责感知与生成动作（`agent.ts:326`），真正的执行发生在 runner 循环（`agent.ts:832` 的 `toolRegistry.execute`）与控制器的 `execute-action` 路径（`useAgentRunController.ts:156`）。两处各自把 argv 写入 `step.deviceCommands`。
 - 目标用例：ADB 超时 → `device_timeout` → 自动重试 → 第三次 `awaiting_review`；dump 失败降级；abort 中途停止仍保留已执行 steps（回归 `f338471`）。
 
