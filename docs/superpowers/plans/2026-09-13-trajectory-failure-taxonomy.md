@@ -212,6 +212,15 @@ describe('classifyThrownFailure', () => {
     expect(classifyThrownFailure(new Error('not json'), { force: 'model_output' })).toBe('model_output')
   })
 
+  it('lets the hint win over the error’s own type, not merely over unknown', () => {
+    // Without a hint this classifies as device_timeout; if someone moves the
+    // force check last, this assertion is what catches it.
+    expect(classifyThrownFailure(new DeviceBackendError('slow', 'timeout'))).toBe('device_timeout')
+    expect(
+      classifyThrownFailure(new DeviceBackendError('slow', 'timeout'), { force: 'model_output' }),
+    ).toBe('model_output')
+  })
+
   it('falls back to unknown instead of guessing', () => {
     expect(classifyThrownFailure(new Error('mystery'))).toBe('unknown')
     expect(classifyThrownFailure('a string')).toBe('unknown')
@@ -423,16 +432,12 @@ Expected: FAIL —— `expected undefined to be 'unsupported_action'`
 import { classifyThrownFailure, type FailureClass } from './failureTaxonomy'
 ```
 
-`ActionToolResult`（`:30`）加字段：
+`src/lib/toolRegistry.ts` —— **`ActionToolResult.failureKind` 已由 Task 2 的提交（`06d4fee`）前向声明完毕**（2 行：type-only `import type { FailureClass }` + `failureKind?: FailureClass`）。本任务**不要重复添加该字段**，只需：① 在失败分支**填充**它；② 加 `ActionToolContext.onDeviceCommand`。若发现字段不存在，说明基线不对，停下来报告而不是自行补声明 —— 本任务原本的 RED 之所以仍然成立，是因为还没有任何代码**填充**该字段。
+
+`ActionToolContext`（`:37`）加一个可选字段（Task 6 使用，本任务只是把类型放好）：
 
 ```ts
-export type ActionToolResult = {
-  toolName: string
-  success: boolean
-  summary: string
-  failureKind?: FailureClass
-  safetyDecision?: Exclude<ActionSafetyDecision, 'allow'>
-}
+  onDeviceCommand?: (argv: readonly string[]) => void
 ```
 
 `call_api` 分支（`:312`）——**只加 `failureKind`，保持 `safetyDecision` 原样**：
@@ -472,12 +477,6 @@ composite 传播失败种类（`:443` 附近，`#executeCompositeAction` 里 `if
         }
 ```
 
-`ActionToolContext`（`:37`）加一个可选字段（Task 6 使用，本任务只是把类型放好）：
-
-```ts
-  onDeviceCommand?: (argv: readonly string[]) => void
-```
-
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `npx vitest run src/lib/toolRegistry.test.ts`
@@ -486,7 +485,7 @@ Expected: PASS
 - [ ] **Step 5: 跑全量测试确认没有破坏既有断言**
 
 Run: `npm test`
-Expected: PASS —— 61 文件 / 544+ 用例。`ActionToolResult` 是新增可选字段，不应破坏任何既有断言。
+Expected: PASS —— 当前基线 62 文件 / 556+ 用例。`ActionToolContext.onDeviceCommand` 是新增可选字段，`failureKind` 只是被填充，都不应破坏既有断言。
 
 - [ ] **Step 6: 提交**
 
