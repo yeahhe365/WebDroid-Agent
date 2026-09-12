@@ -407,6 +407,7 @@ src/
     deviceControlTypes.ts     # 设备控制共享类型
     deviceDoctor.ts           # 设备和模型配置诊断
     deviceState.ts            # 设备状态展示格式化
+    failureTaxonomy.ts        # 失败分类（FailureClass）和可自动恢复类别
     fileExport.ts             # 本地 JSON 文件导入导出
     geminiClient.ts           # Gemini 原生 generateContent 客户端
     geminiTypes.ts            # Gemini 请求/响应类型
@@ -436,6 +437,8 @@ src/
     textRetention.ts          # 长文本保留策略
     threadStore.ts            # Agent thread 持久化存储
     toolRegistry.ts           # Agent 动作工具注册和执行入口
+    trajectory.ts             # 把一次 run 投影为带版本、已脱敏的 trajectory 产物
+    trajectoryFixture.ts      # trajectory → 重放夹具投影（夹具形状的权威定义）
   styles/                    # 按页面区域拆分的样式
     agent-step-card.css      # Agent 步骤卡片样式
     chat-composer.css        # 聊天输入区样式
@@ -466,11 +469,21 @@ src/
     tutorial-panel.css       # 教程面板样式
   App.tsx                     # 页面状态、业务流程和组件编排
   main.tsx                    # React 入口和全局样式加载
+scripts/
+  css-audit.mjs               # 扫描不再被引用的 CSS 选择器（启发式）
+  trajectory-to-fixture.mjs   # 由 trajectory 生成脱敏重放夹具（Node 侧，无构建步骤）
 server/
   index.ts                    # Docker 中的静态文件和 API 代理服务（编译到 dist-server/）
   openAiProxy.ts              # OpenAI 兼容 / Responses 本地代理
 test/
-  repo-hardening.test.ts      # 仓库级安全与构建约束守卫
+  fixtures/
+    actions/                  # 动作解析夹具
+    commands/                 # 设备命令 argv 夹具
+    coordinates/              # 坐标换算夹具
+    runs/                     # 运行级夹具（计划中）
+  fixtureReplay/              # 在无设备、无网络的环境下重放上述夹具
+  helpers/                    # 测试替身，如 fake DeviceBackend（计划中）
+  repo-hardening.test.ts      # 仓库级安全、构建和夹具守卫
 ```
 
 > 单元测试与被测模块同目录（`*.test.ts` / `*.test.tsx`），完整清单见各目录。
@@ -485,6 +498,14 @@ npm run build:server
 npm run css:audit   # 扫描不再被引用的 CSS 选择器（启发式，结果需人工确认）
 ```
 
+从一次导出的 trajectory 生成重放夹具：
+
+```bash
+npm run trajectory:fixture -- <trajectory.json>
+```
+
+默认写入 git-ignored 的暂存目录，人工确认后再把夹具放进 `test/fixtures/`（也可以用 `--out <dir>` 直接指定输出目录）。生成器默认不覆盖已有夹具，只打印 `expected` 的差异；加 `--force` 才会替换。遇到内联图片数据、缺失字段、非法文件名或不可复现的投影时，它会整体拒绝写入。
+
 当前测试主要覆盖：
 
 - 动作解析和动作安全校验。
@@ -492,6 +513,7 @@ npm run css:audit   # 扫描不再被引用的 CSS 选择器（启发式，结�
 - Docker 本地代理对 `/chat/completions` 与 `/responses` 的转发约束。
 - Agent 单步和连续执行流程。
 - 失败反馈、瞬时模型 API 错误/模型空回复重试和有限自动恢复。
+- 失败分类、trajectory 投影与脱敏，以及动作、坐标和命令夹具的离线重放。
 - 设置持久化和兼容迁移。
 - Agent thread/turn 持久化。
 - 已安装应用解析、匹配和完整上下文注入。
@@ -513,7 +535,8 @@ npm run css:audit   # 扫描不再被引用的 CSS 选择器（启发式，结�
 - [x] 支持 OpenAI 官方 Responses API、Gemini 原生接口与 Qwen 预设。
 - [x] 首次使用 Setup 引导（连接设备 → 配置模型 → 进入工作台）。
 - [ ] 补充更完整的真实设备验证矩阵。
-- [ ] 增强更系统的失败分类、动作重试和任务暂停恢复体验。
+- [x] 更系统的失败分类，以及按失败类别重试动作（本次里程碑交付）。
+- [ ] 完善任务暂停与恢复体验。
 - [ ] 提供更系统的安全策略和风险分级。
 
 ## 贡献说明

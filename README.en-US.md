@@ -366,6 +366,7 @@ src/
     deviceControlTypes.ts     # shared device control types
     deviceDoctor.ts           # device and model configuration diagnostics
     deviceState.ts            # device state display formatting
+    failureTaxonomy.ts        # failure classes (FailureClass) and auto-recoverable kinds
     fileExport.ts             # local JSON import/export helpers
     geminiClient.ts           # native Gemini generateContent client
     geminiTypes.ts            # Gemini request/response types
@@ -395,6 +396,8 @@ src/
     textRetention.ts          # long-text retention policy
     threadStore.ts            # agent thread persistent storage
     toolRegistry.ts           # agent action tool registration and execution
+    trajectory.ts             # versioned, sanitised projection of one run
+    trajectoryFixture.ts      # trajectory-to-fixture projection (authoritative fixture shape)
   styles/                    # styles split by page area
     agent-step-card.css      # agent step-card styles
     chat-composer.css        # chat composer styles
@@ -425,11 +428,21 @@ src/
     tutorial-panel.css       # tutorial panel styles
   App.tsx                     # page state, workflow logic, and component composition
   main.tsx                    # React entrypoint and global style loading
+scripts/
+  css-audit.mjs               # reports CSS selectors no longer referenced (heuristic)
+  trajectory-to-fixture.mjs   # derives sanitised replay fixtures from a trajectory (bare Node, no build step)
 server/
   index.ts                    # static-file and API proxy server for Docker (builds to dist-server/)
   openAiProxy.ts              # local OpenAI-compatible / Responses proxy handler
 test/
-  repo-hardening.test.ts      # repository-level security and build guards
+  fixtures/
+    actions/                  # action-parsing fixtures
+    commands/                 # device command argv fixtures
+    coordinates/              # coordinate conversion fixtures
+    runs/                     # run-level fixtures (planned)
+  fixtureReplay/              # replays those fixtures with no device and no network
+  helpers/                    # test doubles such as a fake DeviceBackend (planned)
+  repo-hardening.test.ts      # repository-level security, build, and fixture guards
 ```
 
 > Unit tests live next to the modules they cover (`*.test.ts` / `*.test.tsx`).
@@ -444,6 +457,14 @@ npm run build:server
 npm run css:audit   # reports CSS selectors no longer referenced (heuristic; confirm by hand)
 ```
 
+Derive replay fixtures from an exported trajectory:
+
+```bash
+npm run trajectory:fixture -- <trajectory.json>
+```
+
+The default destination is git-ignored staging, so a fixture only reaches `test/fixtures/` once a human has confirmed it (`--out <dir>` writes to a directory you name instead). Existing fixtures are never overwritten by default: the generator prints the `expected` diff and leaves the file alone, and only `--force` replaces it. It refuses the whole run on inline image data, a missing field, an unsafe file name, or a projection that is not reproducible.
+
 The current tests mainly cover:
 
 - Action parsing and action safety validation.
@@ -451,13 +472,31 @@ The current tests mainly cover:
 - Docker local proxy forwarding constraints for `/chat/completions` and `/responses`.
 - Single-step and continuous agent execution.
 - Failure feedback, transient model API and empty-model-response retries, and limited automatic recovery.
+- Failure classification, trajectory projection and sanitisation, and offline replay of action, coordinate, and command fixtures.
 - Settings persistence and compatibility migration.
 - Agent thread/turn persistence.
 - Installed-app parsing, matching, and full context injection.
 - Screenshot coordinate mapping.
 - The run-log, screenshot preview, and main layout components.
+- Global hotkeys, split-pane dragging, dialog focus traps, and body scroll locking.
 
 Real-device control still needs manual verification with an Android device.
+
+## Roadmap
+
+- [x] Connect to Android devices over WebADB in the browser.
+- [x] Screenshot capture sent to OpenAI-compatible vision models.
+- [x] Canonical JSON action protocol.
+- [x] Editable App Cards, local Custom Tools, and secure Secret input.
+- [x] Automatic execution, single-step execution, and sensitive-action confirmation.
+- [x] Run log and screenshot viewing.
+- [x] Installed-app list, text-clearing input, configurable waits, and basic failure recovery.
+- [x] Official OpenAI Responses API, native Gemini API, and Qwen presets.
+- [x] First-run Setup onboarding (connect device → configure model → enter the workspace).
+- [ ] A more complete real-device verification matrix.
+- [x] More systematic failure classification, with per-class action retry (delivered in this milestone).
+- [ ] Task pause and resume.
+- [ ] More systematic security policy and risk grading.
 
 ## Deploying to Cloudflare Pages
 
