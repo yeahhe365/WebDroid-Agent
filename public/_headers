@@ -1,0 +1,12 @@
+# Security headers for static hosting (Cloudflare Pages reads this file).
+# The Docker/Node deployment serves the same policy as a response header
+# (see server/index.ts) and additionally accepts extra connect-src origins
+# through the CSP_CONNECT_SRC environment variable. On a static deployment the
+# policy below is fixed at build time: append the origin of any additional
+# model endpoint to the connect-src list if you use one.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://dashscope.aliyuncs.com; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: usb=(self), camera=(), microphone=(), geolocation=()

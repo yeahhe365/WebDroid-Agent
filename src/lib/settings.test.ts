@@ -7,6 +7,8 @@ import {
   saveSettings,
   type AppSettings,
   type SettingsStorage,
+  createSettingsExportData,
+  mergeImportedSettings,
 } from './settings'
 
 function memoryStorage(initial: Record<string, string> = {}): SettingsStorage {
@@ -352,5 +354,49 @@ describe('settings import', () => {
   it('returns defaults for garbage input', () => {
     expect(parseSettingsImport('not-an-object')).toEqual(DEFAULT_SETTINGS)
     expect(parseSettingsImport({ type: 'unknown' })).toEqual(DEFAULT_SETTINGS)
+  })
+})
+
+
+describe('settings export and import safety', () => {
+  const withApiKey = (apiKey: string) => ({
+    ...DEFAULT_SETTINGS,
+    modelConfig: { ...DEFAULT_SETTINGS.modelConfig, apiKey },
+  })
+
+  it('drops the API key from exported settings', () => {
+    const exported = createSettingsExportData(withApiKey('sk-secret-value'))
+    expect(exported.modelConfig.apiKey).toBe('')
+    expect(JSON.stringify(exported)).not.toContain('sk-secret-value')
+  })
+
+  it('keeps the local API key when the imported file carries none', () => {
+    const merged = mergeImportedSettings(withApiKey('sk-local'), withApiKey(''))
+    expect(merged.modelConfig.apiKey).toBe('sk-local')
+  })
+
+  it('accepts an API key supplied by the imported file', () => {
+    const merged = mergeImportedSettings(withApiKey('sk-local'), withApiKey('sk-imported'))
+    expect(merged.modelConfig.apiKey).toBe('sk-imported')
+  })
+
+  it('can never enable unrestricted mode through an import', () => {
+    const current = { ...DEFAULT_SETTINGS, unrestrictedMode: false }
+    const imported = { ...DEFAULT_SETTINGS, unrestrictedMode: true }
+    expect(mergeImportedSettings(current, imported).unrestrictedMode).toBe(false)
+  })
+
+  it('can never disable sensitive-action confirmation through an import', () => {
+    const current = { ...DEFAULT_SETTINGS, confirmSensitiveActions: true }
+    const imported = { ...DEFAULT_SETTINGS, confirmSensitiveActions: false }
+    expect(mergeImportedSettings(current, imported).confirmSensitiveActions).toBe(true)
+  })
+
+  it('still applies ordinary fields from the imported file', () => {
+    const current = { ...DEFAULT_SETTINGS, maxSteps: 150, themeMode: 'light' as const }
+    const imported = { ...DEFAULT_SETTINGS, maxSteps: 42, themeMode: 'dark' as const }
+    const merged = mergeImportedSettings(current, imported)
+    expect(merged.maxSteps).toBe(42)
+    expect(merged.themeMode).toBe('dark')
   })
 })

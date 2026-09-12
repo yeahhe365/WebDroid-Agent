@@ -4,10 +4,9 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/webdroid-agent-logo-128.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://dashscope.aliyuncs.com; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
-    />
+<!-- CSP is served as a response header (server/index.ts for Docker, public/_headers
+         for static hosting). A <meta> policy here would intersect with the header and
+         silently narrow it — which is why the extension env var had no effect. -->
     <title>WebDroid Agent</title>
   </head>
   <body>

@@ -121,6 +121,43 @@ export function parseSettingsImport(value: unknown): AppSettings {
   return normalizeSettings(value)
 }
 
+/**
+ * Settings written to disk must never carry credentials: the API key is
+ * stripped from the exported payload. Importing such a file keeps whatever key
+ * is configured locally (see `mergeImportedSettings`).
+ */
+export function createSettingsExportData(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    modelConfig: {
+      ...settings.modelConfig,
+      apiKey: '',
+    },
+  }
+}
+
+/**
+ * Merge an imported settings object over the current one without weakening the
+ * local security posture:
+ * - an empty imported API key never clears the key configured locally;
+ * - an import can never enable `unrestrictedMode`;
+ * - an import can never turn `confirmSensitiveActions` off.
+ */
+export function mergeImportedSettings(
+  current: AppSettings,
+  imported: AppSettings,
+): AppSettings {
+  return {
+    ...imported,
+    modelConfig: {
+      ...imported.modelConfig,
+      apiKey: imported.modelConfig.apiKey || current.modelConfig.apiKey,
+    },
+    unrestrictedMode: imported.unrestrictedMode && current.unrestrictedMode,
+    confirmSensitiveActions: imported.confirmSensitiveActions || current.confirmSensitiveActions,
+  }
+}
+
 export function normalizeSettings(candidate: unknown): AppSettings {
   if (!isRecord(candidate)) {
     return DEFAULT_SETTINGS

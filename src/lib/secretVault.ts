@@ -47,6 +47,17 @@ export type VaultIndexedDB = {
   open(name: string, version?: number): IDBOpenDBRequest
 }
 
+/**
+ * Shape of the persisted key record. The current implementation stores a
+ * non-extractable `CryptoKey` (structured clone); `raw` is kept for
+ * compatibility with older records that stored raw key bytes.
+ */
+export type VaultKeyRecord = {
+  id: string
+  key?: CryptoKey
+  raw?: ArrayBuffer
+}
+
 const ENCRYPTED_PREFIX = 'enc:v1:'
 
 function isCryptoAvailable(crypto: VaultCrypto | undefined): crypto is VaultCrypto {
@@ -86,6 +97,37 @@ function openKeyStore(indexedDb: VaultIndexedDB): Promise<IDBDatabase | null> {
   })
 }
 
+function readKeyRecord(database: IDBDatabase): Promise<VaultKeyRecord | null> {
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(STORE_NAME, 'readonly')
+      const request = transaction.objectStore(STORE_NAME).get(KEY_RECORD_ID)
+      request.onsuccess = () =>
+        resolve((request.result as VaultKeyRecord | undefined) ?? null)
+      request.onerror = () => resolve(null)
+      transaction.onabort = () => resolve(null)
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
+function writeKeyRecord(database: IDBDatabase, record: VaultKeyRecord): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(STORE_NAME, 'readwrite')
+      transaction.objectStore(STORE_NAME).put(record)
+      // Resolve only after the write commits, so later reads (possibly on a new
+      // connection) observe the same key.
+      transaction.oncomplete = () => resolve(true)
+      transaction.onerror = () => resolve(false)
+      transaction.onabort = () => resolve(false)
+    } catch {
+      resolve(false)
+    }
+  })
+}
+
 async function loadOrCreateKey(
   indexedDb: VaultIndexedDB | undefined,
   crypto: VaultCrypto,
@@ -97,49 +139,44 @@ async function loadOrCreateKey(
   if (!database) {
     return null
   }
-  return new Promise<CryptoKey | null>((resolve) => {
-    try {
-      const transaction = database.transaction(STORE_NAME, 'readwrite')
-      const store = transaction.objectStore(STORE_NAME)
-      const getRequest = store.get(KEY_RECORD_ID)
-      getRequest.onsuccess = async () => {
-        const existing = getRequest.result as { id: string; raw: ArrayBuffer } | undefined
-        if (existing && existing.raw) {
-          try {
-            const key = await crypto.subtle.importKey(
-              'raw',
-              existing.raw,
-              { name: 'AES-GCM', length: 256 },
-              false,
-              ['encrypt', 'decrypt'],
-            )
-            resolve(key)
-            return
-          } catch {
-            // fall through to generate a new key
-          }
-        }
-        try {
-          const newKey = await crypto.subtle.generateKey(
-            { name: 'AES-GCM', length: 256 },
-            false,
-            ['encrypt', 'decrypt'],
-          )
-          // CryptoKey is non-extractable, so we cannot store the raw bytes.
-          // Instead store the key object itself via structured clone.
-          store.put({ id: KEY_RECORD_ID, key: newKey })
-          resolve(newKey)
-        } catch {
-          resolve(null)
-        }
-      }
-      getRequest.onerror = () => resolve(null)
-      transaction.onerror = () => resolve(null)
-      transaction.onabort = () => resolve(null)
-    } catch {
-      resolve(null)
+
+  try {
+    const existing = await readKeyRecord(database)
+    // Preferred path: the key is stored as a non-extractable CryptoKey object
+    // (structured clone). Reusing it keeps previously encrypted values
+    // decryptable.
+    if (existing?.key) {
+      return existing.key
     }
-  })
+    // Legacy path: older records may hold the raw key bytes.
+    if (existing?.raw) {
+      try {
+        return await crypto.subtle.importKey(
+          'raw',
+          existing.raw,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['encrypt', 'decrypt'],
+        )
+      } catch {
+        // fall through to generate a new key
+      }
+    }
+
+    const newKey = await crypto.subtle.generateKey(
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt'],
+    )
+    // CryptoKey is non-extractable, so we cannot store the raw bytes.
+    // Instead store the key object itself via structured clone.
+    await writeKeyRecord(database, { id: KEY_RECORD_ID, key: newKey })
+    return newKey
+  } catch {
+    return null
+  } finally {
+    database.close()
+  }
 }
 
 async function encryptValue(crypto: VaultCrypto, key: CryptoKey, value: string): Promise<string> {

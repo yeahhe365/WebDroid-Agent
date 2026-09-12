@@ -20,7 +20,14 @@ import { isOpenAiProvider } from './lib/modelProviders'
 import type { ModelConfig } from './lib/openAiTypes'
 import { OPENAI_PROXY_URL } from './lib/openAiRuntimeConfig'
 import { APP_COPY, resolveLocale } from './lib/appCopy'
-import { loadSettings, normalizeMaxSteps, parseSettingsImport, type AppSettings } from './lib/settings'
+import {
+  createSettingsExportData,
+  loadSettings,
+  mergeImportedSettings,
+  normalizeMaxSteps,
+  parseSettingsImport,
+  type AppSettings,
+} from './lib/settings'
 import { createDefaultActionToolRegistry, type ActionToolName } from './lib/toolRegistry'
 import { loadMemoryItems, rememberMemoryItem, saveMemoryItems } from './lib/memory'
 import { downloadJsonFile, pickAndReadJsonFile } from './lib/fileExport'
@@ -198,9 +205,10 @@ function App() {
     unrestrictedMode,
   } = device.options
 
-  // Unrestricted-mode enable confirmation: gate the toggle behind a dialog so a
-  // single checkbox click (or a malicious settings import) cannot silently arm
-  // autonomous execution of sensitive operations.
+  // Unrestricted-mode enable confirmation: gate the interactive toggle behind a
+  // dialog so a single checkbox click cannot silently arm autonomous execution
+  // of sensitive operations. Settings imports cannot arm it at all —
+  // mergeImportedSettings never enables unrestricted mode.
   const [unrestrictedConfirmOpen, setUnrestrictedConfirmOpen] = useState(false)
   const unrestrictedResolverRef = useRef<((confirmed: boolean) => void) | null>(null)
   const requestUnrestrictedModeConfirmation = useCallback(() => {
@@ -549,7 +557,7 @@ function App() {
       type: 'webdroid-agent-settings',
       version: 1,
       exportedAt: Date.now(),
-      data: currentSettings,
+      data: createSettingsExportData(currentSettings),
     })
     addLog({ tone: 'info', title: copy.settingsExported })
   }
@@ -566,7 +574,7 @@ function App() {
     if (parsed === null) {
       return
     }
-    applySettings(parseSettingsImport(parsed))
+    applySettings(mergeImportedSettings(currentSettings, parseSettingsImport(parsed)))
     addLog({ tone: 'info', title: copy.settingsImported })
   }
 
