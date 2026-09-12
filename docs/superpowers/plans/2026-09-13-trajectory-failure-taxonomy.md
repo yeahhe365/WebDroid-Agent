@@ -568,21 +568,36 @@ describe('failure classification and retry budget', () => {
     ])
   })
 
-  it('does not burn the retry budget on an unsupported action', async () => {
+  it('does not burn the retry budget on a non-device failure', async () => {
+    // NOTE: a model-emitted call_api never reaches the registry — validateAction
+    // rewrites it to take_over (actionValidation.ts:160-170), so
+    // 'unsupported_action' is not reachable through the runner. The reachable
+    // non-device failure is a plain Error thrown by a tool, which classifies as
+    // 'unknown' and is deliberately not retryable. 'unsupported_action' stays
+    // covered at the registry/predicate level (Task 3).
+    const { device, callCount } = deviceFailingWith(() => new Error('tool blew up'))
     const result = await createAgentRunner({
-      device: fakeDevice(),
-      client: sequentialClient(['{"action":"call_api","instruction":"summarise"}']),
-    }).run({
-      modelConfig: MODEL_CONFIG,
-      task: 'summarise',
-      autoExecute: true,
-      maxSteps: 5,
-      unrestrictedMode: true,
-    })
+      device,
+      client: sequentialClient(['{"action":"tap","x":1,"y":2}']),
+    }).run({ modelConfig: MODEL_CONFIG, task: 'tap', autoExecute: true, maxSteps: 5 })
 
     expect(result.status).toBe('awaiting_review')
-    expect(result.steps).toHaveLength(1)
-    expect(result.steps.at(-1)?.failureClass).toBe('unsupported_action')
+    expect(callCount()).toBe(1)
+    expect(result.steps.at(-1)?.failureClass).toBe('unknown')
+  })
+
+  it('retries a device I/O failure too, because it is the other whitelisted class', async () => {
+    const { device, callCount } = deviceFailingWith(
+      () => new DeviceBackendError('adb command failed'),
+    )
+    const result = await createAgentRunner({
+      device,
+      client: sequentialClient(['{"action":"tap","x":1,"y":2}']),
+    }).run({ modelConfig: MODEL_CONFIG, task: 'tap', autoExecute: true, maxSteps: 5 })
+
+    expect(result.status).toBe('awaiting_review')
+    expect(callCount()).toBe(3)
+    expect(result.steps.every((step) => step.failureClass === 'device_io')).toBe(true)
   })
 
   it('reports loop_guard without marking a step as failed', async () => {
@@ -641,6 +656,52 @@ export type AgentStep = {
 ```
 
 （`ActionSafetyDecision` 已在 `agent.ts` 可见范围内 —— 它来自 `./actionSafetyPolicy`；若尚未 import 则加 type-only import。）
+
+**分类必须同时落到 `AgentTurn` 上** —— Task 7 的 trajectory 投影**只从 `thread.turns` 读取**，如果只标在 `AgentStep` 上，投影拿不到任何分类。`AgentTurn`（`agentThread.ts:75`）加两个字段，并在 `recordThreadTurnExecution`（`:333`）写透：
+
+```ts
+// AgentTurn 新增
+  failureClass?: FailureClass
+  safetyDecision?: ActionSafetyDecision
+
+// recordThreadTurnExecution 的 input 新增同名可选项，函数体内按可选项赋值：
+  if (input.failureClass) {
+    turn.failureClass = input.failureClass
+  }
+  if (input.safetyDecision) {
+    turn.safetyDecision = input.safetyDecision
+  }
+```
+
+`recordAgentStep`（`agent.ts:200`）把它已经拿到的那次 `recordThreadTurnExecution` 调用补上透传（该调用在 `:216`）：
+
+```ts
+    const turn = recordThreadTurnExecution(session, step.turnId, {
+      executionResult,
+      toolName: step.toolName,
+      memoryEnabled: options.memoryEnabled,
+      timing: step.timing,
+      success,
+      ...(step.failureClass ? { failureClass: step.failureClass } : {}),
+      ...(step.safetyDecision ? { safetyDecision: step.safetyDecision } : {}),
+    })
+```
+
+配套一条断言「分类确实落到 turn 上」的用例（Task 7 依赖它）：
+
+```ts
+it('persists the failure class onto the turn, not just the step', async () => {
+  const { device } = deviceFailingWith(() => new DeviceBackendError('adb command failed'))
+  const session = createAgentSession('tap')
+  const result = await createAgentRunner({
+    device,
+    client: sequentialClient(['{"action":"tap","x":1,"y":2}']),
+  }).run({ modelConfig: MODEL_CONFIG, task: 'tap', autoExecute: true, maxSteps: 1, session })
+
+  expect(result.steps[0]?.failureClass).toBe('device_io')
+  expect(session.turns[0]?.failureClass).toBe('device_io')
+})
+```
 
 **删除** `agent.ts:900-902` 的私有 `isAutoRecoverableExecutionFailure`（现在由 `failureTaxonomy.ts` 提供；注意 import 名字相同，删除后无需改调用点）。
 
@@ -1082,6 +1143,21 @@ export type ExecuteActionOptions = {
 ```
 
 并在该文件稍后的 `recordAgentStep(ensureSession(), pendingStep, ...)` 之前完成赋值（即必须在 `:174` 的 `recordAgentStep` 调用之前）。
+
+**`deviceCommands` 也要落到 `AgentTurn` 上**（Task 7 的投影只从 `thread.turns` 读）：`AgentTurn`（`agentThread.ts:75`）加 `deviceCommands?: string[][]`，`recordThreadTurnExecution` 的 input 加同名可选项并赋值，`recordAgentStep` 把 `step.deviceCommands` 透传过去 —— 与 Task 4 为 `failureClass` / `safetyDecision` 建立的同一条通道完全一致：
+
+```ts
+// AgentTurn 新增
+  deviceCommands?: string[][]
+
+// recordThreadTurnExecution 内
+  if (input.deviceCommands && input.deviceCommands.length > 0) {
+    turn.deviceCommands = input.deviceCommands
+  }
+
+// recordAgentStep 的 recordThreadTurnExecution 调用里
+      ...(step.deviceCommands ? { deviceCommands: step.deviceCommands } : {}),
+```
 
 **再补一条循环接线的离线用例**（追加到 `src/adapters/deviceCommandRecording.test.ts`）：用一个会主动回调 `onDeviceCommand` 的 fake device 跑 `createAgentRunner().run()`，断言 `step.deviceCommands` 被填上、且 `{ waitMs }` 不会进入数组：
 
