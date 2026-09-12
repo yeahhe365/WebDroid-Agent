@@ -10,6 +10,7 @@ export type RunLogLabels = {
   empty: string
   executionResult: string
   expandedScreenshotFor: (title: string) => string
+  failureClass: string
   modelOutput: string
   openScreenshotFor: (title: string) => string
   parsedAction: string
@@ -48,6 +49,7 @@ export function RunLog({
     empty: 'No events yet',
     executionResult: 'Execution result',
     expandedScreenshotFor: (title: string) => `Expanded screenshot for ${title}`,
+    failureClass: 'Failure class',
     modelOutput: 'Model output',
     openScreenshotFor: (title: string) => `Open screenshot for ${title}`,
     parsedAction: 'Parsed action',
@@ -134,6 +136,9 @@ function StepTimeline({ labels, timeline }: StepTimelineProps) {
       </div>
       {timeline.modelOutput ? (
         <TimelineField label={labels.modelOutput} value={timeline.modelOutput} />
+      ) : null}
+      {timeline.failureClass ? (
+        <TimelineField label={labels.failureClass} value={timeline.failureClass} />
       ) : null}
       {timeline.actionPreview || timeline.executionActionPreview ? (
         <TimelineField

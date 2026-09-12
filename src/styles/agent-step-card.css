@@ -147,6 +147,15 @@
   margin: 0;
 }
 
+.agent-step-failure-class {
+  color: var(--danger);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .agent-step-quick-meta {
   align-items: center;
   display: flex;

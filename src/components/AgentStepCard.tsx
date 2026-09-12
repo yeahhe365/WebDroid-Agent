@@ -56,6 +56,14 @@ export const AgentStepCard = memo(function AgentStepCard({ isActive, turn }: Age
       </div>
 
       <LazyMarkdownContent className="agent-step-summary" content={stepSummary} />
+      {/*
+        The failure class is the machine-readable reason the step stopped. It is
+        rendered only when the turn recorded one, so legacy turns (and every
+        turn that did not fail) look exactly as before.
+      */}
+      {turn.failureClass ? (
+        <p className="agent-step-failure-class">{copy.stepFailureClass(turn.failureClass)}</p>
+      ) : null}
       <div className="agent-step-quick-meta" aria-label={copy.stepDetails}>
         <span className="agent-step-chip" title={copy.stepTiming(turn.timing.totalMs)}>
           {formatStepTimingShort(turn.timing.totalMs, copy)}

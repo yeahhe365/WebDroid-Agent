@@ -108,6 +108,13 @@ describe('run log entries', () => {
     )
   })
 
+  it('carries the failure class into the timeline only when the step has one', () => {
+    expect(buildAgentStepTimeline(step, 'ok')).not.toHaveProperty('failureClass')
+    expect(buildAgentStepTimeline({ ...step, failureClass: 'device_timeout' }, 'failed')).toEqual(
+      expect.objectContaining({ failureClass: 'device_timeout' }),
+    )
+  })
+
   it('keeps log screenshots in model-view coordinates', () => {
     expect(toLogScreenshot(screenshot)).toEqual({
       dataUrl: 'data:image/png;base64,model',

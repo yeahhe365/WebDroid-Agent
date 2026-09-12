@@ -457,6 +457,7 @@ function App() {
       empty: copy.noEvents,
       executionResult: copy.stepExecutionResult,
       expandedScreenshotFor: (title: string) => `${copy.expandedAndroidScreenshot}: ${title}`,
+      failureClass: copy.failureClassLabel,
       modelOutput: copy.stepModelOutput,
       openScreenshotFor: copy.openScreenshotFor,
       parsedAction: copy.stepParsedAction,

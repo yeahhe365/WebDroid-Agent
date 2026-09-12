@@ -3,6 +3,7 @@ import { buildActionPreview } from './actionPreview'
 import type { ScreenSize } from './actionTypes'
 import type { AgentStep } from './agent'
 import { formatDeviceState } from './deviceState'
+import type { FailureClass } from './failureTaxonomy'
 import { modelScreenshotView } from './screenshot'
 import { truncateOptionalRetainedText, truncateRetainedText } from './textRetention'
 
@@ -26,6 +27,8 @@ export type LogEntry = {
     currentApp?: string
     packageName?: string
     toolName?: string
+    /** Machine-readable failure class, when the step recorded one. */
+    failureClass?: FailureClass
     modelOutput?: string
     actionPreview?: string
     executionActionPreview?: string
@@ -90,6 +93,7 @@ export function buildAgentStepTimeline(
     currentApp: step.currentApp,
     packageName: step.deviceState.packageName,
     toolName: step.toolName,
+    ...(step.failureClass ? { failureClass: step.failureClass } : {}),
     modelOutput: truncateRetainedText(step.modelOutput, MAX_RUN_LOG_TIMELINE_FIELD_CHARS),
     actionPreview: buildActionPreview(step.action),
     executionActionPreview: buildActionPreview(step.executionAction),

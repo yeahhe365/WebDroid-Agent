@@ -193,4 +193,41 @@ describe('RunLog', () => {
     expect(screen.getByText('Execution result')).toBeTruthy()
     expect(screen.getByText('input tap 100 200')).toBeTruthy()
   })
+
+  it('renders the failure class of a failed step timeline', () => {
+    const logs: LogEntry[] = [
+      {
+        id: 1,
+        time: '10:30:00',
+        tone: 'error',
+        title: 'Step 3: launch Settings',
+        timeline: {
+          step: 3,
+          failureClass: 'device_timeout',
+          executionResult: 'adb command timed out after 30000ms.',
+        },
+      },
+    ]
+
+    render(<RunLog logs={logs} onClear={vi.fn()} />)
+
+    expect(screen.getByText('Failure class')).toBeTruthy()
+    expect(screen.getByText('device_timeout')).toBeTruthy()
+  })
+
+  it('omits the failure class field when the timeline has none', () => {
+    const logs: LogEntry[] = [
+      {
+        id: 1,
+        time: '10:30:00',
+        tone: 'ok',
+        title: 'Step 3: launch Settings',
+        timeline: { step: 3, executionResult: 'ok' },
+      },
+    ]
+
+    render(<RunLog logs={logs} onClear={vi.fn()} />)
+
+    expect(screen.queryByText('Failure class')).toBeNull()
+  })
 })

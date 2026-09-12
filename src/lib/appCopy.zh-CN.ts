@@ -455,6 +455,8 @@ export const ZH_CN_COPY = {
   stepStatusRunning: '执行中',
   stepStatusExecuted: '已执行',
   stepStatusFailed: '失败',
+  stepFailureClass: (failureClass: string) => `失败分类：${failureClass}`,
+  failureClassLabel: '失败分类',
   stepStatusDone: '完成',
   stepStatusAwaitingReview: '待确认',
   stepStatusTakeover: '需接管',

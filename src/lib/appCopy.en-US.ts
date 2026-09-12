@@ -462,6 +462,8 @@ export const EN_US_COPY = {
   stepStatusRunning: 'Running',
   stepStatusExecuted: 'Executed',
   stepStatusFailed: 'Failed',
+  stepFailureClass: (failureClass: string) => `Failure class: ${failureClass}`,
+  failureClassLabel: 'Failure class',
   stepStatusDone: 'Done',
   stepStatusAwaitingReview: 'Needs review',
   stepStatusTakeover: 'Takeover',
