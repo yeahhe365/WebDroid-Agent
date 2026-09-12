@@ -321,8 +321,9 @@ export class ActionToolRegistry {
         toolName,
         success: false,
         summary: `Unsupported call_api action: ${action.instruction}`,
-        failureKind: 'unsupported_action',
-        ...(context.unrestrictedMode ? {} : { safetyDecision: 'take_over' as const }),
+        ...(context.unrestrictedMode
+          ? { failureKind: 'unsupported_action' as const }
+          : { safetyDecision: 'take_over' as const }),
       }
     }
 

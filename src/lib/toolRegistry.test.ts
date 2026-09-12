@@ -285,7 +285,6 @@ describe('ActionToolRegistry', () => {
       success: false,
       summary: 'Unsupported call_api action: summarize notes',
       toolName: 'call_api',
-      failureKind: 'unsupported_action',
       safetyDecision: 'take_over',
     })
     expect(device.executed).toEqual([])
