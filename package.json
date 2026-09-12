@@ -12,6 +12,7 @@
     "build": "tsc -b && vite build",
     "build:server": "tsc -b tsconfig.server.json",
     "css:audit": "node scripts/css-audit.mjs",
+    "trajectory:fixture": "node scripts/trajectory-to-fixture.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview",
