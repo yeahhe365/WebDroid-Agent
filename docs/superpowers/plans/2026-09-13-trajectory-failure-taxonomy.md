@@ -1159,6 +1159,20 @@ export type ExecuteActionOptions = {
 
 并在该文件稍后的 `recordAgentStep(ensureSession(), pendingStep, ...)` 之前完成赋值（即必须在 `:174` 的 `recordAgentStep` 调用之前）。
 
+**顺带补上手动批准路径的分类**（Task 4 复审的越界发现，其形状与 Task 4 修掉的 F1/F2 完全一致，而本任务正在改同一个函数）：`executePendingStep` 目前只把 `result.toolName` 拷回 `pendingStep`，不拷 `result.failureKind` / `result.safetyDecision`，并且 `:190-194` 记录 `awaiting_review` / `awaiting_takeover` 时**不带分类**。该路径生产可达（`PendingActionCard` 对任何待确认动作都给按钮），于是用户在界面上确认的那一步，其设备失败或安全拒绝在 step、turn 与 status 事件上全都没有标签：
+
+```ts
+      pendingStep.toolName = result.toolName
+      if (result.failureKind) {
+        pendingStep.failureClass = result.failureKind
+      }
+      if (result.safetyDecision) {
+        pendingStep.safetyDecision = result.safetyDecision
+      }
+```
+
+并在该函数记录 `awaiting_review` / `awaiting_takeover` 的 `recordThreadStatus` 调用里带上 `{ failureClass: pendingStep.failureClass }`（无分类时可省略）。
+
 **`deviceCommands` 也要落到 `AgentTurn` 上**（Task 7 的投影只从 `thread.turns` 读）：`AgentTurn`（`agentThread.ts:75`）加 `deviceCommands?: string[][]`，`recordThreadTurnExecution` 的 input 加同名可选项并赋值，`recordAgentStep` 把 `step.deviceCommands` 透传过去 —— 与 Task 4 为 `failureClass` / `safetyDecision` 建立的同一条通道完全一致：
 
 ```ts
