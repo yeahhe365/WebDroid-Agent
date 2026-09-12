@@ -703,6 +703,21 @@ it('persists the failure class onto the turn, not just the step', async () => {
 })
 ```
 
+**补掉两处"静默无分类"的失败路径**（spec §5.1 要求判不了的一律进 `unknown`，且 `unknown` 必须被统计、不允许静默吞掉）：
+
+1. `toolRegistry.ts` 的两个**提前返回**不经过兜底 catch，因此永远拿不到分类，而它们是**生产可达**的（`App.tsx` 的 `disabledActionTools` → 控制器建注册表）：
+   - `unknown tool`（`:330-336`）与 `disabled tool`（`:347-353`）各加 `failureKind: 'unknown' as const`。
+   - 这两处属于 Task 3 的文件，但 Task 3 已完成 —— 由 Task 4 的修复轮统一补，所有权归"接线分类"的 Task 4。
+2. 控制器最外层的 `catch`（`useAgentRunController.ts:325-330`）在 `recordThreadStatus(session, 'error', message)` 时**不带分类**，于是 `model_transport` 这类 run 级抛出错误（网络/HTTP/限流）在 trajectory 里完全没有分类：
+
+```ts
+        recordThreadStatus(session, 'error', message, {
+          failureClass: classifyThrownFailure(caught),
+        })
+```
+
+另需在已有的 take-over 用例里补一条 `expect(session.turns[i]?.safetyDecision).toBe('take_over')` —— `safetyDecision` 是本次一并落地到 `AgentTurn` 的接口，只测一半等于没钉住。
+
 **删除** `agent.ts:900-902` 的私有 `isAutoRecoverableExecutionFailure`（现在由 `failureTaxonomy.ts` 提供；注意 import 名字相同，删除后无需改调用点）。
 
 执行上下文（`:832`）加设备命令回调之外的分类前置——执行失败的结果本身已带 `failureKind`，无需在此处分类；只需在拿到 `result` 后落到 step 上：
