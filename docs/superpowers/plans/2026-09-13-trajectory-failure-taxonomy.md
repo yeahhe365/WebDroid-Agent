@@ -1466,13 +1466,15 @@ export type TrajectoryArtifact = {
     orientation?: string
   }
   steps: TrajectoryStep[]
-  outcome: { failureClass?: FailureClass; reason?: string; finalResponse?: string }
+  outcome: { failureClass?: FailureClass; reason?: string }
 }
 
 export type BuildTrajectoryInput = {
   thread: AgentThread
   runId: string
   includeContext?: boolean
+  /** Opt-in: adds `outcome.reason`, unredacted provider error text. Off by default. */
+  includeDiagnostics?: boolean
   model: { provider?: string; model: string; actionProtocol: ActionProtocol }
   coordinateMode?: ActionCoordinateMode
   now?: number
