@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "device-timeout-then-review",
+  "device": {
+    "screen": { "width": 1080, "height": 2316 },
+    "modelScreen": { "width": 720, "height": 1544 },
+    "currentApp": "Chrome"
+  },
+  "steps": [
+    { "modelOutput": "{\"action\":\"tap\",\"x\":1,\"y\":2}", "deviceResult": { "kind": "timeout", "message": "device command timed out after 30000ms." } },
+    { "modelOutput": "{\"action\":\"tap\",\"x\":1,\"y\":2}", "deviceResult": { "kind": "timeout", "message": "device command timed out after 30000ms." } },
+    { "modelOutput": "{\"action\":\"tap\",\"x\":1,\"y\":2}", "deviceResult": { "kind": "timeout", "message": "device command timed out after 30000ms." } }
+  ],
+  "expect": { "status": "awaiting_review", "failureClasses": ["device_timeout", "device_timeout", "device_timeout"] }
+}

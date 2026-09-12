@@ -480,9 +480,9 @@ test/
     actions/                  # 动作解析夹具
     commands/                 # 设备命令 argv 夹具
     coordinates/              # 坐标换算夹具
-    runs/                     # 运行级夹具（计划中）
+    runs/                     # 运行级夹具（设备时序：超时重试、中止保留已执行步骤）
   fixtureReplay/              # 在无设备、无网络的环境下重放上述夹具
-  helpers/                    # 测试替身，如 fake DeviceBackend（计划中）
+  helpers/                    # 测试替身，如 fake DeviceBackend
   repo-hardening.test.ts      # 仓库级安全、构建和夹具守卫
 ```
 
@@ -513,7 +513,7 @@ npm run trajectory:fixture -- <trajectory.json>
 - Docker 本地代理对 `/chat/completions` 与 `/responses` 的转发约束。
 - Agent 单步和连续执行流程。
 - 失败反馈、瞬时模型 API 错误/模型空回复重试和有限自动恢复。
-- 失败分类、trajectory 投影与脱敏，以及动作、坐标和命令夹具的离线重放。
+- 失败分类、trajectory 投影与脱敏，以及动作、坐标、命令夹具与设备时序的离线重放（连续三次 `device_timeout` 后进入 `awaiting_review`；中止运行保留已执行步骤）。
 - 设置持久化和兼容迁移。
 - Agent thread/turn 持久化。
 - 已安装应用解析、匹配和完整上下文注入。

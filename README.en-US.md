@@ -439,9 +439,9 @@ test/
     actions/                  # action-parsing fixtures
     commands/                 # device command argv fixtures
     coordinates/              # coordinate conversion fixtures
-    runs/                     # run-level fixtures (planned)
+    runs/                     # run-level fixtures (device loop: timeout retry, abort keeps executed steps)
   fixtureReplay/              # replays those fixtures with no device and no network
-  helpers/                    # test doubles such as a fake DeviceBackend (planned)
+  helpers/                    # test doubles such as a fake DeviceBackend
   repo-hardening.test.ts      # repository-level security, build, and fixture guards
 ```
 
@@ -472,7 +472,7 @@ The current tests mainly cover:
 - Docker local proxy forwarding constraints for `/chat/completions` and `/responses`.
 - Single-step and continuous agent execution.
 - Failure feedback, transient model API and empty-model-response retries, and limited automatic recovery.
-- Failure classification, trajectory projection and sanitisation, and offline replay of action, coordinate, and command fixtures.
+- Failure classification, trajectory projection and sanitisation, and offline replay of action, coordinate, and command fixtures plus the device loop (three `device_timeout` attempts before `awaiting_review`; an abort keeps the steps already executed).
 - Settings persistence and compatibility migration.
 - Agent thread/turn persistence.
 - Installed-app parsing, matching, and full context injection.

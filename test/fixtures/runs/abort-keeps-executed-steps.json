@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "abort-keeps-executed-steps",
+  "device": {
+    "screen": { "width": 1080, "height": 2316 },
+    "modelScreen": { "width": 720, "height": 1544 },
+    "currentApp": "Chrome"
+  },
+  "steps": [
+    { "modelOutput": "{\"action\":\"tap\",\"x\":1,\"y\":2}", "deviceResult": { "kind": "ok", "summary": "tapped" } },
+    { "modelOutput": "{\"action\":\"tap\",\"x\":3,\"y\":4}", "deviceResult": { "kind": "ok", "summary": "tapped" } }
+  ],
+  "abortAfterSteps": 1,
+  "expect": { "status": "stopped", "failureClasses": [] },
+  "note": "stopped is only reachable through a stop signal, so the fixture declares its own driver: abortAfterSteps 1 aborts on the step announced after the first one, i.e. once the first tap has already been applied to the device. Replayed with no driver the script runs on — the model client clamps past the end of the script and repeats tap(3,4) — until the loop guard stops it with 5 steps, which is not the scenario this fixture describes. No retry budget is involved here: the first step scripts ok, and an unscripted device call also resolves ok."
+}
