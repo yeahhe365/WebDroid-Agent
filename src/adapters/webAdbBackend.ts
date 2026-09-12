@@ -35,11 +35,10 @@ import {
   type ExecuteActionOptions,
   type InstalledApp,
 } from './deviceTypes'
-import { buildInputCommandSequence } from './inputCommands'
+import { buildInputCommandSequence, buildSetClipboardCommand } from './inputCommands'
 import { parseInstalledAppsFromPackageOutput } from './installedApps'
 import { assertSensitiveActionConfirmed } from './sensitiveActions'
 import { preprocessScreenshotForModel } from './screenshotPreprocess'
-import { escapeShellArg } from './shellEscape'
 import {
   buildDeleteScreenBrightnessCommand,
   buildDeleteScreenBrightnessModeCommand,
@@ -607,7 +606,7 @@ export class WebAdbDeviceBackend implements DeviceBackend {
   async #setDeviceClipboard(text: string, signal?: AbortSignal) {
     const adb = this.#requireAdb()
     await withAbort(
-      adb.subprocess.noneProtocol.spawnWaitText(['cmd', 'clipboard', 'set', escapeShellArg(text)]),
+      adb.subprocess.noneProtocol.spawnWaitText([...buildSetClipboardCommand(text)]),
       signal,
     )
     return 'cmd clipboard set completed.'

@@ -23,16 +23,51 @@ export function SensitiveActionDialog({
   request,
 }: SensitiveActionDialogProps) {
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (!request) {
       return
     }
 
+    function focusableElements() {
+      const panel = panelRef.current
+      if (!panel) {
+        return []
+      }
+      return Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute('disabled'))
+    }
+
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         onCancel()
+        return
       }
+
+      if (event.key !== 'Tab') {
+        return
+      }
+
+      const elements = focusableElements()
+      if (elements.length === 0) {
+        return
+      }
+
+      const first = elements[0]
+      const last = elements[elements.length - 1]
+      const active = document.activeElement as HTMLElement | null
+      const index = active ? elements.indexOf(active) : -1
+
+      event.preventDefault()
+      if (event.shiftKey) {
+        ;(index <= 0 ? last : elements[index - 1]).focus()
+        return
+      }
+      ;(index === -1 || index === elements.length - 1 ? first : elements[index + 1]).focus()
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -58,6 +93,7 @@ export function SensitiveActionDialog({
       <section
         className="sensitive-action-dialog-panel"
         onClick={(event) => event.stopPropagation()}
+        ref={panelRef}
       >
         <header className="sensitive-action-dialog-header">
           <span className="sensitive-action-dialog-icon" aria-hidden="true">

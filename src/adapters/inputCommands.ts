@@ -17,6 +17,15 @@ export function buildInputCommand(action: AgentAction): readonly string[] | null
   return Array.isArray(first) ? first : null
 }
 
+/**
+ * Builds the `cmd clipboard set` command for clipboard text.
+ * The text is user/model supplied, so it must be shell-escaped before it
+ * reaches the device shell.
+ */
+export function buildSetClipboardCommand(text: string): readonly string[] {
+  return ['cmd', 'clipboard', 'set', escapeShellArg(text)]
+}
+
 export function buildInputCommandSequence(
   action: AgentAction,
   timing: DeviceTimingConfig = DEFAULT_DEVICE_TIMING,

@@ -3,7 +3,7 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DeviceBackend } from '../adapters/deviceTypes'
-import { createAgentSession } from '../lib/agent'
+import { createAgentSession, type AgentStep } from '../lib/agent'
 import { createDefaultAppCards } from '../lib/appCards'
 import { APP_COPY } from '../lib/appCopy'
 import type { BusyTask } from '../lib/busyTask'
@@ -457,5 +457,98 @@ describe('useAgentRunController', () => {
       ]),
     )
     expect(session.pendingUserMessages).toEqual([])
+  })
+
+  it('aborts an in-flight manual step when the run is stopped', async () => {
+    const backend = createDevice()
+    const session = createAgentSession('')
+    const registry = createDefaultActionToolRegistry()
+    const captured: { signal?: AbortSignal } = {}
+
+    vi.spyOn(registry, 'execute').mockImplementation(async (_action, context) => {
+      captured.signal = context.signal
+      await new Promise<void>((resolve) => {
+        if (context.signal?.aborted) {
+          resolve()
+          return
+        }
+        context.signal?.addEventListener('abort', () => resolve(), { once: true })
+      })
+      return { toolName: 'tap', success: true, summary: 'Stopped before the device command.' }
+    })
+
+    const pendingStep: AgentStep = {
+      action: { action: 'tap', x: 540, y: 1200 },
+      currentApp: 'Chrome',
+      deviceState: { app: 'Chrome', packageName: 'com.android.chrome' },
+      executionAction: { action: 'tap', x: 540, y: 1200 },
+      index: 1,
+      modelOutput: '{"action":"tap","x":540,"y":1200}',
+      preview: 'tap (540, 1200)',
+      screenshot: {
+        bytes: new Uint8Array(),
+        dataUrl: 'data:image/png;base64,step',
+        screen: { width: 1080, height: 2400 },
+      },
+      timing: { captureMs: 1, currentAppMs: 2, modelMs: 3, parseMs: 4, totalMs: 10 },
+    }
+
+    const client: OpenAiClient = {
+      completeAction: vi.fn(),
+      completeFinalResponse: vi.fn(async () => 'All done.'),
+    }
+
+    const { result } = renderHook(() =>
+      useAgentRunController({
+        actionProtocol: 'webdroid_json',
+        actionToolRegistry: registry,
+        addLog: vi.fn(),
+        appCards: createDefaultAppCards(),
+        backend,
+        busyTask: null,
+        canRunAgent: true,
+        client,
+        copy: APP_COPY['en-US'],
+        customTools: [],
+        device: {
+          applyDeviceSnapshot: vi.fn(),
+          confirmSensitiveAction: vi.fn(() => true),
+          refreshDisplayedSnapshot: vi.fn(async () => ({
+            deviceState: { app: 'Chrome' },
+            screenshot: {
+              bytes: new Uint8Array(),
+              dataUrl: 'data:image/png;base64,after-stop',
+              screen: { width: 1080, height: 2400 },
+            },
+          })),
+        },
+        ensureSession: () => session,
+        maxSteps: 3,
+        memoryEnabled: false,
+        memoryItems: [],
+        modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+        onMemoryItem: vi.fn(),
+        pendingStep,
+        runTask: async (_id, _label, action) => {
+          await action()
+        },
+        screenBlackoutDuringAutoControl: false,
+        secrets: [],
+        setError: vi.fn(),
+        setPendingStep: vi.fn(),
+        streamResponses: false,
+        syncConversation: vi.fn(),
+        unrestrictedMode: false,
+      }),
+    )
+
+    await act(async () => {
+      const pending = result.current.executePendingStep()
+      await waitFor(() => expect(captured.signal).toBeDefined())
+      result.current.stopCurrentRun()
+      await pending
+    })
+
+    expect(captured.signal?.aborted).toBe(true)
   })
 })

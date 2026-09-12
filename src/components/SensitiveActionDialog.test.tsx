@@ -59,6 +59,30 @@ describe('SensitiveActionDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(2)
   })
 
+  it('traps Tab focus inside the dialog', () => {
+    render(
+      <SensitiveActionDialog
+        copy={APP_COPY['en-US']}
+        request={{
+          action: { action: 'tap', x: 10, y: 20 },
+          message: 'Confirm this sensitive action.',
+        }}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    )
+
+    const cancelButton = screen.getByRole('button', { name: 'Cancel' })
+    const executeButton = screen.getByRole('button', { name: 'Execute' })
+    expect(document.activeElement).toBe(executeButton)
+
+    fireEvent.keyDown(window, { key: 'Tab' })
+    expect(document.activeElement).toBe(cancelButton)
+
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(executeButton)
+  })
+
   it('keeps long sensitive confirmations scrollable with reachable actions', () => {
     expect(sensitiveActionDialogCss).toMatch(
       /\.sensitive-action-dialog-panel\s*\{[\s\S]*max-height:\s*min\(calc\(100dvh - 48px\),\s*600px\)/,

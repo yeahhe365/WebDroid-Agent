@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInputCommandSequence } from './inputCommands'
+import { buildInputCommandSequence, buildSetClipboardCommand } from './inputCommands'
 import { escapeInputText } from './adbKeyboard'
 
 describe('buildInputCommandSequence security', () => {
@@ -19,6 +19,28 @@ describe('buildInputCommandSequence security', () => {
     })
     const command = sequence[0] as string[]
     expect(command.join(' ')).toContain(`'a|b$(reboot)'`)
+  })
+})
+
+describe('buildSetClipboardCommand security', () => {
+  it('escapes shell metacharacters in clipboard text', () => {
+    for (const text of ['hello; input keyevent 26', 'a|b', '`whoami`', '$(reboot)']) {
+      expect(buildSetClipboardCommand(text)).toEqual(['cmd', 'clipboard', 'set', `'${text}'`])
+    }
+  })
+
+  it('escapes single quotes and newlines so the argument stays one token', () => {
+    expect(buildSetClipboardCommand("it's")).toEqual(['cmd', 'clipboard', 'set', `'it'\\''s'`])
+    expect(buildSetClipboardCommand('line1\nline2')).toEqual([
+      'cmd',
+      'clipboard',
+      'set',
+      `'line1\nline2'`,
+    ])
+  })
+
+  it('handles empty clipboard text', () => {
+    expect(buildSetClipboardCommand('')).toEqual(['cmd', 'clipboard', 'set', "''"])
   })
 })
 
