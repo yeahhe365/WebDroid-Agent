@@ -5,7 +5,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { createAgentThread } from './lib/agentThread'
+import { createAgentThread, startThreadTurn } from './lib/agentThread'
+import * as fileExport from './lib/fileExport'
 
 const backendMock = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -411,6 +412,66 @@ describe('App', () => {
     openInspectDrawer()
     expect(screen.queryByText('New chat started')).toBeNull()
     expect(screen.getAllByText('No events yet').length).toBeGreaterThan(0)
+  })
+
+  it('exports the most recent run as a trajectory file', async () => {
+    const download = vi.spyOn(fileExport, 'downloadJsonFile').mockImplementation(() => {})
+    const thread = createAgentThread('Export this run', { id: 'trajectory-thread', now: 1000 })
+    startThreadTurn(thread, {
+      index: 1,
+      runId: 'run_export',
+      task: thread.task,
+      promptContext: 'PROMPT-CONTEXT-MUST-NOT-BE-EXPORTED',
+      deviceSnapshot: {
+        currentApp: 'Chrome',
+        deviceState: { app: 'Chrome', packageName: 'com.android.chrome' },
+        screenshot: {
+          dataUrl: 'data:image/png;base64,INLINE-SCREENSHOT-MUST-NOT-BE-EXPORTED',
+          screen: { width: 1080, height: 2400 },
+        },
+      },
+      modelOutput: '{"action":"wait","ms":1}',
+      action: { action: 'wait' as const, ms: 1 },
+      executionAction: { action: 'wait' as const, ms: 1 },
+      preview: 'wait 1ms',
+      timing: { captureMs: 1, currentAppMs: 2, modelMs: 3, parseMs: 4, totalMs: 10 },
+      status: 'done',
+    })
+    threadStoreMock.store.loadLatest.mockResolvedValue(thread)
+
+    render(<App />)
+    const conversation = screen.getByLabelText('Conversation')
+    expect(await within(conversation).findByText('Export this run')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
+    const settingsDialog = await screen.findByRole('dialog', { name: /settings/i })
+    selectSettingsTab(settingsDialog, /data management/i)
+    fireEvent.click(within(settingsDialog).getByRole('button', { name: /export trajectory/i }))
+
+    expect(download).toHaveBeenCalledWith(
+      'webdroid-agent-trajectory.json',
+      expect.objectContaining({ kind: 'webdroid.trajectory', schemaVersion: 1 }),
+    )
+    const serialized = JSON.stringify(download.mock.calls[0]?.[1])
+    expect(serialized).not.toContain('PROMPT-CONTEXT-MUST-NOT-BE-EXPORTED')
+    expect(serialized).not.toContain('INLINE-SCREENSHOT-MUST-NOT-BE-EXPORTED')
+    download.mockRestore()
+  })
+
+  it('logs instead of exporting a trajectory when there is no run yet', async () => {
+    const download = vi.spyOn(fileExport, 'downloadJsonFile').mockImplementation(() => {})
+
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
+    const settingsDialog = await screen.findByRole('dialog', { name: /settings/i })
+    selectSettingsTab(settingsDialog, /data management/i)
+    fireEvent.click(within(settingsDialog).getByRole('button', { name: /export trajectory/i }))
+    fireEvent.click(within(settingsDialog).getByRole('button', { name: /close settings/i }))
+
+    expect(download).not.toHaveBeenCalled()
+    openInspectDrawer()
+    expect(screen.getAllByText('No run to export yet.').length).toBeGreaterThan(0)
+    download.mockRestore()
   })
 
   it('renders advanced optimization controls', () => {

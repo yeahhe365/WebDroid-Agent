@@ -32,6 +32,7 @@ import {
 import { createDefaultActionToolRegistry, type ActionToolName } from './lib/toolRegistry'
 import { loadMemoryItems, rememberMemoryItem, saveMemoryItems } from './lib/memory'
 import { downloadJsonFile, pickAndReadJsonFile } from './lib/fileExport'
+import { buildTrajectoryArtifact } from './lib/trajectory'
 import { parseChatHistoryImport } from './lib/agentThread'
 import {
   requestTaskNotificationPermission,
@@ -532,6 +533,31 @@ function App() {
     addLog({ tone: 'info', title: copy.chatHistoryExported(result.count) })
   }
 
+  function handleExportTrajectory() {
+    const session = ensureSession()
+    const lastTurn = [...session.turns].reverse().find((turn) => turn.runId)
+    if (!lastTurn?.runId) {
+      addLog({ tone: 'warn', title: copy.exportTrajectoryUnavailable })
+      return
+    }
+    // Neither `includeContext` nor `includeDiagnostics` is set: the file is meant
+    // to be committed and shared, so prompt context and unredacted provider error
+    // text stay out of it.
+    downloadJsonFile(
+      'webdroid-agent-trajectory.json',
+      buildTrajectoryArtifact({
+        thread: session,
+        runId: lastTurn.runId,
+        model: {
+          provider: modelConfig.provider,
+          model: modelConfig.model,
+          actionProtocol,
+        },
+      }),
+    )
+    addLog({ tone: 'info', title: copy.trajectoryExported })
+  }
+
   async function handleImportChatHistory() {
     let parsed: unknown
     try {
@@ -715,6 +741,7 @@ function App() {
               onExportChatHistory={() => {
                 void handleExportChatHistory()
               }}
+              onExportTrajectory={handleExportTrajectory}
               onExportSettings={handleExportSettings}
               onImportChatHistory={() => {
                 void handleImportChatHistory()

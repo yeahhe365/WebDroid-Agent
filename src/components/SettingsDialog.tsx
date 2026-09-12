@@ -59,6 +59,7 @@ export type SettingsDialogProps = {
   onClose: () => void
   onExportChatHistory: () => void
   onExportSettings: () => void
+  onExportTrajectory: () => void
   onImportChatHistory: () => void
   onImportSettings: () => void
   onMaxStepsChange: (value: number) => void
@@ -108,6 +109,7 @@ export function SettingsDialog({
   onClose,
   onExportChatHistory,
   onExportSettings,
+  onExportTrajectory,
   onImportChatHistory,
   onImportSettings,
   onMaxStepsChange,
@@ -345,6 +347,10 @@ export function SettingsDialog({
                           <button type="button" onClick={onExportChatHistory}>
                             <Download size={16} />
                             {copy.exportChatHistory}
+                          </button>
+                          <button type="button" onClick={onExportTrajectory}>
+                            <Download size={16} />
+                            {copy.exportTrajectory}
                           </button>
                           <button type="button" onClick={onImportChatHistory}>
                             <Upload size={16} />
