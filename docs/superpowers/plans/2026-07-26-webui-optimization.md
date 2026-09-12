@@ -61,13 +61,21 @@
 - [x] 删除死代码：`components/ConfigRail.tsx`、`components/DirectCommandsSection.tsx`、`styles/config-rail.css`
       （及其在 `styles/index.css` 的 @import），并同步两份 README 的项目结构。
 - [x] 更新 README：核心能力补充快捷键与分栏说明，结构树补齐全部现存文件。
-- [ ] **CSS 瘦身（剩余工作）**：`src/styles/*.css` 约 7,000 行，仍保留失效选择器，至少包括：
-      `.direct-command-panel` / `.direct-command-grid`（原 `DirectCommandsSection` 专用，`compact-section.css` 亦引用）、
-      以及若干已被操作台重设计取代的旧面板规则。目标：先做一次「选择器是否仍被 JSX 引用」的扫描，再按区域删除。
-      注意 `src/App.test.tsx` 存在对 `.compact-section .direct-command-panel` 的样式契约断言，删除时需同步更新测试。
-- [ ] **Bundle 分析**：`npm run build` 后确认 CSS/JS 体积变化（当前基线：CSS 118.27 kB / gzip 18.52 kB，
-      主 chunk 457.40 kB / gzip 139.71 kB，MarkdownContent 158.87 kB / gzip 47.60 kB）。
-- [ ] **真实设备手动验证**：连接 Android 设备跑完整流程（连接 → 配置模型 → 发送任务 → 执行 → 停止 → 拖拽分栏 → 快捷键）。
+- [x] **CSS 瘦身（已完成）**：以 `scripts/css-audit.mjs`（`npm run css:audit`）扫描「类名不再被任何 ts/tsx/html 引用」
+      的规则，按文件逐条人工确认后删除：
+      `.disclosure*`（theme.css）、`.capability-grid*` 与 `.home-device-installed-apps`（device-options.css）、
+      `.status-strip*` / `.readiness-pill.is-running` / `.inspect-drawer .run-log`（layout.css、responsive.css）、
+      `.log-drawer*`（run-log.css）、`.direct-command-panel*` / `.direct-command-grid*`（direct-commands.css）、
+      `.agent-step-body/block/meta*` 与 `.agent-step-label`（agent-step-card.css）、
+      `.chat-send.button--primary*`（chat-composer.css）、`.compact-section .direct-command-panel/.conversation-list`。
+      同步更新了两处失效的样式契约断言（`App.test.tsx` 的 `.compact-section .installed-app-panel`、`.command-center` grid-area）。
+      结果：`src/styles/*.css` 7,026 → 6,844 行；构建产物 CSS 118.47 kB / gzip 18.65 kB → **115.40 kB / gzip 18.20 kB**。
+      注意：扫描器是启发式的，`button--${variant}`、`status-${x}` 这类模板类名会被保守判为存活，输出需人工确认。
+- [x] **Bundle 分析（已完成）**：主 chunk 460.45 kB / gzip 140.90 kB（新增两个 hook 后 +3 kB），
+      MarkdownContent 158.87 kB / gzip 47.60 kB 未变。
+- [ ] **真实设备手动验证（唯一剩余项）**：连接 Android 设备跑完整流程
+      （连接 → 配置模型 → 发送任务 → 执行 → 停止 → 拖拽分栏 → 快捷键）。已在真实 Chrome 中验证过快捷键、
+      分栏拖拽与持久化、以及删除 CSS 前后的视觉一致性，但真机链路仍需物理设备。
 - [x] **废弃项说明**：Phase 3 组件迁移（ChatPanel/ModelPanel/Dialog 等改 shadcn）与 Tailwind 基建不再执行；
       原 Task 2.4 的 `Cmd/Ctrl+Enter` 发送与 `Esc` 关闭底部 Sheet 由现有 Enter 发送与抽屉 Esc 行为覆盖。
 
@@ -78,6 +86,7 @@ npm test          # 59 files / 534 tests
 npm run lint      # eslint .
 npm run build     # tsc -b && vite build
 npm run build:server
+npm run css:audit # 失效 CSS 选择器扫描（启发式，需人工确认后删除）
 ```
 
 当前覆盖本计划改动的测试：

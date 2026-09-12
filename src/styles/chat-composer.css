@@ -110,26 +110,6 @@
   border-radius: 50%;
 }
 
-.chat-send.button--primary {
-  background: var(--gradient-accent);
-  border-color: transparent;
-  box-shadow: var(--shadow-accent-sm);
-  color: var(--on-primary);
-}
-
-.chat-send.button--primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: transparent;
-}
-
-.chat-send.button--primary:disabled {
-  background: var(--surface-muted);
-  border-color: var(--surface-muted-border);
-  box-shadow: none;
-  color: var(--text-soft);
-  opacity: 1;
-}
-
 .chat-send svg {
   display: block;
 }

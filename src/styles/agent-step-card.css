@@ -238,54 +238,11 @@
   color: var(--warn);
 }
 
-.agent-step-body {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.agent-step-block {
-  display: grid;
-  gap: 3px;
-}
-
-.agent-step-label,
 .agent-step-detail-title {
   color: var(--text-soft);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
-}
-
-.agent-step-block p {
-  color: var(--text-secondary);
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.agent-step-block.result p {
-  color: var(--text);
-}
-
-.agent-step-block.result p.pending {
-  color: var(--text-soft);
-}
-
-.agent-step-meta {
-  align-items: center;
-  color: var(--text-muted);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: var(--text-sm);
-  gap: 6px;
-}
-
-.agent-step-meta span {
-  align-items: center;
-  display: inline-flex;
-  gap: 5px;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .agent-step-details {

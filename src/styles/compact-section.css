@@ -103,10 +103,8 @@
   margin: 0 var(--space-4);
 }
 
-.compact-section .direct-command-panel,
 .compact-section .installed-app-panel,
-.compact-section .doctor-results,
-.compact-section .conversation-list {
+.compact-section .doctor-results {
   background: transparent;
   border: 0;
   border-radius: 0;

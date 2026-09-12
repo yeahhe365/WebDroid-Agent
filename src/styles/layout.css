@@ -134,7 +134,6 @@ h2 {
 /* ═══ Command center (status / run strip) ═══ */
 
 .command-center,
-.status-strip,
 .panel-title,
 .status,
 .alert {
@@ -154,21 +153,6 @@ h2 {
   flex-wrap: nowrap;
   gap: var(--space-2);
   min-width: 0;
-}
-
-.status-strip {
-  flex: 1 1 auto;
-  flex-wrap: nowrap;
-  gap: var(--space-1);
-  justify-content: flex-end;
-  margin-left: auto;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.status-strip::-webkit-scrollbar {
-  display: none;
 }
 
 .status {
@@ -229,10 +213,6 @@ button.status:focus-visible {
 
 .readiness-pill {
   max-width: min(420px, 52vw);
-}
-
-.readiness-pill.is-running {
-  gap: var(--space-2);
 }
 
 .model-chip {
@@ -651,8 +631,7 @@ button.status:focus-visible {
   margin-top: var(--space-1);
 }
 
-.inspect-drawer .log-list,
-.inspect-drawer .run-log {
+.inspect-drawer .log-list {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;

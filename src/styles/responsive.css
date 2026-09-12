@@ -230,16 +230,6 @@
     width: 100%;
   }
 
-  .status-strip {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: var(--space-1);
-    grid-area: status;
-    justify-content: flex-start;
-    overflow-x: auto;
-    width: 100%;
-  }
-
   .status {
     justify-content: center;
     min-height: 30px;

@@ -482,6 +482,7 @@ npm test
 npm run lint
 npm run build
 npm run build:server
+npm run css:audit   # 扫描不再被引用的 CSS 选择器（启发式，结果需人工确认）
 ```
 
 当前测试主要覆盖：

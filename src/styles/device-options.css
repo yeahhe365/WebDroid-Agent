@@ -38,7 +38,6 @@
   width: 26px;
 }
 
-.home-device-installed-apps,
 .home-device-doctor-results {
   min-width: 0;
 }
@@ -61,18 +60,3 @@
   flex: 0 0 auto;
 }
 
-.capability-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.capability-grid span {
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-soft-border);
-  border-radius: var(--radius-full);
-  color: var(--accent-soft-text);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  padding: 3px 7px;
-}

@@ -441,6 +441,7 @@ npm test
 npm run lint
 npm run build
 npm run build:server
+npm run css:audit   # reports CSS selectors no longer referenced (heuristic; confirm by hand)
 ```
 
 The current tests mainly cover:

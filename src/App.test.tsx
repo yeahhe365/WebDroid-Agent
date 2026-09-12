@@ -698,7 +698,7 @@ describe('App', () => {
     expect(compactSectionCss).toMatch(/\.compact-section > summary:hover[\s\S]*background:/)
     expect(compactSectionCss).toMatch(/\.compact-section > summary:focus-visible[\s\S]*outline:/)
     expect(compactSectionCss).toMatch(/\.compact-section\[open\] > summary::after[\s\S]*rotate/)
-    expect(compactSectionCss).toContain('.compact-section .direct-command-panel')
+    expect(compactSectionCss).toContain('.compact-section .installed-app-panel')
   })
 
   it('keeps persistent shell controls aligned to the 8px corner system', () => {
@@ -1683,7 +1683,7 @@ describe('App', () => {
     expect(mobileBreakpoint).toMatch(/\.topbar\s*\{[\s\S]*grid-template-areas:/)
     expect(mobileBreakpoint).toMatch(/\.topbar-brand\s*\{[\s\S]*grid-area:\s*brand/)
     expect(mobileBreakpoint).toMatch(/\.topbar-actions\s*\{[\s\S]*grid-area:\s*actions/)
-    expect(mobileBreakpoint).toMatch(/\.status-strip\s*\{[\s\S]*grid-area:\s*status/)
+    expect(mobileBreakpoint).toMatch(/\.command-center\s*\{[\s\S]*grid-area:\s*status/)
     expect(mobileBreakpoint).not.toMatch(/\.tutorial-button,\s*[\r\n]+\.settings-button\s*\{[\s\S]*position:\s*absolute/)
   })
 
