@@ -7,7 +7,6 @@ import type {
   AgentTurn,
   AgentTurnTiming,
 } from './agentThread'
-import type { AgentRunStatus } from './agent'
 import type { ActionCoordinateMode, ActionProtocol } from './actionProtocol'
 import type { ActionSafetyDecision } from './actionSafetyPolicy'
 import type { AgentAction, ExecutableAtomicAction, ScreenSize } from './actionTypes'
@@ -56,6 +55,15 @@ export type TrajectoryStep = {
   failure?: { class: FailureClass; message: string }
   safetyDecision?: ActionSafetyDecision
   deviceCommands?: string[][]
+  /**
+   * True when context compaction had already discarded this turn's
+   * `promptContext` and `modelOutput` (`compactThreadContext` keeps only the
+   * most recent completed turns). Those fields are then empty strings and the
+   * context digest is the digest of "", which would otherwise read as "there
+   * was no context" rather than "it was discarded". The retention policy itself
+   * is unchanged; this only makes it visible in the artifact.
+   */
+  compacted?: boolean
   screenshot?: { id: string; step: number; screen: ScreenSize; modelScreen?: ScreenSize }
 }
 
@@ -69,11 +77,12 @@ export type TrajectoryArtifact = {
     threadId: string
     task: string
     /**
-     * The runner's `AgentRunStatus` plus the thread-level `'error'`: a run that
-     * died with an exception is a distinct, failed outcome, and folding it into
-     * `'done'` would export a failed run as a successful one.
+     * The thread's own status verbatim, including the non-terminal `'idle'` /
+     * `'running'` (an export taken mid-run) and the thread-level `'error'`: a
+     * run that died with an exception is a distinct, failed outcome, and folding
+     * it — or a partial run — into `'done'` would export it as a successful one.
      */
-    status: AgentRunStatus | 'error'
+    status: AgentThreadStatus
     startedAt: number
     endedAt?: number
     partial: boolean
@@ -242,6 +251,11 @@ function projectStep(
   }
   if (turn.success !== undefined) {
     step.success = turn.success
+  }
+  // Projected from the recorded flag, never re-derived from empty strings: an
+  // empty `modelOutput` can also mean the model really returned nothing.
+  if (turn.compacted === true) {
+    step.compacted = true
   }
   // A `failure` block exists only where the source recorded a class; the
   // message is the recorded execution result, never a re-derived summary.
@@ -576,10 +590,19 @@ function deriveRunOutcome(
   })
 }
 
+/**
+ * Maps the thread status verbatim. Every status is a real outcome, including the
+ * non-terminal `idle` / `running` (a mid-run export) — folding those into
+ * `'done'` would export a partial run as a finished one (`run.partial` marks it,
+ * but the status must not lie on its own). `assertNever` keeps the mapping
+ * exhaustive when `AgentThreadStatus` grows.
+ */
 function projectRunStatus(
   status: AgentThreadStatus,
 ): TrajectoryArtifact['run']['status'] {
   switch (status) {
+    case 'idle':
+    case 'running':
     case 'awaiting_review':
     case 'awaiting_takeover':
     case 'done':
@@ -587,10 +610,12 @@ function projectRunStatus(
     case 'error':
       return status
     default:
-      // 'idle' / 'running' are not run outcomes; `run.partial` marks the runs
-      // that never reached one.
-      return 'done'
+      return assertNeverRunStatus(status)
   }
+}
+
+function assertNeverRunStatus(status: never): never {
+  throw new Error(`Unhandled thread status in trajectory projection: ${String(status)}`)
 }
 
 function projectScreen(screen: ScreenSize | undefined): ScreenSize | undefined {

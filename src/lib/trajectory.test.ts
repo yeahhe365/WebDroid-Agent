@@ -364,6 +364,46 @@ describe('run status', () => {
     expect(artifact.outcome.failureClass).toBe('unknown')
     expect(artifact.outcome.reason).toBe('device bridge crashed')
   })
+
+  it('keeps non-terminal thread statuses instead of folding them into done', () => {
+    for (const status of ['idle', 'running'] as const) {
+      const thread = createAgentThread('打开设置')
+      startTurn(thread, {
+        index: 1,
+        runId: `run_${status}`,
+        action: { action: 'wait', ms: 1 },
+        now: 1_000,
+      })
+      thread.status = status
+
+      const artifact = buildTrajectoryArtifact({
+        thread,
+        runId: `run_${status}`,
+        model: MODEL,
+      })
+
+      expect(artifact.run.status).toBe(status)
+      expect(artifact.run.partial).toBe(true)
+    }
+  })
+})
+
+describe('compacted steps', () => {
+  it('marks a compacted turn so empty fields read as discarded, not absent', () => {
+    const { thread, first, second } = buildThread()
+    first.compacted = true
+    first.promptContext = ''
+    first.modelOutput = ''
+
+    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_a', model: MODEL })
+
+    expect(artifact.steps[0]?.compacted).toBe(true)
+    expect(artifact.steps[0]?.modelOutput).toBe('')
+    // The flag is projected, never inferred: an untouched turn stays unflagged.
+    expect(artifact.steps[1]?.compacted).toBeUndefined()
+    expect(second.compacted).toBeUndefined()
+    expect(serializeTrajectory(artifact)).toContain('"compacted": true')
+  })
 })
 
 describe('artifact envelope', () => {
