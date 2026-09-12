@@ -95,6 +95,16 @@ export type TrajectoryArtifact = {
    * `reason` is the `message` of the run's own last `status_change` event;
    * `failureClass` is the run-level fallback for outcomes no step owns.
    *
+   * **`reason` is unredacted free text and can contain model-provider error
+   * output, so it is excluded unless the caller sets
+   * `includeDiagnostics: true`.** The message is recorded verbatim, and on the
+   * error path it is the caught `Error.message` — for a model call that is the
+   * provider's own error body (`formatApiError`). Those bodies are outside this
+   * app's control: a 401 can name the supplied key's prefix, and a self-hosted
+   * or gateway provider can echo the request endpoint, whose `baseUrl` (and,
+   * for Gemini, API key) is user-supplied. It cannot be regex-scrubbed without
+   * giving false confidence, so it is opt-in like `promptContext` instead.
+   *
    * There is deliberately no `finalResponse`: `AgentConversationMessage` is
    * `{ id, role, content }` — no run id, no turn id, no timestamp — so no
    * message can be attributed to a run window. The recorded terminal message of
@@ -108,7 +118,22 @@ export type TrajectoryArtifact = {
 export type BuildTrajectoryInput = {
   thread: AgentThread
   runId: string
+  /**
+   * Ships the full `promptContext` text instead of a `{ chars, digest }`
+   * summary. Off by default, because the context can quote task text and
+   * secret descriptors.
+   */
   includeContext?: boolean
+  /**
+   * Adds `outcome.reason`, which is **unredacted free text**: the run
+   * controller records the status message verbatim, and on the error path that
+   * message is the caught `Error.message` — for a model call, the provider's own
+   * error body. Provider bodies can name the supplied key's prefix or echo the
+   * request endpoint (whose `baseUrl`, and — for Gemini — API key, is
+   * user-configured), so the field is opt-in and off by default. The artifact is
+   * meant to be committable.
+   */
+  includeDiagnostics?: boolean
   model: { provider?: string; model: string; actionProtocol: ActionProtocol }
   coordinateMode?: ActionCoordinateMode
   now?: number
@@ -133,7 +158,7 @@ export function buildTrajectoryArtifact(input: BuildTrajectoryInput): Trajectory
       : input.thread.turns.filter((turn) => turn.runId === input.runId)
   const firstTurn = turns[0]
   const endedAt = turns.at(-1)?.completedAt
-  const outcome = deriveRunOutcome(turns, input.thread)
+  const outcome = deriveRunOutcome(turns, input.thread, input.includeDiagnostics === true)
   // The screenshot reference for the run's first step describes the device the
   // run started on; `startThreadTurn` strips the screenshot from the turn, so
   // geometry can only come from `thread.screenshotReferences`.
@@ -554,11 +579,14 @@ function isInsideRunWindow(
  * `loop_guard` and `aborted` are run-level outcomes, not step failures: the step
  * that tripped the loop guard never executed, and an abort ends the run as a
  * whole. They are recorded on the run's status_change events instead, and the
- * last such event inside the window is also the run's recorded reason.
+ * last such event inside the window is also the run's recorded reason — when the
+ * caller opted into `includeDiagnostics`, since that message is unredacted free
+ * text and may echo provider error output.
  */
 function deriveRunOutcome(
   turns: readonly AgentTurn[],
   thread: AgentThread,
+  includeDiagnostics: boolean,
 ): TrajectoryArtifact['outcome'] {
   const window = resolveRunWindow(turns, thread)
   const statusEvents = thread.events.filter(
@@ -574,8 +602,9 @@ function deriveRunOutcome(
     failureClass: lastFailedTurn?.failureClass ?? lastClassedEvent?.failureClass,
     // The reason is the *last* status change of the run. A message-less status
     // change therefore yields no `reason` key rather than reaching further back
-    // for an older message the run has already moved past.
-    reason: statusEvents.at(-1)?.message,
+    // for an older message the run has already moved past. It is dropped
+    // entirely unless diagnostics were requested: see `includeDiagnostics`.
+    reason: includeDiagnostics ? statusEvents.at(-1)?.message : undefined,
   })
 }
 

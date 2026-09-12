@@ -131,7 +131,12 @@ describe('run-level outcome fallback', () => {
     })
     recordThreadStatus(thread, 'stopped', 'loop guard', { failureClass: 'loop_guard' })
 
-    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_b', model: MODEL })
+    const artifact = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_b',
+      model: MODEL,
+      includeDiagnostics: true,
+    })
     expect(artifact.steps.every((step) => step.failure === undefined)).toBe(true)
     expect(artifact.outcome.failureClass).toBe('loop_guard')
     expect(artifact.outcome.reason).toBe('loop guard')
@@ -151,7 +156,12 @@ describe('run-level outcome fallback', () => {
       now: 5_000,
     })
 
-    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_abort', model: MODEL })
+    const artifact = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_abort',
+      model: MODEL,
+      includeDiagnostics: true,
+    })
 
     expect(artifact.run.endedAt).toBeUndefined()
     expect(artifact.outcome.failureClass).toBe('aborted')
@@ -178,8 +188,18 @@ describe('run-level outcome fallback', () => {
       now: 3_000,
     })
 
-    const first = buildTrajectoryArtifact({ thread, runId: 'run_first', model: MODEL })
-    const second = buildTrajectoryArtifact({ thread, runId: 'run_second', model: MODEL })
+    const first = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_first',
+      model: MODEL,
+      includeDiagnostics: true,
+    })
+    const second = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_second',
+      model: MODEL,
+      includeDiagnostics: true,
+    })
 
     expect(first.run.stepTurnIds).toHaveLength(1)
     expect(first.outcome.failureClass).toBeUndefined()
@@ -201,7 +221,12 @@ describe('run-level reason', () => {
     recordThreadStatus(thread, 'running', 'first note', { now: 1_100 })
     recordThreadStatus(thread, 'stopped', 'second note', { now: 1_200 })
 
-    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_reason', model: MODEL })
+    const artifact = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_reason',
+      model: MODEL,
+      includeDiagnostics: true,
+    })
 
     expect(artifact.outcome.reason).toBe('second note')
     // No step and no status change recorded a class, so none is invented.
@@ -217,7 +242,14 @@ describe('run-level reason', () => {
       now: 1_000,
     })
 
-    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_quiet', model: MODEL })
+    // Diagnostics requested, so the only thing that can keep `reason` out is
+    // the empty run window — which is exactly what this test pins.
+    const artifact = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_quiet',
+      model: MODEL,
+      includeDiagnostics: true,
+    })
 
     expect(Object.keys(artifact.outcome)).toEqual([])
   })
@@ -234,13 +266,75 @@ describe('run-level reason', () => {
       now: 1_100,
     })
 
-    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_response', model: MODEL })
+    // Diagnostics requested, so an empty outcome is not just the default
+    // omission: even with `reason` in scope, nothing here invents a response.
+    const artifact = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_response',
+      model: MODEL,
+      includeDiagnostics: true,
+    })
 
     // The response exists on the thread, and is still deliberately not
     // projected: `AgentConversationMessage` carries no run id to select it by.
     expect(thread.messages.some((message) => message.role === 'assistant')).toBe(true)
     expect('finalResponse' in artifact.outcome).toBe(false)
     expect(Object.keys(artifact.outcome)).toEqual([])
+  })
+})
+
+describe('outcome diagnostics opt-in', () => {
+  // The exact shape the error path records: `useAgentRunController` stores
+  // `formatCaughtError(caught)` verbatim, and for a model call that is the
+  // provider's own error body (`formatApiError`). A 401 body may name the
+  // supplied key's prefix, and a self-hosted/gateway body may echo the request
+  // endpoint, whose `baseUrl` (and, for Gemini, API key) is user-configured.
+  const PROVIDER_ERROR =
+    'Model API failed with 401: API key not valid. ' +
+    'key=AIzaSyEXAMPLEKEYPREFIX https://gateway.internal:8443/v1beta/models/gemini-pro:generateContent?key=AIzaSyEXAMPLEKEYPREFIX'
+
+  function threadWithProviderError() {
+    const thread = createAgentThread('打开设置')
+    startTurn(thread, {
+      index: 1,
+      runId: 'run_diag',
+      action: { action: 'wait', ms: 1 },
+      now: 1_000,
+    })
+    recordThreadStatus(thread, 'error', PROVIDER_ERROR, {
+      failureClass: 'unknown',
+      now: 2_000,
+    })
+    return thread
+  }
+
+  it('omits reason by default, even when the run recorded a status message', () => {
+    const artifact = buildTrajectoryArtifact({
+      thread: threadWithProviderError(),
+      runId: 'run_diag',
+      model: MODEL,
+    })
+    const serialized = serializeTrajectory(artifact)
+
+    expect('reason' in artifact.outcome).toBe(false)
+    // The omission is surgical: the classified outcome is still exported.
+    expect(artifact.outcome).toEqual({ failureClass: 'unknown' })
+    expect(serialized).not.toContain(PROVIDER_ERROR)
+    expect(serialized).not.toContain('AIzaSyEXAMPLEKEYPREFIX')
+    expect(serialized).not.toContain('gateway.internal')
+  })
+
+  it('includes reason only when includeDiagnostics is true', () => {
+    const artifact = buildTrajectoryArtifact({
+      thread: threadWithProviderError(),
+      runId: 'run_diag',
+      model: MODEL,
+      includeDiagnostics: true,
+    })
+
+    expect(artifact.outcome.reason).toBe(PROVIDER_ERROR)
+    expect(artifact.outcome.failureClass).toBe('unknown')
+    expect(serializeTrajectory(artifact)).toContain(PROVIDER_ERROR)
   })
 })
 
@@ -258,7 +352,12 @@ describe('run status', () => {
       now: 2_000,
     })
 
-    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_error', model: MODEL })
+    const artifact = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_error',
+      model: MODEL,
+      includeDiagnostics: true,
+    })
 
     expect(artifact.run.status).toBe('error')
     expect(artifact.run.partial).toBe(true)
@@ -388,6 +487,60 @@ describe('secret argv guard', () => {
     })
     expect(artifact.steps[0]?.deviceCommands).toBeUndefined()
     expect(serializeTrajectory(artifact)).not.toContain('SUPER-SECRET-VALUE')
+  })
+
+  it('drops the argv of a repeat that nests a secret action', () => {
+    const thread = createAgentThread('登录')
+    const turn = startTurn(thread, {
+      index: 1,
+      runId: 'run_secret_repeat',
+      action: {
+        action: 'repeat',
+        count: 2,
+        actionToRepeat: { action: 'type_secret', secretId: 'login_password' },
+      },
+    })
+    turn.deviceCommands = [
+      ['input', 'text', 'SUPER-SECRET-VALUE'],
+      ['input', 'text', 'SUPER-SECRET-VALUE'],
+    ]
+
+    const artifact = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_secret_repeat',
+      model: MODEL,
+    })
+
+    expect(artifact.steps[0]?.deviceCommands).toBeUndefined()
+    expect(serializeTrajectory(artifact)).not.toContain('SUPER-SECRET-VALUE')
+    // The nested descriptor id is still recorded, so the step stays intelligible.
+    expect(serializeTrajectory(artifact)).toContain('login_password')
+  })
+
+  it('drops the argv when the secret lives only in the execution action', () => {
+    const thread = createAgentThread('登录')
+    const turn = startTurn(thread, {
+      index: 1,
+      runId: 'run_secret_execution',
+      // The planned action is clean; only the action that actually executed
+      // carries the secret — which is the action the argv belongs to.
+      action: { action: 'wait', ms: 1 },
+      executionAction: { action: 'type_secret', secretId: 'login_password' },
+    })
+    turn.deviceCommands = [['input', 'text', 'SUPER-SECRET-VALUE']]
+
+    const artifact = buildTrajectoryArtifact({
+      thread,
+      runId: 'run_secret_execution',
+      model: MODEL,
+    })
+
+    expect(artifact.steps[0]?.deviceCommands).toBeUndefined()
+    expect(serializeTrajectory(artifact)).not.toContain('SUPER-SECRET-VALUE')
+    expect(artifact.steps[0]?.executionAction).toStrictEqual({
+      action: 'type_secret',
+      secretId: 'login_password',
+    })
   })
 
   it('keeps the argv of an ordinary step', () => {
