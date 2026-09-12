@@ -426,11 +426,19 @@ Expected: FAIL —— `expected undefined to be 'unsupported_action'`
 
 - [ ] **Step 3: 实现**
 
-`src/lib/toolRegistry.ts` 顶部加 import：
+`src/lib/toolRegistry.ts` 顶部 —— **合并到已有的那一行，不要新增第二条 import**。Task 2 的前向声明已经在 `:17` 放了：
+
+```ts
+import type { FailureClass } from './failureTaxonomy'
+```
+
+把它**整行替换**为（值导入 `classifyThrownFailure` + 保留 type-only 的 `FailureClass`，仍是一条语句）：
 
 ```ts
 import { classifyThrownFailure, type FailureClass } from './failureTaxonomy'
 ```
+
+> 两条语句导入同一个模块的同一符号会触发 lint 的 `no-duplicate-imports` 类规则（本仓库 CI 跑 `npm run lint`）。
 
 `src/lib/toolRegistry.ts` —— **`ActionToolResult.failureKind` 已由 Task 2 的提交（`06d4fee`）前向声明完毕**（2 行：type-only `import type { FailureClass }` + `failureKind?: FailureClass`）。本任务**不要重复添加该字段**，只需：① 在失败分支**填充**它；② 加 `ActionToolContext.onDeviceCommand`。若发现字段不存在，说明基线不对，停下来报告而不是自行补声明 —— 本任务原本的 RED 之所以仍然成立，是因为还没有任何代码**填充**该字段。
 
