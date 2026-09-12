@@ -104,15 +104,20 @@ runId?: string             // 一次 run 的稳定标识，见 4.2
 failureClass?: FailureClass
 safetyDecision?: ActionSafetyDecision
 deviceCommands?: string[][] // 该步实际发出的 argv（不含 { waitMs } 定时项）
+
+// AgentThreadEvent 的 status_change 变体新增（run 级结局，见 5.4）：
+failureClass?: FailureClass
 ```
+
+**为什么 run 级结局要单独记录**：`failureClass` 挂在 step 上只能表达「某一步失败了」。`loop_guard` 与 `aborted` 都不是步骤失败 —— 前者是在生成下一步之后、**执行之前**被拦下的（那一步从未执行，而前一步是成功的），后者是整个 run 被中止。核查确认控制器把 `loop_guard` 折叠成了 thread status `stopped`（`useAgentRunController.ts:315`），与用户主动中止**无法区分**。因此 run 级结局记录在 `status_change` 事件上（事件天然按时间归属某次 run），投影时归入 `outcome.failureClass`。
 
 ### 4.2 `runId` 的引入（更正：原设计误判 turn 为 run 边界）
 
 `startThreadTurn()` 每步调用一次，因此 **turn 是步、不是 run**。为可靠切分单次 run，新增：
 
 - `RunAgentStepInput.runId?: string`（`agent.ts:96`）。
-- 多步：`createAgentRunner().run()` 入口生成一个 `runId`，全程透传。
-- 单步：`useAgentRunController` 的 `execute-action` 任务生成一个 `runId`。
+- **唯一铸造点**：`createAgentRunner().run()`（`agent.ts:699`）入口生成一个 `runId`，逐次透传给 `runAgentStep()`。核查确认 `runAgentStep()` 在生产代码中**只有这一个调用方**（`agent.ts:720`），因此不存在其他需要铸造的路径。
+- 单步补执行路径（`useAgentRunController` 的 `execute-action` 任务）操作的是先前 run 产出的 `pendingStep`，故**继承 `pendingStep.runId`**，不另铸造。
 - `runAgentStep()` 将其写入 `AgentStep.runId`，`startThreadTurn()` 写入 `AgentTurn.runId`。
 
 这样「导出这次 run」有了确定语义，也顺带修掉了今天无法切分 run 的真实缺陷。
@@ -162,7 +167,7 @@ export type TrajectoryStep = {
   currentApp: string
   deviceState: DeviceState
   uiTree?: ScreenTreeSummary
-  context: { chars: number; sha256: string } | { text: string }
+  context: { chars: number; digest: string } | { text: string }
   modelOutput: string
   action: AgentAction
   executionAction: AgentAction
@@ -172,9 +177,13 @@ export type TrajectoryStep = {
   failure?: { class: FailureClass; message: string }
   safetyDecision?: ActionSafetyDecision
   deviceCommands?: string[][]
-  screenshot?: { id: string; sha256: string; screen: ScreenSize; modelScreen?: ScreenSize }
+  screenshot?: { id: string; step: number; screen: ScreenSize; modelScreen?: ScreenSize }
 }
 ```
+
+**为什么是 `digest` 而不是 `sha256`**：投影是**同步纯函数**，而加密级哈希在两个运行环境里都没有同步实现 —— 浏览器只有异步 `crypto.subtle`，Node 侧要 `node:crypto`。为避免把投影改成异步或引入新依赖，摘要统一使用 10 行实现的便携同步 **FNV-1a 32 位**（字段名 `digest`，形如 `fnv1a32:1a2b3c4d`）。它只用于「上下文/夹具是否变化」的比对，不承担安全语义；若日后需要加密级完整性校验，由 Node 侧生成器对**文件**用 `node:crypto` 计算，与内存投影解耦。
+
+**截图引用从哪来**：`startThreadTurn()` 会用 `omitSnapshotScreenshot()` 去掉 turn 上的截图，所以 step 的截图引用来自 `thread.screenshotReferences`（`agentThread.ts:52`），其 `id` 由 `screenshotReferenceIdForStep(step)` 按步号稳定生成 —— 投影时按 `step` 步号 join 即可。
 
 ### 4.4 三条硬规则
 
@@ -185,7 +194,8 @@ export type TrajectoryStep = {
 ### 4.5 向后兼容
 
 - 新字段全部可选：已持久化的旧 thread 与旧 dump 仍可解析。
-- `isAgentThread()`（`agentThread.ts:772`）与 `parseChatHistoryImport()`（`:791`）需接受新字段；解析不出 `runId` 的旧 thread，其 trajectory 标记 `run.runId = ''` 并置 `partial: true`。
+- `isAgentThread()`（`agentThread.ts:772`）经核查是**浅校验**（只查 `id` / `status` / `turns` 是否数组 / `messages` 是否数组 / `createdAt` / `updatedAt`），不检查 turn 内部字段，因此**无需修改**；计划中以一条用例锁定该行为，防止日后收紧校验时误伤旧 dump。
+- 解析不出 `runId` 的旧 thread，其 trajectory 标记 `run.runId = ''` 并置 `partial: true`。
 
 ---
 
@@ -253,6 +263,18 @@ const AUTO_RECOVERABLE_FAILURES: ReadonlySet<FailureClass> =
 - **不加新档位**：`StepTone`（`AgentStepCard.tsx:23`）保持 `planned` / `running` / `success` / `failed` / `review` / `takeover`，失败类作为 `failed` 的副标题展示。
 - `RunLog` 的 detail 追加分类标签；`LogEntry.tone` 四档不变。
 
+### 5.4 run 级结局的分类来源
+
+步骤级分类覆盖不到两种结局，它们记录在 `status_change` 事件上：
+
+| run 结局 | 记录位置 | 分类 |
+| --- | --- | --- |
+| `loop_guard`（拦在执行之前，那一步从未执行） | `recordThreadStatus(..., { failureClass: 'loop_guard' })` | `loop_guard` |
+| `stopped`（用户中止） | `recordThreadStatus(..., { failureClass: 'aborted' })` | `aborted` |
+| `max_steps` | 不记分类（是预算耗尽，不是失败） | — |
+
+`outcome.failureClass` 的推导顺序：**最后一个带 `failureClass` 的 step** → 否则**该 run 起点之后最后一个带 `failureClass` 的 `status_change` 事件** → 否则 `undefined`。
+
 ---
 
 ## 6. 夹具生成与 CI 接线（Layer 1）
@@ -301,7 +323,8 @@ const AUTO_RECOVERABLE_FAILURES: ReadonlySet<FailureClass> =
   - `execute(action)` → 成功返回记录的 `executionResult`；失败按记录的 `failure.class` 抛 `DeviceBackendError` 或超时
 - 配离线 fake `OpenAiClient`，离线重放 `runAgentStep()` / `createAgentRunner().run()`，无网络。
 - **`deviceCommands` 的真正用途**：不是驱动 fake，而是**断言命令构造没有回归** —— 用现成的纯函数构造器（`buildSetClipboardCommand`、`buildDumpScreenTreeCommand`、`buildStayAwakeCommand` 等）从动作重建 argv，与该步记录的 argv 逐项比对，覆盖 `shellEscape` 相关安全路径。
-- 采集方式：新增可选回调 `RunAgentStepInput.onDeviceCommand?: (argv: readonly string[]) => void`，由 `runAgentStep()` 收集进 `step.deviceCommands`；`{ waitMs }` 定时项不记录。
+- 采集方式：`ExecuteActionOptions.onDeviceCommand?: (argv: readonly string[]) => void`，由 backend 在真正发出命令处（`webAdbBackend.ts:503` 的 `#executeCommandStep`）回调；`{ waitMs }` 定时项不记录。
+- **收集点在「动作执行处」，不是 `runAgentStep()`**：核查确认 `runAgentStep()` 只负责感知与生成动作（`agent.ts:326`），真正的执行发生在 runner 循环（`agent.ts:832` 的 `toolRegistry.execute`）与控制器的 `execute-action` 路径（`useAgentRunController.ts:156`）。两处各自把 argv 写入 `step.deviceCommands`。
 - 目标用例：ADB 超时 → `device_timeout` → 自动重试 → 第三次 `awaiting_review`；dump 失败降级；abort 中途停止仍保留已执行 steps（回归 `f338471`）。
 
 ---
@@ -326,7 +349,7 @@ test/fixtures/trajectories/*.json   仅元数据的真实 run 记录
 src/lib/agent.ts               runId 透传、onDeviceCommand 收集、失败分类标注、重试白名单
 src/lib/agentThread.ts         新字段 + startThreadTurn / recordThreadTurnExecution 接收
                                runId / failureClass / safetyDecision / deviceCommands
-                               + isAgentThread / parseChatHistoryImport 兼容
+                               （isAgentThread 浅校验，无需改动）
 src/lib/toolRegistry.ts        ActionToolResult.failureKind
 src/adapters/deviceTypes.ts    DeviceBackendError 增加 kind（'io' | 'timeout'）
 src/adapters/deviceRetry.ts    withTimeout 以 kind: 'timeout' 构造错误
@@ -413,3 +436,8 @@ README.md / README.en-US.md    路线图与结构树同步
 | 6 | 重试白名单 | 本次一并收窄为 `device_io` / `device_timeout` |
 | 7 | 像素守卫 | `test/fixtures/**` 出现 `data:image/` 即 CI fail |
 | 8 | `runId` 引入 | 更正 §4.2：turn 是步不是 run，必须新增 `runId` 才能切分单次 run（**需复核**） |
+| 9 | `runId` 铸造点 | 更正 §4.2：唯一铸造点在 `createAgentRunner().run()`；`execute-action` 路径继承 `pendingStep.runId`（`runAgentStep` 生产代码只有 `agent.ts:720` 一个调用方） |
+| 10 | 摘要算法 | 更正 §4.3：`sha256` → 便携同步 FNV-1a（字段名 `digest`），避免异步化投影或引入依赖 |
+| 11 | `isAgentThread` | 更正 §4.5：经核查为浅校验，无需修改；改用例锁定该行为 |
+| 12 | `deviceCommands` 收集点 | 更正 §7：收集在执行处（runner 循环 / 控制器），不在 `runAgentStep()`（后者不执行动作） |
+| 13 | run 级结局 | 更正 §4.1：`loop_guard` / `aborted` 不是步骤失败（`loop_guard` 拦在**执行之前**，前一步是成功的），且控制器把 `loop_guard` 折叠成 `stopped` 无法与中止区分 —— 故 run 级 `failureClass` 记在 `status_change` 事件上，投影进 `outcome.failureClass` |
