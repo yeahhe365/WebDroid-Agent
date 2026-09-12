@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "webdroid.action-fixture",
+  "name": "missing-app",
+  "source": "handwritten",
+  "input": {
+    "modelOutput": "{\"action\":\"launch\",\"packageName\":\"not a package!\"}",
+    "screen": { "width": 1080, "height": 2316 },
+    "actionProtocol": "webdroid_json",
+    "coordinateMode": "screenshot_pixels"
+  },
+  "expected": { "error": { "messageIncludes": "app must be a non-empty string." } },
+  "note": "captured from a real run: parseModelAction on this input throws 'app must be a non-empty string.'. The `app` read fires first — src/lib/actionValidation.ts:54 runs readFirstString(candidate, ['app']) before the packageName check at :56 — so the bad packageName in this input is never diagnosed. This fixture pins that ordering on purpose: the package-name rejection itself is asserted by invalid-package.json, which supplies \"app\":\"Chrome\". A model reply that names a bad package but omits `app` therefore gets the misleading `app` diagnostic; if the validation order is ever reversed, this fixture fails."
+}

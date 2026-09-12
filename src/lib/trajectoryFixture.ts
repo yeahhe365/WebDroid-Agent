@@ -39,6 +39,19 @@ export type CoordinateFixture = {
 }
 
 /**
+ * The actions a command fixture can be built from. This is deliberately not
+ * `AgentAction`: `dump_screen_tree` is issued by the adapter itself (it is how
+ * the UI tree is captured, not something the model asks for), so it is not a
+ * member of `AgentAction` — while `set_clipboard` is, because the model can
+ * request it. The union is the honest domain of `input.action`, and it is what
+ * keeps the field type-correct for both the hand-written seeds and a future
+ * `trajectoryToCommandFixtures`.
+ */
+export type CommandFixtureSource =
+  | Extract<AgentAction, { action: 'set_clipboard' }>
+  | { action: 'dump_screen_tree' }
+
+/**
  * A recorded device command, keyed by the action that produced it. The shape
  * mirrors `deviceCommands` in a recorded trajectory step, so a fixture derived
  * from a real run and one written by hand are interchangeable.
@@ -48,7 +61,7 @@ export type CommandFixture = {
   kind: 'webdroid.command-fixture'
   name: string
   source: string
-  input: { action: AgentAction }
+  input: { action: CommandFixtureSource }
   expected: { argv: readonly string[] }
   note?: string
 }
