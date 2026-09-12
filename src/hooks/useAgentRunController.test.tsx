@@ -41,6 +41,24 @@ function createDevice(): DeviceBackend {
   }
 }
 
+function createPendingTapStep(): AgentStep {
+  return {
+    action: { action: 'tap', x: 540, y: 1200 },
+    currentApp: 'Chrome',
+    deviceState: { app: 'Chrome', packageName: 'com.android.chrome' },
+    executionAction: { action: 'tap', x: 540, y: 1200 },
+    index: 1,
+    modelOutput: '{"action":"tap","x":540,"y":1200}',
+    preview: 'tap (540, 1200)',
+    screenshot: {
+      bytes: new Uint8Array(),
+      dataUrl: 'data:image/png;base64,step',
+      screen: { width: 1080, height: 2400 },
+    },
+    timing: { captureMs: 1, currentAppMs: 2, modelMs: 3, parseMs: 4, totalMs: 10 },
+  }
+}
+
 describe('useAgentRunController', () => {
   it('describes every automatic run terminal status for notifications', () => {
     const copy = APP_COPY['en-US']
@@ -616,5 +634,81 @@ describe('useAgentRunController', () => {
     })
 
     expect(captured.signal?.aborted).toBe(true)
+  })
+
+  it('records the confirmed pending step commands and classification', async () => {
+    const backend = createDevice()
+    const session = createAgentSession('')
+    const registry = createDefaultActionToolRegistry()
+
+    vi.spyOn(registry, 'execute').mockImplementation(async (_action, context) => {
+      context.onDeviceCommand?.(['input', 'tap', '540', '1200'])
+      return {
+        toolName: 'tap',
+        success: false,
+        summary: 'Tap failed: device disconnected.',
+        failureKind: 'device_io',
+        safetyDecision: 'take_over',
+      }
+    })
+
+    const pendingStep = createPendingTapStep()
+
+    const { result } = renderHook(() =>
+      useAgentRunController({
+        actionProtocol: 'webdroid_json',
+        actionToolRegistry: registry,
+        addLog: vi.fn(),
+        appCards: createDefaultAppCards(),
+        backend,
+        busyTask: null,
+        canRunAgent: true,
+        client: { completeAction: vi.fn(), completeFinalResponse: vi.fn(async () => 'All done.') },
+        copy: APP_COPY['en-US'],
+        customTools: [],
+        device: {
+          applyDeviceSnapshot: vi.fn(),
+          confirmSensitiveAction: vi.fn(() => true),
+          refreshDisplayedSnapshot: vi.fn(async () => ({
+            deviceState: { app: 'Chrome' },
+            screenshot: {
+              bytes: new Uint8Array(),
+              dataUrl: 'data:image/png;base64,after-tap',
+              screen: { width: 1080, height: 2400 },
+            },
+          })),
+        },
+        ensureSession: () => session,
+        maxSteps: 3,
+        memoryEnabled: false,
+        memoryItems: [],
+        modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+        onMemoryItem: vi.fn(),
+        pendingStep,
+        runTask: async (_id, _label, action) => {
+          await action()
+        },
+        screenBlackoutDuringAutoControl: false,
+        secrets: [],
+        setError: vi.fn(),
+        setPendingStep: vi.fn(),
+        streamResponses: false,
+        syncConversation: vi.fn(),
+        unrestrictedMode: false,
+      }),
+    )
+
+    await act(async () => {
+      await result.current.executePendingStep()
+    })
+
+    expect(pendingStep.deviceCommands).toEqual([['input', 'tap', '540', '1200']])
+    expect(pendingStep.failureClass).toBe('device_io')
+    expect(pendingStep.safetyDecision).toBe('take_over')
+    expect(session.events.at(-1)).toMatchObject({
+      type: 'status_change',
+      status: 'awaiting_takeover',
+      failureClass: 'device_io',
+    })
   })
 })

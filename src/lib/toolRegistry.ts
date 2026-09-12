@@ -506,6 +506,7 @@ async function executeDefaultAction(action: AgentAction, context: ActionToolCont
       reason: action.reason,
     }, {
       signal: context.signal,
+      ...(context.onDeviceCommand ? { onDeviceCommand: context.onDeviceCommand } : {}),
     })
     return `Typed secret "${action.secretId}".`
   }
@@ -528,6 +529,7 @@ async function executeDefaultAction(action: AgentAction, context: ActionToolCont
   return context.device.execute(action, {
     confirmSensitiveAction: context.confirmSensitiveAction,
     signal: context.signal,
+    ...(context.onDeviceCommand ? { onDeviceCommand: context.onDeviceCommand } : {}),
   })
 }
 

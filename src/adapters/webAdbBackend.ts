@@ -34,6 +34,7 @@ import {
   type DeviceTimingConfig,
   type ExecuteActionOptions,
   type InstalledApp,
+  toReportableDeviceCommand,
 } from './deviceTypes'
 import { buildInputCommandSequence, buildSetClipboardCommand } from './inputCommands'
 import { parseInstalledAppsFromPackageOutput } from './installedApps'
@@ -87,6 +88,7 @@ export class WebAdbDeviceBackend implements DeviceBackend {
   #stayAwakeEnabled = false
   #screenBlackoutRestoreSettings: ScreenBlackoutRestoreSettings | null = null
   #clipboardText: string | null = null
+  #onDeviceCommand: ((argv: readonly string[]) => void) | undefined
 
   get isConnected() {
     return this.#adb !== null
@@ -313,6 +315,18 @@ export class WebAdbDeviceBackend implements DeviceBackend {
   }
 
   async execute(action: AgentAction, options?: ExecuteActionOptions): Promise<string> {
+    const previous = this.#onDeviceCommand
+    if (options?.onDeviceCommand) {
+      this.#onDeviceCommand = options.onDeviceCommand
+    }
+    try {
+      return await this.#executeAction(action, options)
+    } finally {
+      this.#onDeviceCommand = previous
+    }
+  }
+
+  async #executeAction(action: AgentAction, options?: ExecuteActionOptions): Promise<string> {
     const signal = options?.signal
     throwIfAborted(signal)
 
@@ -502,15 +516,20 @@ export class WebAdbDeviceBackend implements DeviceBackend {
 
   async #executeCommandStep(step: DeviceCommandStep, signal?: AbortSignal) {
     throwIfAborted(signal)
-    if (isWaitStep(step)) {
-      await delayWithAbort(step.waitMs, signal)
+    const reported = toReportableDeviceCommand(step)
+    if (!reported) {
+      await delayWithAbort((step as { waitMs: number }).waitMs, signal)
       return
     }
 
+    // Reported before the adb handle is required, so the "waits are not
+    // commands" rule stays observable without a device. The reported argv is
+    // the argv that spawns.
+    this.#onDeviceCommand?.(reported)
     const adb = this.#requireAdb()
     await withAbort(
       withTimeout(
-        () => adb.subprocess.noneProtocol.spawnWait(step),
+        () => adb.subprocess.noneProtocol.spawnWait(reported),
         DEFAULT_DEVICE_WRITE_TIMEOUT_MS,
         'device command',
       ),

@@ -38,9 +38,20 @@ export type InstalledApp = {
 
 export type DeviceCommandStep = readonly string[] | { waitMs: number }
 
+/**
+ * The argv a backend should report for a command step, or null for timer
+ * steps. Kept pure so the "waits are not commands" rule is testable without a
+ * device.
+ */
+export function toReportableDeviceCommand(step: DeviceCommandStep): readonly string[] | null {
+  return Array.isArray(step) ? [...step] : null
+}
+
 export type ExecuteActionOptions = {
   confirmSensitiveAction?: (message: string, action: AgentAction) => boolean | Promise<boolean>
   signal?: AbortSignal
+  /** Reports each argv the backend is about to send, in order. */
+  onDeviceCommand?: (argv: readonly string[]) => void
 }
 
 export type DeviceTimingConfig = {

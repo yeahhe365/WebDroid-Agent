@@ -93,6 +93,7 @@ export type AgentStep = {
   executionResult?: string
   failureClass?: FailureClass
   safetyDecision?: ActionSafetyDecision
+  deviceCommands?: string[][]
 }
 
 export type AgentDeviceSnapshot = {
@@ -231,6 +232,7 @@ export function recordAgentStep(
       success,
       ...(step.failureClass ? { failureClass: step.failureClass } : {}),
       ...(step.safetyDecision ? { safetyDecision: step.safetyDecision } : {}),
+      ...(step.deviceCommands ? { deviceCommands: step.deviceCommands } : {}),
     })
     if (options.memoryEnabled && turn.action.action === 'note' && success !== false) {
       const message = turn.action.message.trim()
@@ -853,6 +855,7 @@ export function createAgentRunner({
         }
 
         let result: ActionToolResult
+        const deviceCommands: string[][] = []
         const executionStartedAt = now()
         try {
           result = await toolRegistry.execute(step.executionAction, {
@@ -868,6 +871,7 @@ export function createAgentRunner({
             customTools: input.customTools,
             secrets: input.secrets,
             screenshotRecallThread: session,
+            onDeviceCommand: (argv) => deviceCommands.push([...argv]),
             signal: input.signal,
           })
         } catch (caught) {
@@ -875,6 +879,9 @@ export function createAgentRunner({
             return { status: 'stopped', steps }
           }
           throw caught
+        }
+        if (deviceCommands.length > 0) {
+          step.deviceCommands = deviceCommands
         }
         step.toolName = result.toolName
         if (result.failureKind) {

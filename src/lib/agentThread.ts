@@ -93,6 +93,7 @@ export type AgentTurn = {
   success?: boolean
   failureClass?: FailureClass
   safetyDecision?: ActionSafetyDecision
+  deviceCommands?: string[][]
   createdAt: number
   completedAt?: number
   compacted?: boolean
@@ -350,6 +351,7 @@ export function recordThreadTurnExecution(
     timing?: AgentTurnTiming
     failureClass?: FailureClass
     safetyDecision?: ActionSafetyDecision
+    deviceCommands?: string[][]
     now?: number
   } = {},
 ) {
@@ -372,6 +374,9 @@ export function recordThreadTurnExecution(
   }
   if (input.safetyDecision) {
     turn.safetyDecision = input.safetyDecision
+  }
+  if (input.deviceCommands && input.deviceCommands.length > 0) {
+    turn.deviceCommands = input.deviceCommands
   }
   turn.completedAt = now
   turn.status =

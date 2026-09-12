@@ -154,6 +154,7 @@ export function useAgentRunController({
       recordThreadStatus(ensureSession(), 'running', copy.executeActionTask)
       syncConversation()
       const executionStartedAt = performance.now()
+      const deviceCommands: string[][] = []
       const result = await actionToolRegistry.execute(pendingStep.executionAction, {
         device: backend,
         confirmSensitiveAction: device.confirmSensitiveAction,
@@ -167,11 +168,21 @@ export function useAgentRunController({
         customTools,
         secrets,
         screenshotRecallThread: ensureSession(),
+        onDeviceCommand: (argv) => deviceCommands.push([...argv]),
         signal: pendingAbort.signal,
         onIrreversibleBlocked,
       })
       recordAgentStepExecutionDuration(pendingStep, performance.now() - executionStartedAt)
+      if (deviceCommands.length > 0) {
+        pendingStep.deviceCommands = deviceCommands
+      }
       pendingStep.toolName = result.toolName
+      if (result.failureKind) {
+        pendingStep.failureClass = result.failureKind
+      }
+      if (result.safetyDecision) {
+        pendingStep.safetyDecision = result.safetyDecision
+      }
       recordAgentStep(ensureSession(), pendingStep, result.summary, result.success, {
         memoryEnabled,
         onMemoryItem,
@@ -191,6 +202,7 @@ export function useAgentRunController({
           ensureSession(),
           result.safetyDecision === 'take_over' ? 'awaiting_takeover' : 'awaiting_review',
           result.summary,
+          pendingStep.failureClass ? { failureClass: pendingStep.failureClass } : {},
         )
       } else {
         recordThreadStatus(ensureSession(), 'idle')
