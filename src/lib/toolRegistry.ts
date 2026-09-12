@@ -14,6 +14,7 @@ import {
 import type { AgentAction } from './actionTypes'
 import { recallThreadScreenshot, type AgentThread } from './agentThread'
 import { delayWithAbort, isAbortError, throwIfAborted, withAbort } from './abortSignal'
+import type { FailureClass } from './failureTaxonomy'
 
 export type ActionToolParameter = {
   type: 'string' | 'number' | 'boolean' | 'object' | 'list'
@@ -31,6 +32,7 @@ export type ActionToolResult = {
   toolName: string
   success: boolean
   summary: string
+  failureKind?: FailureClass
   safetyDecision?: Exclude<ActionSafetyDecision, 'allow'>
 }
 
