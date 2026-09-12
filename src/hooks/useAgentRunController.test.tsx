@@ -7,6 +7,7 @@ import { createAgentSession, type AgentStep } from '../lib/agent'
 import { createDefaultAppCards } from '../lib/appCards'
 import { APP_COPY } from '../lib/appCopy'
 import type { BusyTask } from '../lib/busyTask'
+import { OpenAiClientError } from '../lib/openAiErrors'
 import type { OpenAiClient } from '../lib/openAiTypes'
 import { createDefaultActionToolRegistry } from '../lib/toolRegistry'
 import {
@@ -150,6 +151,71 @@ describe('useAgentRunController', () => {
       title: APP_COPY['en-US'].taskComplete,
       detail: 'All done.',
     })
+  })
+
+  it('classifies a thrown run failure on the thread status event', async () => {
+    const backend = createDevice()
+    const session = createAgentSession('')
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => {
+        throw new OpenAiClientError('model transport failed')
+      }),
+    }
+
+    const { result } = renderHook(() =>
+      useAgentRunController({
+        actionProtocol: 'webdroid_json',
+        actionToolRegistry: createDefaultActionToolRegistry(),
+        addLog: vi.fn(),
+        appCards: createDefaultAppCards(),
+        backend,
+        busyTask: null,
+        canRunAgent: true,
+        client,
+        copy: APP_COPY['en-US'],
+        customTools: [],
+        device: {
+          applyDeviceSnapshot: vi.fn(),
+          confirmSensitiveAction: vi.fn(() => true),
+          refreshDisplayedSnapshot: vi.fn(async () => ({
+            deviceState: { app: 'Chrome' },
+            screenshot: {
+              bytes: new Uint8Array(),
+              dataUrl: 'data:image/png;base64,abc',
+              screen: { width: 1080, height: 2400 },
+            },
+          })),
+        },
+        ensureSession: () => session,
+        maxSteps: 3,
+        memoryEnabled: false,
+        memoryItems: [],
+        modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+        onMemoryItem: vi.fn(),
+        pendingStep: null,
+        runTask: async (_id, _label, action) => {
+          await action()
+        },
+        screenBlackoutDuringAutoControl: false,
+        secrets: [],
+        setError: vi.fn(),
+        setPendingStep: vi.fn(),
+        streamResponses: false,
+        syncConversation: vi.fn(),
+        unrestrictedMode: false,
+      }),
+    )
+
+    await act(async () => {
+      await expect(result.current.submitChatMessage('Fail the task.')).rejects.toThrow(
+        'model transport failed',
+      )
+    })
+
+    const event = [...session.events]
+      .reverse()
+      .find((candidate) => candidate.type === 'status_change')
+    expect(event && 'failureClass' in event ? event.failureClass : undefined).toBe('model_transport')
   })
 
   it('dims and restores the Android screen around automatic control when enabled', async () => {

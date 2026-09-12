@@ -12,7 +12,7 @@ import {
 } from './agent'
 import { OpenAiClientError } from './openAiErrors'
 import type { OpenAiClient } from './openAiTypes'
-import { ActionToolRegistry } from './toolRegistry'
+import { ActionToolRegistry, createDefaultActionToolRegistry } from './toolRegistry'
 
 function fakeDevice(): DeviceBackend & { executed: string[] } {
   const executed: string[] = []
@@ -800,6 +800,7 @@ describe('createAgentRunner', () => {
     const client: OpenAiClient = {
       completeAction: vi.fn(async () => '{"action":"input_text","text":"123456"}'),
     }
+    const session = createAgentSession('Enter the verification code')
     const runner = createAgentRunner({ device, client })
 
     const result = await runner.run({
@@ -807,11 +808,13 @@ describe('createAgentRunner', () => {
       task: 'Enter the verification code',
       autoExecute: true,
       maxSteps: 5,
+      session,
     })
 
     expect(result.status).toBe('awaiting_takeover')
     expect(result.reason).toContain('manual takeover')
     expect(device.executed).toEqual([])
+    expect(session.turns[0]?.safetyDecision).toBe('take_over')
   })
 
   it('bypasses local safety takeover decisions in unrestricted mode', async () => {
@@ -1421,5 +1424,19 @@ describe('failure classification and retry budget', () => {
 
     expect(result.steps[0]?.failureClass).toBe('device_io')
     expect(session.turns[0]?.failureClass).toBe('device_io')
+  })
+
+  it('classifies a disabled tool as unknown on the step and the turn', async () => {
+    const session = createAgentSession('tap')
+    const result = await createAgentRunner({
+      device: fakeDevice(),
+      client: sequentialClient(['{"action":"tap","x":1,"y":2}']),
+      toolRegistry: createDefaultActionToolRegistry(['tap']),
+    }).run({ modelConfig: MODEL_CONFIG, task: 'tap', autoExecute: true, maxSteps: 1, session })
+
+    expect(result.status).toBe('awaiting_review')
+    expect(result.reason).toContain('disabled')
+    expect(result.steps[0]?.failureClass).toBe('unknown')
+    expect(session.turns[0]?.failureClass).toBe('unknown')
   })
 })

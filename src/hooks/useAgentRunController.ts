@@ -12,6 +12,7 @@ import {
   type AgentStep,
 } from '../lib/agent'
 import { recordThreadStatus } from '../lib/agentThread'
+import { classifyThrownFailure } from '../lib/failureTaxonomy'
 import type { AgentAction } from '../lib/actionTypes'
 import type { AppCopy } from '../lib/appCopy'
 import type { ActionProtocol } from '../lib/actionProtocol'
@@ -324,7 +325,9 @@ export function useAgentRunController({
         syncConversation()
       } catch (caught) {
         const message = formatCaughtError(caught)
-        recordThreadStatus(session, 'error', message)
+        recordThreadStatus(session, 'error', message, {
+          failureClass: classifyThrownFailure(caught),
+        })
         notifyRunEnd(onRunEndNotification, {
           status: 'error',
           title: copy.sessionStatusError,

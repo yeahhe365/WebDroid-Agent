@@ -332,6 +332,7 @@ export class ActionToolRegistry {
         toolName,
         success: false,
         summary: `Unknown tool: ${toolName}.`,
+        failureKind: 'unknown' as const,
       }
     }
 
@@ -341,6 +342,7 @@ export class ActionToolRegistry {
         toolName,
         success: false,
         summary: `Unknown tool: ${toolName}.`,
+        failureKind: 'unknown' as const,
       }
     }
 
@@ -349,6 +351,7 @@ export class ActionToolRegistry {
         toolName,
         success: false,
         summary: `Tool "${toolName}" is disabled.`,
+        failureKind: 'unknown' as const,
       }
     }
 
