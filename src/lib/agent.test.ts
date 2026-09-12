@@ -1410,4 +1410,16 @@ describe('failure classification and retry budget', () => {
     expect(result.status).toBe('loop_guard')
     expect(result.steps.every((step) => step.failureClass === undefined)).toBe(true)
   })
+
+  it('persists the failure class onto the turn, not just the step', async () => {
+    const { device } = deviceFailingWith(() => new DeviceBackendError('adb command failed'))
+    const session = createAgentSession('tap')
+    const result = await createAgentRunner({
+      device,
+      client: sequentialClient(['{"action":"tap","x":1,"y":2}']),
+    }).run({ modelConfig: MODEL_CONFIG, task: 'tap', autoExecute: true, maxSteps: 1, session })
+
+    expect(result.steps[0]?.failureClass).toBe('device_io')
+    expect(session.turns[0]?.failureClass).toBe('device_io')
+  })
 })

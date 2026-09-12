@@ -1,6 +1,7 @@
 import type { DeviceScreenshot, DeviceState } from '../adapters/deviceTypes'
 import type { AgentAction } from './actionTypes'
 import type { ActionProtocol } from './actionProtocol'
+import type { ActionSafetyDecision } from './actionSafetyPolicy'
 import { createUnknownDeviceState, UNKNOWN_APP_NAME } from './deviceState'
 import type { FailureClass } from './failureTaxonomy'
 import type { AgentConversationMessage, AgentHistoryItem, ModelConfig } from './openAiTypes'
@@ -89,6 +90,8 @@ export type AgentTurn = {
   timing: AgentTurnTiming
   executionResult?: string
   success?: boolean
+  failureClass?: FailureClass
+  safetyDecision?: ActionSafetyDecision
   createdAt: number
   completedAt?: number
   compacted?: boolean
@@ -342,6 +345,8 @@ export function recordThreadTurnExecution(
     success?: boolean
     status?: AgentTurnStatus
     timing?: AgentTurnTiming
+    failureClass?: FailureClass
+    safetyDecision?: ActionSafetyDecision
     now?: number
   } = {},
 ) {
@@ -358,6 +363,12 @@ export function recordThreadTurnExecution(
   turn.success = input.success
   if (input.timing) {
     turn.timing = input.timing
+  }
+  if (input.failureClass) {
+    turn.failureClass = input.failureClass
+  }
+  if (input.safetyDecision) {
+    turn.safetyDecision = input.safetyDecision
   }
   turn.completedAt = now
   turn.status =

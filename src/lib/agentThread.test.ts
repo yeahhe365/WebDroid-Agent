@@ -279,4 +279,48 @@ describe('run-level failure class', () => {
     const event = [...thread.events].reverse().find((candidate) => candidate.type === 'status_change')
     expect(event && 'failureClass' in event ? event.failureClass : undefined).toBe('loop_guard')
   })
+
+  it('persists the failure class and safety decision onto the executed turn', () => {
+    const thread = createAgentThread('', { id: 'thread-turn-class', now: 1000 })
+    const action: AgentAction = { action: 'tap', x: 100, y: 200, reason: 'open' }
+    const startTurn = (id: string, index: number, now: number) =>
+      startThreadTurn(thread, {
+        id,
+        index,
+        task: 'Open Bluetooth',
+        promptContext: 'Task: Open Bluetooth',
+        modelOutput: '{"action":"tap","x":100,"y":200,"reason":"open"}',
+        action,
+        executionAction: action,
+        preview: 'tap (100, 200) - open',
+        deviceSnapshot: {
+          currentApp: 'Settings',
+          deviceState: { app: 'Settings', packageName: 'com.android.settings' },
+          screenshot,
+        },
+        timing: { captureMs: 1, currentAppMs: 2, modelMs: 3, parseMs: 4, totalMs: 10 },
+        now,
+      })
+
+    const failedTurn = startTurn('turn-1', 1, 1200)
+    recordThreadTurnExecution(thread, failedTurn.id, {
+      executionResult: 'adb command failed',
+      success: false,
+      failureClass: 'device_io',
+      now: 1300,
+    })
+    const blockedTurn = startTurn('turn-2', 2, 1400)
+    recordThreadTurnExecution(thread, blockedTurn.id, {
+      executionResult: 'Safety policy stopped tap.',
+      success: false,
+      safetyDecision: 'take_over',
+      now: 1500,
+    })
+
+    expect(thread.turns[0]?.failureClass).toBe('device_io')
+    expect(thread.turns[0]?.safetyDecision).toBeUndefined()
+    expect(thread.turns[1]?.safetyDecision).toBe('take_over')
+    expect(thread.turns[1]?.failureClass).toBeUndefined()
+    expect(isAgentThread(thread)).toBe(true)
+  })
 })

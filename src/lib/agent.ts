@@ -227,6 +227,8 @@ export function recordAgentStep(
       memoryEnabled: options.memoryEnabled,
       timing: step.timing,
       success,
+      ...(step.failureClass ? { failureClass: step.failureClass } : {}),
+      ...(step.safetyDecision ? { safetyDecision: step.safetyDecision } : {}),
     })
     if (options.memoryEnabled && turn.action.action === 'note' && success !== false) {
       const message = turn.action.message.trim()
