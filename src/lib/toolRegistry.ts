@@ -14,7 +14,7 @@ import {
 import type { AgentAction } from './actionTypes'
 import { recallThreadScreenshot, type AgentThread } from './agentThread'
 import { delayWithAbort, isAbortError, throwIfAborted, withAbort } from './abortSignal'
-import type { FailureClass } from './failureTaxonomy'
+import { classifyThrownFailure, type FailureClass } from './failureTaxonomy'
 
 export type ActionToolParameter = {
   type: 'string' | 'number' | 'boolean' | 'object' | 'list'
@@ -44,6 +44,11 @@ export type ActionToolContext = {
   secrets?: readonly SecretRecord[]
   screenshotRecallThread?: AgentThread
   signal?: AbortSignal
+  /**
+   * Observes the argv of every device command the registry issues, so callers can
+   * record what actually ran on the device.
+   */
+  onDeviceCommand?: (argv: readonly string[]) => void
   unrestrictedMode?: boolean
   /**
    * Invoked when an irreversible action (factory reset, account deletion, payment)
@@ -316,6 +321,7 @@ export class ActionToolRegistry {
         toolName,
         success: false,
         summary: `Unsupported call_api action: ${action.instruction}`,
+        failureKind: 'unsupported_action',
         ...(context.unrestrictedMode ? {} : { safetyDecision: 'take_over' as const }),
       }
     }
@@ -421,6 +427,7 @@ export class ActionToolRegistry {
         toolName,
         success: false,
         summary: caught instanceof Error ? caught.message : String(caught),
+        failureKind: classifyThrownFailure(caught),
       }
     }
   }
@@ -449,6 +456,7 @@ export class ActionToolRegistry {
           toolName: action.action,
           success: false,
           summary: [`${action.action} stopped at ${stepLabel}.`, ...summaries].join('\n'),
+          ...(result.failureKind ? { failureKind: result.failureKind } : {}),
           ...(result.safetyDecision ? { safetyDecision: result.safetyDecision } : {}),
         }
       }

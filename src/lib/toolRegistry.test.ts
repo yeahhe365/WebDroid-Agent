@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { DeviceBackend } from '../adapters/deviceTypes'
+import { DeviceBackendError, type DeviceBackend } from '../adapters/deviceTypes'
 import { createAgentThread, recordThreadScreenshot } from './agentThread'
 import { createDefaultActionToolRegistry } from './toolRegistry'
 
-function fakeDevice(): DeviceBackend & { executed: string[] } {
+function fakeDevice(execute?: DeviceBackend['execute']): DeviceBackend & { executed: string[] } {
   const executed: string[] = []
   return {
     executed,
@@ -16,7 +16,7 @@ function fakeDevice(): DeviceBackend & { executed: string[] } {
       dataUrl: 'data:image/png;base64,abc',
       screen: { width: 1080, height: 2400 },
     })),
-    execute: vi.fn(async (action) => {
+    execute: execute ?? vi.fn(async (action) => {
       executed.push(action.action)
       return `${action.action} executed`
     }),
@@ -285,6 +285,7 @@ describe('ActionToolRegistry', () => {
       success: false,
       summary: 'Unsupported call_api action: summarize notes',
       toolName: 'call_api',
+      failureKind: 'unsupported_action',
       safetyDecision: 'take_over',
     })
     expect(device.executed).toEqual([])
@@ -420,5 +421,81 @@ describe('ActionToolRegistry', () => {
       toolName: 'interact',
     })
     expect(device.executed).toEqual([])
+  })
+})
+
+describe('ActionToolResult.failureKind', () => {
+  it('marks an unsupported action instead of leaving the caller to guess', async () => {
+    const registry = createDefaultActionToolRegistry()
+
+    const result = await registry.execute(
+      { action: 'call_api', instruction: 'summarise' },
+      { device: fakeDevice(), unrestrictedMode: true },
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.failureKind).toBe('unsupported_action')
+  })
+
+  it('classifies a thrown device timeout as device_timeout', async () => {
+    const registry = createDefaultActionToolRegistry()
+
+    const result = await registry.execute(
+      { action: 'tap', x: 1, y: 2 },
+      {
+        device: fakeDevice(async () => {
+          throw new DeviceBackendError('device command timed out after 30000ms.', 'timeout')
+        }),
+      },
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.failureKind).toBe('device_timeout')
+  })
+
+  it('classifies a thrown device I/O error as device_io', async () => {
+    const registry = createDefaultActionToolRegistry()
+
+    const result = await registry.execute(
+      { action: 'tap', x: 1, y: 2 },
+      {
+        device: fakeDevice(async () => {
+          throw new DeviceBackendError('device command failed.', 'io')
+        }),
+      },
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.failureKind).toBe('device_io')
+  })
+
+  it('leaves safety refusals without a failure kind, because they are not failures', async () => {
+    const registry = createDefaultActionToolRegistry()
+
+    const result = await registry.execute(
+      { action: 'interact', message: 'choose an account' },
+      { device: fakeDevice() },
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.safetyDecision).toBe('take_over')
+    expect(result.failureKind).toBeUndefined()
+  })
+
+  it('propagates a child failure kind through composite actions', async () => {
+    const registry = createDefaultActionToolRegistry()
+
+    const result = await registry.execute(
+      { action: 'sequence', actions: [{ action: 'tap', x: 1, y: 2 }] },
+      {
+        device: fakeDevice(async () => {
+          throw new DeviceBackendError('device command failed.', 'io')
+        }),
+      },
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.failureKind).toBe('device_io')
+    expect(result.safetyDecision).toBeUndefined()
   })
 })
