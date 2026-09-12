@@ -2,6 +2,7 @@ import type { DeviceScreenshot, DeviceState } from '../adapters/deviceTypes'
 import type { AgentAction } from './actionTypes'
 import type { ActionProtocol } from './actionProtocol'
 import { createUnknownDeviceState, UNKNOWN_APP_NAME } from './deviceState'
+import type { FailureClass } from './failureTaxonomy'
 import type { AgentConversationMessage, AgentHistoryItem, ModelConfig } from './openAiTypes'
 import { compactScreenshotForMemory } from './screenshot'
 import { truncateRetainedTailText, truncateRetainedText } from './textRetention'
@@ -147,6 +148,7 @@ export type AgentThreadEvent =
       type: 'status_change'
       status: AgentThreadStatus
       message?: string
+      failureClass?: FailureClass
       createdAt: number
     }
 
@@ -520,7 +522,7 @@ export function recordThreadStatus(
   thread: AgentThread,
   status: AgentThreadStatus,
   message?: string,
-  options: { now?: number } = {},
+  options: { now?: number; failureClass?: FailureClass } = {},
 ) {
   const latestStatusEvent = [...thread.events]
     .reverse()
@@ -540,6 +542,7 @@ export function recordThreadStatus(
       type: 'status_change',
       status,
       ...(message ? { message } : {}),
+      ...(options.failureClass ? { failureClass: options.failureClass } : {}),
     },
     options,
   )

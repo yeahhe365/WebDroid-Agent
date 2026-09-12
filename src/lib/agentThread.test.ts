@@ -271,3 +271,12 @@ describe('agent thread model', () => {
     ).toEqual([threadA, threadB])
   })
 })
+
+describe('run-level failure class', () => {
+  it('records the failure class on the status change event', () => {
+    const thread = createAgentThread('task')
+    recordThreadStatus(thread, 'stopped', 'loop guard', { failureClass: 'loop_guard' })
+    const event = [...thread.events].reverse().find((candidate) => candidate.type === 'status_change')
+    expect(event && 'failureClass' in event ? event.failureClass : undefined).toBe('loop_guard')
+  })
+})

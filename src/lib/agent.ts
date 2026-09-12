@@ -55,6 +55,12 @@ import {
   type ActionToolRegistry,
 } from './toolRegistry'
 import { isAbortError, throwIfAborted, withAbort } from './abortSignal'
+import {
+  classifyThrownFailure,
+  isAutoRecoverableExecutionFailure,
+  type FailureClass,
+} from './failureTaxonomy'
+import type { ActionSafetyDecision } from './actionSafetyPolicy'
 
 const MAX_AUTO_RECOVERABLE_EXECUTION_FAILURES = 2
 const RUN_RESULT_MODEL_OUTPUT_MAX_LENGTH = 4000
@@ -84,6 +90,8 @@ export type AgentStep = {
   timing: AgentTiming
   toolName?: string
   executionResult?: string
+  failureClass?: FailureClass
+  safetyDecision?: ActionSafetyDecision
 }
 
 export type AgentDeviceSnapshot = {
@@ -741,6 +749,9 @@ export function createAgentRunner({
           }
           if (isInvalidModelActionError(caught)) {
             const step = caught.step
+            // InvalidModelActionError is module-private, so the throw site has to
+            // name the class it alone can see.
+            step.failureClass = classifyThrownFailure(caught, { force: 'model_output' })
             try {
               await withAbort(Promise.resolve(input.onStep?.(step)), input.signal)
             } catch (stepCaught) {
@@ -851,6 +862,12 @@ export function createAgentRunner({
           throw caught
         }
         step.toolName = result.toolName
+        if (result.failureKind) {
+          step.failureClass = result.failureKind
+        }
+        if (result.safetyDecision) {
+          step.safetyDecision = result.safetyDecision
+        }
         recordAgentStepExecutionDuration(step, elapsed(executionStartedAt))
         // The device action has already been applied, so the step must be
         // recorded BEFORE honouring an abort. Otherwise the side effect stays
@@ -895,10 +912,6 @@ export function createAgentRunner({
       return { status: 'max_steps', steps }
     },
   }
-}
-
-function isAutoRecoverableExecutionFailure(result: ActionToolResult) {
-  return !result.safetyDecision
 }
 
 function retainStepForRunResult(step: AgentStep): AgentStep {

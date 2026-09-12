@@ -301,7 +301,7 @@ export function useAgentRunController({
         }
         if (result.status === 'stopped') {
           addLog({ tone: 'warn', title: copy.runStopped })
-          recordThreadStatus(session, 'stopped', copy.runStopped)
+          recordThreadStatus(session, 'stopped', copy.runStopped, { failureClass: 'aborted' })
         }
         if (result.status === 'awaiting_review') {
           addLog({ tone: 'warn', title: copy.stepStatusAwaitingReview, detail: result.reason })
@@ -313,7 +313,9 @@ export function useAgentRunController({
         }
         if (result.status === 'loop_guard') {
           addLog({ tone: 'warn', title: copy.loopGuardStopped, detail: result.reason })
-          recordThreadStatus(session, 'stopped', result.reason ?? copy.loopGuardStopped)
+          recordThreadStatus(session, 'stopped', result.reason ?? copy.loopGuardStopped, {
+            failureClass: 'loop_guard',
+          })
         }
         notifyRunEnd(onRunEndNotification, createRunEndNotification(result, copy, maxSteps))
         if (result.status !== 'awaiting_takeover') {

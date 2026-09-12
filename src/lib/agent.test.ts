@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { DeviceBackend } from '../adapters/deviceTypes'
+import { DeviceBackendError, type DeviceBackend } from '../adapters/deviceTypes'
 import {
   createAgentRunner,
   createAgentSession,
@@ -76,6 +76,29 @@ function fakePreprocessedDevice(): DeviceBackend & { executedActions: unknown[] 
     }),
   }
 }
+
+function sequentialClient(outputs: readonly string[]): OpenAiClient {
+  let index = 0
+  return {
+    completeAction: vi.fn(async () => {
+      const output = outputs[Math.min(index, outputs.length - 1)]
+      index += 1
+      return output ?? '{"action":"done","summary":"ok"}'
+    }),
+  }
+}
+
+function deviceFailingWith(makeError: () => Error) {
+  const device = fakeDevice()
+  let calls = 0
+  device.execute = vi.fn(async () => {
+    calls += 1
+    throw makeError()
+  })
+  return { device, callCount: () => calls }
+}
+
+const MODEL_CONFIG = { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' }
 
 describe('runAgentStep', () => {
   it('captures the screen, asks the model, and validates the action', async () => {
@@ -503,7 +526,7 @@ describe('createAgentRunner', () => {
     expect(device.executed).toEqual([])
   })
 
-  it('feeds recoverable execution failures back into the next model step', async () => {
+  it('stops after an unclassified execution failure instead of retrying it', async () => {
     const device = fakeDevice()
     vi.mocked(device.execute).mockRejectedValueOnce(new Error('tap failed: stale coordinates'))
     const session = createAgentSession('Open app')
@@ -525,23 +548,17 @@ describe('createAgentRunner', () => {
       session,
     })
 
-    expect(result.status).toBe('done')
-    expect(client.completeAction).toHaveBeenCalledTimes(2)
+    // A plain Error classifies as `unknown`, which is outside the retry
+    // whitelist: one attempt, then review with the failure reason.
+    expect(result.status).toBe('awaiting_review')
+    expect(result.reason).toBe('tap failed: stale coordinates')
+    expect(client.completeAction).toHaveBeenCalledTimes(1)
+    expect(result.steps.map((step) => step.failureClass)).toEqual(['unknown'])
     expect(session.turns[0]).toEqual(
       expect.objectContaining({
         status: 'failed',
         executionResult: 'tap failed: stale coordinates',
         success: false,
-      }),
-    )
-    expect(client.completeAction).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        promptContext: expect.stringContaining('<recent_action_errors>'),
-      }),
-    )
-    expect(client.completeAction).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        promptContext: expect.stringContaining('tap failed: stale coordinates'),
       }),
     )
   })
@@ -1318,5 +1335,79 @@ describe('createAgentRunner', () => {
     expect(result.status).toBe('loop_guard')
     expect(device.executed).toEqual(['tap', 'tap', 'tap'])
     expect(result.reason).toContain('tap (100, 200)')
+  })
+})
+
+describe('failure classification and retry budget', () => {
+  it('retries a device timeout up to the budget and then asks for review', async () => {
+    const { device, callCount } = deviceFailingWith(
+      () => new DeviceBackendError('device command timed out after 30000ms.', 'timeout'),
+    )
+    const result = await createAgentRunner({
+      device,
+      client: sequentialClient(['{"action":"tap","x":1,"y":2}']),
+    }).run({ modelConfig: MODEL_CONFIG, task: 'tap something', autoExecute: true, maxSteps: 5 })
+
+    expect(result.status).toBe('awaiting_review')
+    expect(callCount()).toBe(3)
+    expect(result.steps.map((step) => step.failureClass)).toEqual([
+      'device_timeout',
+      'device_timeout',
+      'device_timeout',
+    ])
+  })
+
+  it('retries a device io failure and feeds it back into the next model step', async () => {
+    // `unsupported_action` cannot be produced through createAgentRunner:
+    // validateAction() rewrites `call_api` to `take_over` before toolRegistry
+    // sees it (actionValidation.ts:160). `device_io` is the other class on the
+    // whitelist, so this pins that the swap did not narrow it away.
+    const device = fakeDevice()
+    vi.mocked(device.execute).mockRejectedValueOnce(
+      new DeviceBackendError('tap failed: stale coordinates'),
+    )
+    const client = sequentialClient([
+      '{"action":"tap","x":1,"y":2}',
+      '{"action":"done","summary":"recovered"}',
+    ])
+    const result = await createAgentRunner({ device, client }).run({
+      modelConfig: MODEL_CONFIG,
+      task: 'tap something',
+      autoExecute: true,
+      maxSteps: 5,
+    })
+
+    expect(result.status).toBe('done')
+    expect(result.steps.map((step) => step.failureClass)).toEqual(['device_io', undefined])
+    expect(client.completeAction).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        promptContext: expect.stringContaining('tap failed: stale coordinates'),
+      }),
+    )
+  })
+
+  it('classifies an unparseable model action as model_output', async () => {
+    const result = await createAgentRunner({
+      device: fakeDevice(),
+      client: sequentialClient(['{"action":"tap","x":9999,"y":200}']),
+    }).run({ modelConfig: MODEL_CONFIG, task: 'tap', autoExecute: true, maxSteps: 5 })
+
+    expect(result.status).toBe('awaiting_review')
+    expect(result.steps.map((step) => step.failureClass)).toEqual([
+      'model_output',
+      'model_output',
+      'model_output',
+    ])
+  })
+
+  it('reports loop_guard without marking a step as failed', async () => {
+    const repeated = '{"action":"tap","x":1,"y":2}'
+    const result = await createAgentRunner({
+      device: fakeDevice(),
+      client: sequentialClient([repeated]),
+    }).run({ modelConfig: MODEL_CONFIG, task: 'loop', autoExecute: true, maxSteps: 6 })
+
+    expect(result.status).toBe('loop_guard')
+    expect(result.steps.every((step) => step.failureClass === undefined)).toBe(true)
   })
 })
