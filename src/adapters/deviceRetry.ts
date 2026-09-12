@@ -18,7 +18,7 @@ export function withTimeout<T>(
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = globalThis.setTimeout(() => {
-      reject(new DeviceBackendError(`${label} timed out after ${timeoutMs}ms.`))
+      reject(new DeviceBackendError(`${label} timed out after ${timeoutMs}ms.`, 'timeout'))
     }, timeoutMs)
     operation().then(
       (value) => {

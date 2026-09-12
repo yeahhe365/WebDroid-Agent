@@ -76,9 +76,14 @@ export type DeviceBackend = {
   execute(action: AgentAction, options?: ExecuteActionOptions): Promise<string>
 }
 
+export type DeviceBackendErrorKind = 'io' | 'timeout'
+
 export class DeviceBackendError extends Error {
-  constructor(message: string) {
+  readonly kind: DeviceBackendErrorKind
+
+  constructor(message: string, kind: DeviceBackendErrorKind = 'io') {
     super(message)
     this.name = 'DeviceBackendError'
+    this.kind = kind
   }
 }

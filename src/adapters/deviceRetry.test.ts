@@ -67,3 +67,22 @@ describe('retryDeviceOperation timeouts', () => {
     expect(attempts).toBe(2)
   })
 })
+
+describe('DeviceBackendError.kind', () => {
+  it('defaults to io so existing call sites keep their meaning', () => {
+    expect(new DeviceBackendError('boom').kind).toBe('io')
+  })
+
+  it('marks a withTimeout rejection as timeout', async () => {
+    const never = () => new Promise<string>(() => {})
+    const error = await withTimeout(never, 5, 'device command').catch((caught) => caught)
+    expect(error).toBeInstanceOf(DeviceBackendError)
+    expect((error as DeviceBackendError).kind).toBe('timeout')
+  })
+
+  it('keeps the timeout message unchanged', async () => {
+    const never = () => new Promise<string>(() => {})
+    const error = await withTimeout(never, 5, 'device command').catch((caught) => caught)
+    expect((error as Error).message).toBe('device command timed out after 5ms.')
+  })
+})
