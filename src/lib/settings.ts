@@ -76,11 +76,21 @@ export const DEFAULT_SETTINGS: AppSettings = {
   languageMode: 'system',
 }
 
+function readStoredValue(storage: SettingsStorage, key: string): string | null {
+  try {
+    return storage.getItem(key)
+  } catch {
+    // Storage access can throw (Safari private mode, storage disabled, quota
+    // errors). Treat it as "no stored value" so the app still boots.
+    return null
+  }
+}
+
 export function loadSettings(storage: SettingsStorage = localStorage): AppSettings {
   const raw =
-    storage.getItem(SETTINGS_KEY) ??
-    storage.getItem(LEGACY_PROJECT_SETTINGS_KEY) ??
-    storage.getItem(LEGACY_SETTINGS_KEY)
+    readStoredValue(storage, SETTINGS_KEY) ??
+    readStoredValue(storage, LEGACY_PROJECT_SETTINGS_KEY) ??
+    readStoredValue(storage, LEGACY_SETTINGS_KEY)
   if (raw) {
     try {
       return normalizeSettings(JSON.parse(raw))
@@ -92,8 +102,17 @@ export function loadSettings(storage: SettingsStorage = localStorage): AppSettin
   return loadLegacySettings(storage)
 }
 
-export function saveSettings(settings: AppSettings, storage: SettingsStorage = localStorage) {
-  storage.setItem(SETTINGS_KEY, JSON.stringify(normalizeSettings(settings)))
+/** Returns false when the browser refused the write (quota / disabled storage). */
+export function saveSettings(
+  settings: AppSettings,
+  storage: SettingsStorage = localStorage,
+): boolean {
+  try {
+    storage.setItem(SETTINGS_KEY, JSON.stringify(normalizeSettings(settings)))
+    return true
+  } catch {
+    return false
+  }
 }
 
 function loadLegacySettings(storage: SettingsStorage): AppSettings {
@@ -101,8 +120,8 @@ function loadLegacySettings(storage: SettingsStorage): AppSettings {
     ...DEFAULT_SETTINGS,
     modelConfig: {
       ...DEFAULT_SETTINGS.modelConfig,
-      baseUrl: storage.getItem(LEGACY_BASE_URL_KEY) || DEFAULT_SETTINGS.modelConfig.baseUrl,
-      model: storage.getItem(LEGACY_MODEL_KEY) || DEFAULT_SETTINGS.modelConfig.model,
+      baseUrl: readStoredValue(storage, LEGACY_BASE_URL_KEY) || DEFAULT_SETTINGS.modelConfig.baseUrl,
+      model: readStoredValue(storage, LEGACY_MODEL_KEY) || DEFAULT_SETTINGS.modelConfig.model,
     },
   })
 }

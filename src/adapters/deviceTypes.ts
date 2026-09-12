@@ -53,6 +53,8 @@ export type DeviceRetryOptions = {
   label: string
   maxAttempts?: number
   retryDelaysMs?: readonly number[]
+  /** Per-attempt timeout; a hung device command is turned into a retryable error. */
+  timeoutMs?: number
   recoverAfterAttempt?: number
   recover?: (error: unknown, attempt: number) => Promise<void> | void
   wait?: (ms: number) => Promise<void>

@@ -42,3 +42,26 @@ describe('memory persistence', () => {
     expect(remembered.at(-1)).toBe('latest')
   })
 })
+
+
+describe('memory storage failures', () => {
+  it('returns no items when reading storage throws', () => {
+    const storage: MemoryStorage = {
+      getItem: () => {
+        throw new Error('SecurityError')
+      },
+      setItem: () => undefined,
+    }
+    expect(loadMemoryItems(storage)).toEqual([])
+  })
+
+  it('reports a refused write instead of throwing', () => {
+    const storage: MemoryStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('QuotaExceededError')
+      },
+    }
+    expect(saveMemoryItems(['note'], storage)).toBe(false)
+  })
+})

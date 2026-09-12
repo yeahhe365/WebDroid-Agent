@@ -852,14 +852,20 @@ export function createAgentRunner({
         }
         step.toolName = result.toolName
         recordAgentStepExecutionDuration(step, elapsed(executionStartedAt))
-        if (input.signal?.aborted) {
-          return { status: 'stopped', steps }
-        }
+        // The device action has already been applied, so the step must be
+        // recorded BEFORE honouring an abort. Otherwise the side effect stays
+        // invisible to the session and a later run could repeat it.
         recordAgentStep(session, step, result.summary, result.success, {
           memoryEnabled: input.memoryEnabled,
           onMemoryItem: input.onMemoryItem,
         })
         steps[steps.length - 1] = retainStepForRunResult(step)
+        if (input.signal?.aborted) {
+          return { status: 'stopped', steps }
+        }
+        if (input.signal?.aborted) {
+          return { status: 'stopped', steps }
+        }
         try {
           await withAbort(Promise.resolve(input.onExecuted?.(step, result.summary)), input.signal)
         } catch (caught) {

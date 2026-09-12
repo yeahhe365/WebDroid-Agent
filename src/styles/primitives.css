@@ -258,3 +258,35 @@ button.danger:hover:not(:disabled) {
     animation: none;
   }
 }
+
+
+/* ── Startup crash fallback (AppErrorBoundary) ───────────────── */
+.app-crash {
+  max-width: 640px;
+  margin: 12vh auto 0;
+  padding: 32px;
+  display: grid;
+  gap: 12px;
+  color: var(--text, #1c1b1a);
+}
+
+.app-crash h1 {
+  font-size: 22px;
+}
+
+.app-crash pre {
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border, #ddd9d3);
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+
+.app-crash button {
+  justify-self: start;
+  padding: 8px 16px;
+  border: 1px solid var(--border, #ddd9d3);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}

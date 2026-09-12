@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ADB_KEYBOARD_APK_URL } from '../adapters/adbKeyboard'
 import type {
   DeviceBackend,
@@ -175,6 +175,50 @@ export function useDeviceController({
     })
   }, [addLog, backend, copy, onPendingStepReset, runTask])
 
+  const deviceSerialRef = useRef<string | null>(null)
+  useEffect(() => {
+    deviceSerialRef.current = deviceInfo?.serial ?? null
+  }, [deviceInfo])
+
+  // A physical cable pull (or a revoked ADB authorisation) does not surface
+  // through the ADB stack until the next command fails. Listen to the WebUSB
+  // disconnect event so the UI stops claiming the device is connected.
+  useEffect(() => {
+    const usb = getNavigatorUsb()
+    if (!usb) {
+      return
+    }
+
+    const handleDisconnect = (event: unknown) => {
+      const currentSerial = deviceSerialRef.current
+      if (!currentSerial) {
+        return
+      }
+      const eventSerial = readUsbDisconnectSerial(event)
+      if (eventSerial && eventSerial !== currentSerial) {
+        return
+      }
+      void disconnectDevice()
+    }
+
+    usb.addEventListener('disconnect', handleDisconnect)
+    return () => usb.removeEventListener('disconnect', handleDisconnect)
+  }, [disconnectDevice])
+
+  // Device-side changes (stay-awake, screen brightness) are only undone by an
+  // explicit disconnect(). Best effort on tab close so they are not left behind.
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (!deviceSerialRef.current) {
+        return
+      }
+      void backend.disconnect().catch(() => undefined)
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+    return () => window.removeEventListener('pagehide', handlePageHide)
+  }, [backend])
+
   const captureScreen = useCallback(async () => {
     await runTask('capture-screen', copy.captureScreenTask, async () => {
       const { screenshot: nextScreenshot, deviceState: nextDeviceState } =
@@ -344,4 +388,32 @@ export function useDeviceController({
       installedApps,
     },
   }
+}
+
+type UsbEventTarget = {
+  addEventListener(type: 'disconnect', listener: (event: unknown) => void): void
+  removeEventListener(type: 'disconnect', listener: (event: unknown) => void): void
+}
+
+function getNavigatorUsb(): UsbEventTarget | null {
+  if (typeof navigator === 'undefined') {
+    return null
+  }
+  const usb = (navigator as { usb?: Partial<UsbEventTarget> }).usb
+  if (
+    !usb ||
+    typeof usb.addEventListener !== 'function' ||
+    typeof usb.removeEventListener !== 'function'
+  ) {
+    return null
+  }
+  return usb as UsbEventTarget
+}
+
+function readUsbDisconnectSerial(event: unknown): string | null {
+  if (typeof event !== 'object' || event === null) {
+    return null
+  }
+  const device = (event as { device?: { serialNumber?: unknown } }).device
+  return typeof device?.serialNumber === 'string' ? device.serialNumber : null
 }

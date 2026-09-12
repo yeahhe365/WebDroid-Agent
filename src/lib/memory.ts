@@ -7,7 +7,13 @@ const MAX_MEMORY_ITEMS = 48
 const MEMORY_ITEM_MAX_LENGTH = 1200
 
 export function loadMemoryItems(storage: MemoryStorage = localStorage): string[] {
-  const raw = storage.getItem(MEMORY_KEY)
+  let raw: string | null
+  try {
+    raw = storage.getItem(MEMORY_KEY)
+  } catch {
+    // Storage can throw (private mode / disabled storage); boot with no items.
+    return []
+  }
   if (!raw) {
     return []
   }
@@ -19,11 +25,17 @@ export function loadMemoryItems(storage: MemoryStorage = localStorage): string[]
   }
 }
 
+/** Returns false when the browser refused the write (quota / disabled storage). */
 export function saveMemoryItems(
   memoryItems: readonly string[],
   storage: MemoryStorage = localStorage,
-) {
-  storage.setItem(MEMORY_KEY, JSON.stringify(normalizeMemoryItems(memoryItems)))
+): boolean {
+  try {
+    storage.setItem(MEMORY_KEY, JSON.stringify(normalizeMemoryItems(memoryItems)))
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function rememberMemoryItem(

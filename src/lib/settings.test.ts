@@ -400,3 +400,27 @@ describe('settings export and import safety', () => {
     expect(merged.themeMode).toBe('dark')
   })
 })
+
+
+describe('settings storage failures', () => {
+  const throwingStorage = (): SettingsStorage => ({
+    getItem: vi.fn(() => {
+      throw new Error('SecurityError: storage is disabled')
+    }),
+    setItem: vi.fn(() => {
+      throw new Error('QuotaExceededError')
+    }),
+  })
+
+  it('boots with defaults when reading storage throws', () => {
+    expect(loadSettings(throwingStorage())).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('reports a refused write instead of throwing', () => {
+    expect(saveSettings(DEFAULT_SETTINGS, throwingStorage())).toBe(false)
+  })
+
+  it('returns true when the write succeeds', () => {
+    expect(saveSettings(DEFAULT_SETTINGS, memoryStorage())).toBe(true)
+  })
+})

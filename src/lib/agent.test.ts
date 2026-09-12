@@ -621,6 +621,43 @@ describe('createAgentRunner', () => {
     expect(device.executed).toEqual([])
   })
 
+  it('records an executed action even when the run is aborted right after execution', async () => {
+    const device = fakeDevice()
+    const controller = new AbortController()
+    const session = createAgentSession('Open app')
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"tap","x":100,"y":200}'),
+    }
+    // Simulate the exact race: the action has been applied and the registry is
+    // about to return to the runner, while the stop signal fires in between.
+    const toolRegistry = {
+      getSignatures: () => ({}),
+      execute: vi.fn(async (action: { action: string }) => {
+        device.executed.push(action.action)
+        controller.abort()
+        return { toolName: action.action, success: true, summary: 'tap' }
+      }),
+    } as unknown as ActionToolRegistry
+    const runner = createAgentRunner({ device, client, toolRegistry })
+
+    const result = await runner.run({
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Open app',
+      autoExecute: true,
+      maxSteps: 5,
+      signal: controller.signal,
+      session,
+    })
+
+    expect(result.status).toBe('stopped')
+    expect(device.executed).toEqual(['tap'])
+    // The side effect happened, so the session must have recorded the execution;
+    // otherwise a resumed run could repeat the same action.
+    expect(session.turns).toHaveLength(1)
+    expect(session.turns[0]?.executionResult).toBeTruthy()
+    expect(session.turns[0]?.success).toBe(true)
+  })
+
   it('stops when the model returns done', async () => {
     const device = fakeDevice()
     const session = createAgentSession('Open app')

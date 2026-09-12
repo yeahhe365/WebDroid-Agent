@@ -15,7 +15,13 @@ import {
   parseDeviceStateFromDumpsys,
   parsePngSize,
 } from './deviceParsers'
-import { retryDeviceOperation, delay } from './deviceRetry'
+import {
+  DEFAULT_DEVICE_OPERATION_TIMEOUT_MS,
+  DEFAULT_DEVICE_WRITE_TIMEOUT_MS,
+  delay,
+  retryDeviceOperation,
+  withTimeout,
+} from './deviceRetry'
 import { DEFAULT_DEVICE_TIMING } from './deviceTiming'
 import {
   DeviceBackendError,
@@ -47,7 +53,6 @@ import {
   type ScreenBlackoutRestoreSettings,
 } from './screenBlackoutCommands'
 import {
-  buildDisableStayAwakeCommand,
   buildEnableStayAwakeCommand,
   buildReadStayAwakeSettingCommand,
   buildRestoreStayAwakeSettingCommand,
@@ -110,11 +115,25 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     }
 
     const connection = await device.connect()
-    const transport = await AdbDaemonTransport.authenticate({
-      serial: device.serial,
-      connection,
-      credentialStore: new AdbWebCredentialStore('webdroid-agent'),
-    })
+    let transport: AdbDaemonTransport
+    try {
+      transport = await AdbDaemonTransport.authenticate({
+        serial: device.serial,
+        connection,
+        credentialStore: new AdbWebCredentialStore('webdroid-agent'),
+      })
+    } catch (caught) {
+      // Authentication fails when the user declines the on-device prompt.
+      // Release the USB connection instead of leaving the interface open.
+      await closeUsbConnection(connection)
+      throw caught instanceof DeviceBackendError
+        ? caught
+        : new DeviceBackendError(
+            `Failed to authorise the ADB connection: ${
+              caught instanceof Error ? caught.message : String(caught)
+            }`,
+          )
+    }
 
     this.#adb = new Adb(transport)
     this.#deviceInfo = {
@@ -249,7 +268,11 @@ export class WebAdbDeviceBackend implements DeviceBackend {
   async #recoverDeviceRead() {
     const adb = this.#requireAdb()
     await delay(150)
-    await adb.subprocess.noneProtocol.spawnWaitText(['echo', 'webdroid-device-read-recovery'])
+    await withTimeout(
+      () => adb.subprocess.noneProtocol.spawnWaitText(['echo', 'webdroid-device-read-recovery']),
+      DEFAULT_DEVICE_OPERATION_TIMEOUT_MS,
+      'device read recovery',
+    )
   }
 
   async #enableStayAwakeDuringConnection() {
@@ -258,6 +281,11 @@ export class WebAdbDeviceBackend implements DeviceBackend {
       .spawnWaitText(buildReadStayAwakeSettingCommand())
       .then(normalizeStayAwakeSetting)
       .catch(() => null)
+    if (!originalValue) {
+      // We could not read the user's setting, so we must not change it: there
+      // would be no way to restore it on disconnect.
+      return
+    }
     await adb.subprocess.noneProtocol.spawnWaitText(buildEnableStayAwakeCommand())
     this.#stayAwakeRestoreValue = originalValue
     this.#stayAwakeEnabled = true
@@ -270,14 +298,15 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     }
 
     try {
-      if (this.#stayAwakeRestoreValue) {
-        await adb.subprocess.noneProtocol.spawnWaitText(
-          buildRestoreStayAwakeSettingCommand(this.#stayAwakeRestoreValue),
-        )
+      if (!this.#stayAwakeRestoreValue) {
+        // Unknown original value: leave the device as it is rather than
+        // force-disabling a setting the user may have enabled themselves.
         return
       }
 
-      await adb.subprocess.noneProtocol.spawnWaitText(buildDisableStayAwakeCommand())
+      await adb.subprocess.noneProtocol.spawnWaitText(
+        buildRestoreStayAwakeSettingCommand(this.#stayAwakeRestoreValue),
+      )
     } finally {
       this.#stayAwakeRestoreValue = null
       this.#stayAwakeEnabled = false
@@ -479,7 +508,15 @@ export class WebAdbDeviceBackend implements DeviceBackend {
       return
     }
 
-    await withAbort(this.#requireAdb().subprocess.noneProtocol.spawnWait(step), signal)
+    const adb = this.#requireAdb()
+    await withAbort(
+      withTimeout(
+        () => adb.subprocess.noneProtocol.spawnWait(step),
+        DEFAULT_DEVICE_WRITE_TIMEOUT_MS,
+        'device command',
+      ),
+      signal,
+    )
   }
 
   async #restoreScreenBlackout(adb: Adb) {
@@ -676,4 +713,24 @@ function revokeImageObjectUrl(value: string) {
     return
   }
   URL.revokeObjectURL(value)
+}
+
+/**
+ * Cancelling the readable stream performs the library's USB cleanup (interface
+ * release + device close); aborting the writable is a best-effort backstop.
+ */
+async function closeUsbConnection(connection: {
+  readable: ReadableStream<unknown>
+  writable: WritableStream<unknown>
+}): Promise<void> {
+  try {
+    await connection.readable.cancel()
+  } catch {
+    // Best effort: the connection may already be gone.
+  }
+  try {
+    await connection.writable.abort()
+  } catch {
+    // Best effort: the connection may already be gone.
+  }
 }
