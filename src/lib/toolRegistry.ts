@@ -499,6 +499,12 @@ async function executeDefaultAction(action: AgentAction, context: ActionToolCont
     if (!secret) {
       throw new Error(`Secret "${action.secretId}" is not configured.`)
     }
+    // `onDeviceCommand` is deliberately NOT forwarded here. Its argv *is* the
+    // resolved secret, and the callback exists to record argv for trajectories
+    // and fixtures, which must carry secret descriptor ids only. This branch is
+    // the only place that knows the value is a secret, so it is the only place
+    // that can drop it at the source; `threadStore` and the trajectory
+    // projection keep shape-based guards for data an earlier version recorded.
     await context.device.execute({
       action: 'input_text',
       text: secret,
@@ -506,7 +512,6 @@ async function executeDefaultAction(action: AgentAction, context: ActionToolCont
       reason: action.reason,
     }, {
       signal: context.signal,
-      ...(context.onDeviceCommand ? { onDeviceCommand: context.onDeviceCommand } : {}),
     })
     return `Typed secret "${action.secretId}".`
   }

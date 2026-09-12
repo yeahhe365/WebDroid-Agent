@@ -4,7 +4,9 @@ import {
   type AgentScreenshotReference,
   type AgentSettingsSnapshot,
   type AgentThread,
+  type AgentTurn,
 } from './agentThread'
+import { actionPairRecordsSecretValue } from './actionSecrets'
 import type { ModelConfig } from './openAiTypes'
 import { compactScreenshotForMemory } from './screenshot'
 import { truncateOptionalRetainedText, truncateRetainedText } from './textRetention'
@@ -410,23 +412,30 @@ function cloneThreadForPersistence(thread: AgentThread): AgentThread {
       ),
     })),
     pendingUserMessages: thread.pendingUserMessages.map((message) => ({ ...message })),
-    turns: thread.turns.slice(-MAX_PERSISTED_TURNS).map((turn) => ({
-      ...turn,
-      action: cloneValue(turn.action),
-      executionAction: cloneValue(turn.executionAction),
-      promptContext: '',
-      modelOutput: fullTurnIds.has(turn.id)
-        ? truncateRetainedText(turn.modelOutput, MAX_PERSISTED_MODEL_OUTPUT_CHARS)
-        : '',
-      executionResult: truncateOptionalRetainedText(
-        turn.executionResult,
-        MAX_PERSISTED_EXECUTION_RESULT_CHARS,
-      ),
-      deviceSnapshot: {
-        currentApp: turn.deviceSnapshot.currentApp,
-        deviceState: cloneValue(turn.deviceSnapshot.deviceState),
-      },
-    })),
+    turns: thread.turns.slice(-MAX_PERSISTED_TURNS).map((turn) => {
+      const clone = {
+        ...turn,
+        action: cloneValue(turn.action),
+        executionAction: cloneValue(turn.executionAction),
+        promptContext: '',
+        modelOutput: fullTurnIds.has(turn.id)
+          ? truncateRetainedText(turn.modelOutput, MAX_PERSISTED_MODEL_OUTPUT_CHARS)
+          : '',
+        executionResult: truncateOptionalRetainedText(
+          turn.executionResult,
+          MAX_PERSISTED_EXECUTION_RESULT_CHARS,
+        ),
+        deviceSnapshot: {
+          currentApp: turn.deviceSnapshot.currentApp,
+          deviceState: cloneValue(turn.deviceSnapshot.deviceState),
+        },
+      }
+      // Defence in depth: a thread written by a version that forwarded the argv
+      // of `type_secret` carries the resolved secret here, so the write path
+      // drops it by action shape before it can reach IndexedDB or an export.
+      deleteSecretDeviceCommands(clone)
+      return clone
+    }),
     events: compactThreadEvents(thread.events),
     ...(thread.settingsSnapshot ? { settingsSnapshot: cloneValue(thread.settingsSnapshot) } : {}),
   }
@@ -531,6 +540,23 @@ function cloneValue<Value>(value: Value): Value {
     : (JSON.parse(JSON.stringify(value)) as Value)
 }
 
+/**
+ * Drops the recorded argv of a secret-bearing turn.
+ *
+ * The tool registry used to forward `onDeviceCommand` while resolving a
+ * `type_secret` into an `input_text` command, so turns persisted by that
+ * version hold the cleartext secret in `deviceCommands`. Removing it here — on
+ * the write path *and* on the read path that `compactThreadForMemory` serves —
+ * is what stops those already-stored threads from propagating: the read path is
+ * where `loadAll()` (and therefore the chat-history export) gets its data.
+ */
+function deleteSecretDeviceCommands(turn: AgentTurn) {
+  if (turn.deviceCommands && actionPairRecordsSecretValue(turn.action, turn.executionAction)) {
+    delete turn.deviceCommands
+  }
+  return turn
+}
+
 function compactThreadForMemory(thread: AgentThread): AgentThread {
   if (thread.lastScreenshot) {
     thread.lastScreenshot = compactScreenshotForMemory(thread.lastScreenshot)
@@ -547,6 +573,7 @@ function compactThreadForMemory(thread: AgentThread): AgentThread {
   }
 
   for (const turn of thread.turns) {
+    deleteSecretDeviceCommands(turn)
     if (turn.deviceSnapshot.screenshot) {
       turn.deviceSnapshot = {
         currentApp: turn.deviceSnapshot.currentApp,

@@ -11,6 +11,7 @@ import type { AgentRunStatus } from './agent'
 import type { ActionCoordinateMode, ActionProtocol } from './actionProtocol'
 import type { ActionSafetyDecision } from './actionSafetyPolicy'
 import type { AgentAction, ExecutableAtomicAction, ScreenSize } from './actionTypes'
+import { actionPairRecordsSecretValue } from './actionSecrets'
 import { coordinateModeForActionProtocol } from './coordinateSystems'
 import type { FailureClass } from './failureTaxonomy'
 
@@ -316,52 +317,19 @@ function projectScreenshotReference(
  * the real value, so the argv of such a step *is* the secret. The milestone
  * rule is "secrets are recorded as descriptor ids only", so that argv is
  * dropped by action shape — never by pattern-matching argv strings.
+ *
+ * This is the third layer of the same guard (the registry no longer forwards
+ * the argv, and `threadStore` strips it on both the write and the read path, so
+ * an artifact projected straight from a live turn is covered here too).
  */
 function projectDeviceCommands(turn: AgentTurn): string[][] | undefined {
   if (!turn.deviceCommands || turn.deviceCommands.length === 0) {
     return undefined
   }
-  if (actionRecordsSecretValue(turn.action) || actionRecordsSecretValue(turn.executionAction)) {
+  if (actionPairRecordsSecretValue(turn.action, turn.executionAction)) {
     return undefined
   }
   return turn.deviceCommands.map((argv) => argv.slice())
-}
-
-/** Action kinds that make the recorded argv carry a resolved secret value. */
-const SECRET_BEARING_ACTIONS: Record<AgentAction['action'], boolean> = {
-  type_secret: true,
-  tap: false,
-  swipe: false,
-  launch: false,
-  input_text: false,
-  open_url: false,
-  set_clipboard: false,
-  paste: false,
-  key: false,
-  back: false,
-  home: false,
-  long_press: false,
-  double_tap: false,
-  wait: false,
-  take_over: false,
-  note: false,
-  interact: false,
-  call_api: false,
-  custom_tool: false,
-  view_screenshot: false,
-  sequence: false,
-  repeat: false,
-  done: false,
-}
-
-function actionRecordsSecretValue(action: AgentAction): boolean {
-  if (action.action === 'sequence') {
-    return action.actions.some((child) => actionRecordsSecretValue(child))
-  }
-  if (action.action === 'repeat') {
-    return actionRecordsSecretValue(action.actionToRepeat)
-  }
-  return SECRET_BEARING_ACTIONS[action.action]
 }
 
 /**
