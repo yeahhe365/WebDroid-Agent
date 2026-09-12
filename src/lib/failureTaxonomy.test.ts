@@ -25,6 +25,15 @@ describe('classifyThrownFailure', () => {
     expect(classifyThrownFailure(new Error('not json'), { force: 'model_output' })).toBe('model_output')
   })
 
+  it('lets the hint win over the error’s own type, not merely over unknown', () => {
+    // Without a hint this classifies as device_timeout; if someone moves the
+    // force check last, this assertion is what catches it.
+    expect(classifyThrownFailure(new DeviceBackendError('slow', 'timeout'))).toBe('device_timeout')
+    expect(
+      classifyThrownFailure(new DeviceBackendError('slow', 'timeout'), { force: 'model_output' }),
+    ).toBe('model_output')
+  })
+
   it('falls back to unknown instead of guessing', () => {
     expect(classifyThrownFailure(new Error('mystery'))).toBe('unknown')
     expect(classifyThrownFailure('a string')).toBe('unknown')
