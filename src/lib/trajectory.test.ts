@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { createAgentThread, recordThreadStatus, startThreadTurn } from './agentThread'
+import {
+  createAgentThread,
+  recordThreadAssistantMessage,
+  recordThreadStatus,
+  startThreadTurn,
+} from './agentThread'
 import type { AgentThread } from './agentThread'
 import type { AgentAction } from './actionTypes'
 import {
@@ -129,6 +134,136 @@ describe('run-level outcome fallback', () => {
     const artifact = buildTrajectoryArtifact({ thread, runId: 'run_b', model: MODEL })
     expect(artifact.steps.every((step) => step.failure === undefined)).toBe(true)
     expect(artifact.outcome.failureClass).toBe('loop_guard')
+    expect(artifact.outcome.reason).toBe('loop guard')
+  })
+
+  it('keeps the aborted outcome of a run whose last turn never completed', () => {
+    const thread = createAgentThread('打开设置')
+    startTurn(thread, {
+      index: 1,
+      runId: 'run_abort',
+      action: { action: 'wait', ms: 1 },
+      now: 1_000,
+    })
+    // The abort lands after the run's final turn, whose completedAt is absent.
+    recordThreadStatus(thread, 'stopped', 'user aborted', {
+      failureClass: 'aborted',
+      now: 5_000,
+    })
+
+    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_abort', model: MODEL })
+
+    expect(artifact.run.endedAt).toBeUndefined()
+    expect(artifact.outcome.failureClass).toBe('aborted')
+    expect(artifact.outcome.reason).toBe('user aborted')
+  })
+
+  it('does not attribute a later run\'s run-level class to an earlier run', () => {
+    const thread = createAgentThread('打开设置')
+    startTurn(thread, {
+      index: 1,
+      runId: 'run_first',
+      action: { action: 'wait', ms: 1 },
+      now: 1_000,
+    })
+    startTurn(thread, {
+      index: 2,
+      runId: 'run_second',
+      action: { action: 'wait', ms: 1 },
+      now: 2_000,
+    })
+    // The second run's own outcome: it must never reach the first run's export.
+    recordThreadStatus(thread, 'stopped', 'loop guard', {
+      failureClass: 'loop_guard',
+      now: 3_000,
+    })
+
+    const first = buildTrajectoryArtifact({ thread, runId: 'run_first', model: MODEL })
+    const second = buildTrajectoryArtifact({ thread, runId: 'run_second', model: MODEL })
+
+    expect(first.run.stepTurnIds).toHaveLength(1)
+    expect(first.outcome.failureClass).toBeUndefined()
+    expect(first.outcome.reason).toBeUndefined()
+    expect(second.outcome.failureClass).toBe('loop_guard')
+    expect(second.outcome.reason).toBe('loop guard')
+  })
+})
+
+describe('run-level reason', () => {
+  it('takes reason from the last status change inside the run window', () => {
+    const thread = createAgentThread('打开设置')
+    startTurn(thread, {
+      index: 1,
+      runId: 'run_reason',
+      action: { action: 'wait', ms: 1 },
+      now: 1_000,
+    })
+    recordThreadStatus(thread, 'running', 'first note', { now: 1_100 })
+    recordThreadStatus(thread, 'stopped', 'second note', { now: 1_200 })
+
+    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_reason', model: MODEL })
+
+    expect(artifact.outcome.reason).toBe('second note')
+    // No step and no status change recorded a class, so none is invented.
+    expect(artifact.outcome.failureClass).toBeUndefined()
+  })
+
+  it('omits reason when the run window holds no status change', () => {
+    const thread = createAgentThread('打开设置')
+    startTurn(thread, {
+      index: 1,
+      runId: 'run_quiet',
+      action: { action: 'wait', ms: 1 },
+      now: 1_000,
+    })
+
+    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_quiet', model: MODEL })
+
+    expect(Object.keys(artifact.outcome)).toEqual([])
+  })
+
+  it('does not project a final response, because a message has no run attribution', () => {
+    const thread = createAgentThread('打开设置')
+    startTurn(thread, {
+      index: 1,
+      runId: 'run_response',
+      action: { action: 'wait', ms: 1 },
+      now: 1_000,
+    })
+    recordThreadAssistantMessage(thread, 'All done, the settings screen is open.', {
+      now: 1_100,
+    })
+
+    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_response', model: MODEL })
+
+    // The response exists on the thread, and is still deliberately not
+    // projected: `AgentConversationMessage` carries no run id to select it by.
+    expect(thread.messages.some((message) => message.role === 'assistant')).toBe(true)
+    expect('finalResponse' in artifact.outcome).toBe(false)
+    expect(Object.keys(artifact.outcome)).toEqual([])
+  })
+})
+
+describe('run status', () => {
+  it('reports a thread in error as error and partial, never done', () => {
+    const thread = createAgentThread('打开设置')
+    startTurn(thread, {
+      index: 1,
+      runId: 'run_error',
+      action: { action: 'wait', ms: 1 },
+      now: 1_000,
+    })
+    recordThreadStatus(thread, 'error', 'device bridge crashed', {
+      failureClass: 'unknown',
+      now: 2_000,
+    })
+
+    const artifact = buildTrajectoryArtifact({ thread, runId: 'run_error', model: MODEL })
+
+    expect(artifact.run.status).toBe('error')
+    expect(artifact.run.partial).toBe(true)
+    expect(artifact.outcome.failureClass).toBe('unknown')
+    expect(artifact.outcome.reason).toBe('device bridge crashed')
   })
 })
 
@@ -330,6 +465,7 @@ function startTurn(
     action: AgentAction
     executionAction?: AgentAction
     promptContext?: string
+    now?: number
   },
 ) {
   return startThreadTurn(thread, {
@@ -347,5 +483,6 @@ function startTurn(
     executionAction: input.executionAction ?? input.action,
     preview: input.action.action,
     timing: TIMING,
+    ...(input.now === undefined ? {} : { now: input.now }),
   })
 }

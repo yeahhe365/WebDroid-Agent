@@ -67,7 +67,12 @@ export type TrajectoryArtifact = {
     runId: string
     threadId: string
     task: string
-    status: AgentRunStatus
+    /**
+     * The runner's `AgentRunStatus` plus the thread-level `'error'`: a run that
+     * died with an exception is a distinct, failed outcome, and folding it into
+     * `'done'` would export a failed run as a successful one.
+     */
+    status: AgentRunStatus | 'error'
     startedAt: number
     endedAt?: number
     partial: boolean
@@ -87,10 +92,17 @@ export type TrajectoryArtifact = {
   }
   steps: TrajectoryStep[]
   /**
-   * `reason` / `finalResponse` are part of the v1 shape but have no projection
-   * source yet; the projection writes `failureClass` only.
+   * `reason` is the `message` of the run's own last `status_change` event;
+   * `failureClass` is the run-level fallback for outcomes no step owns.
+   *
+   * There is deliberately no `finalResponse`: `AgentConversationMessage` is
+   * `{ id, role, content }` — no run id, no turn id, no timestamp — so no
+   * message can be attributed to a run window. The recorded terminal message of
+   * a successful run already arrives here as `reason` (`recordThreadStatus`
+   * stores `result.finalResponse` as the message), and any separate guess at
+   * "which message was the final response" would be exactly that: a guess.
    */
-  outcome: { failureClass?: FailureClass; reason?: string; finalResponse?: string }
+  outcome: { failureClass?: FailureClass; reason?: string }
 }
 
 export type BuildTrajectoryInput = {
@@ -121,7 +133,7 @@ export function buildTrajectoryArtifact(input: BuildTrajectoryInput): Trajectory
       : input.thread.turns.filter((turn) => turn.runId === input.runId)
   const firstTurn = turns[0]
   const endedAt = turns.at(-1)?.completedAt
-  const failureClass = deriveRunFailureClass(turns, input.thread)
+  const outcome = deriveRunOutcome(turns, input.thread)
   // The screenshot reference for the run's first step describes the device the
   // run started on; `startThreadTurn` strips the screenshot from the turn, so
   // geometry can only come from `thread.screenshotReferences`.
@@ -160,7 +172,7 @@ export function buildTrajectoryArtifact(input: BuildTrajectoryInput): Trajectory
       orientation: firstTurn?.deviceSnapshot.deviceState.orientation,
     }),
     steps: turns.map((turn) => projectStep(turn, input.thread, input.includeContext === true)),
-    outcome: failureClass === undefined ? {} : { failureClass },
+    outcome,
   }
 }
 
@@ -492,43 +504,94 @@ function projectExecutableAction(action: ExecutableAtomicAction): ExecutableAtom
   return projectAction(action) as ExecutableAtomicAction
 }
 
-function deriveRunFailureClass(
+/**
+ * The slice of thread history that belongs to one run: it starts at the run's
+ * first turn and ends at the first turn that follows the run's last turn, when
+ * the thread has one. Without that upper bound, exporting an *earlier* run of a
+ * thread that holds several runs would attribute a later run's run-level
+ * `loop_guard` / `aborted` event to it.
+ *
+ * The window deliberately does not end at `run.endedAt`: an aborted run has no
+ * completed last turn, and its abort event is recorded *after* the run's final
+ * turn — bounding by `endedAt` would hide the very event this fallback exists
+ * to read. When the run is the thread's last one there is no following turn, so
+ * the window is left open above.
+ */
+type RunWindow = {
+  startedAt: number
+  endsAt?: number
+}
+
+function resolveRunWindow(
   turns: readonly AgentTurn[],
   thread: AgentThread,
-): FailureClass | undefined {
-  const lastFailedTurn = turns.findLast((turn) => turn.failureClass !== undefined)
-  if (lastFailedTurn?.failureClass) {
-    return lastFailedTurn.failureClass
-  }
-
-  const runStartedAt = turns[0]?.createdAt
-  if (runStartedAt === undefined) {
+): RunWindow | undefined {
+  const firstTurn = turns[0]
+  const lastTurn = turns.at(-1)
+  if (firstTurn === undefined || lastTurn === undefined) {
     return undefined
   }
 
-  // `loop_guard` and `aborted` are run-level outcomes, not step failures: the
-  // step that tripped the loop guard never executed, and an abort ends the run
-  // as a whole. They are recorded on the run's status_change events instead.
-  const runLevelOutcome = thread.events.findLast(
-    (event): event is ThreadStatusChangeEvent =>
-      event.type === 'status_change' &&
-      event.failureClass !== undefined &&
-      event.createdAt >= runStartedAt,
-  )
-  return runLevelOutcome?.failureClass
+  const lastTurnPosition = thread.turns.indexOf(lastTurn)
+  const nextTurn =
+    lastTurnPosition < 0 ? undefined : thread.turns[lastTurnPosition + 1]
+  return { startedAt: firstTurn.createdAt, endsAt: nextTurn?.createdAt }
 }
 
-function projectRunStatus(status: AgentThreadStatus): AgentRunStatus {
+function isInsideRunWindow(
+  event: AgentThreadEvent,
+  window: RunWindow | undefined,
+): boolean {
+  if (window === undefined || event.createdAt < window.startedAt) {
+    return false
+  }
+  return window.endsAt === undefined || event.createdAt <= window.endsAt
+}
+
+/**
+ * Resolves the run's outcome from within its own window only.
+ *
+ * `loop_guard` and `aborted` are run-level outcomes, not step failures: the step
+ * that tripped the loop guard never executed, and an abort ends the run as a
+ * whole. They are recorded on the run's status_change events instead, and the
+ * last such event inside the window is also the run's recorded reason.
+ */
+function deriveRunOutcome(
+  turns: readonly AgentTurn[],
+  thread: AgentThread,
+): TrajectoryArtifact['outcome'] {
+  const window = resolveRunWindow(turns, thread)
+  const statusEvents = thread.events.filter(
+    (event): event is ThreadStatusChangeEvent =>
+      event.type === 'status_change' && isInsideRunWindow(event, window),
+  )
+  const lastFailedTurn = turns.findLast((turn) => turn.failureClass !== undefined)
+  const lastClassedEvent = statusEvents.findLast(
+    (event) => event.failureClass !== undefined,
+  )
+
+  return presentFields({
+    failureClass: lastFailedTurn?.failureClass ?? lastClassedEvent?.failureClass,
+    // The reason is the *last* status change of the run. A message-less status
+    // change therefore yields no `reason` key rather than reaching further back
+    // for an older message the run has already moved past.
+    reason: statusEvents.at(-1)?.message,
+  })
+}
+
+function projectRunStatus(
+  status: AgentThreadStatus,
+): TrajectoryArtifact['run']['status'] {
   switch (status) {
     case 'awaiting_review':
     case 'awaiting_takeover':
     case 'done':
-      return status
     case 'stopped':
-      return 'stopped'
+    case 'error':
+      return status
     default:
-      // 'idle' / 'running' / 'error' are not run outcomes; `run.partial` marks
-      // the runs that never reached one.
+      // 'idle' / 'running' are not run outcomes; `run.partial` marks the runs
+      // that never reached one.
       return 'done'
   }
 }
