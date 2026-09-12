@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
-import { Bot, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
+import { IconThinking, ModelProviderIcon } from './icons'
 import type { AppCopy } from '../lib/appCopy'
 import { isActionProtocol, type ActionProtocol } from '../lib/actionProtocol'
 import {
@@ -115,7 +116,12 @@ export function ModelPanel({
     <>
       <div className="config-section-heading">
         <div className="panel-title">
-          <Bot size={18} />
+          <ModelProviderIcon
+            provider={modelConfig.provider ?? providerValue}
+            model={modelConfig.model}
+            baseUrl={modelConfig.baseUrl}
+            size={18}
+          />
           <h2>{copy.model}</h2>
         </div>
         <span className={`config-section-badge ${modelHeadingStatusTone}`}>
@@ -215,7 +221,10 @@ export function ModelPanel({
                       onModelConfigChange('qwenThinkingEnabled', event.target.checked)
                     }
                   />
-                  <span>{copy.qwenThinkingMode}</span>
+                  <span className="toggle-label-with-icon">
+                    <IconThinking size={15} color="currentColor" />
+                    {copy.qwenThinkingMode}
+                  </span>
                 </label>
                 {qwenThinkingEnabled ? (
                   <label htmlFor={qwenThinkingBudgetInputId}>
@@ -241,7 +250,10 @@ export function ModelPanel({
               <>
                 <p className="model-config-status-help">{copy.openaiOfficialModeNotice}</p>
                 <label htmlFor={reasoningEffortInputId}>
-                  {copy.reasoningEffort}
+                  <span className="field-label-with-icon">
+                    <IconThinking size={14} color="currentColor" />
+                    {copy.reasoningEffort}
+                  </span>
                   <select
                     id={reasoningEffortInputId}
                     name="reasoningEffort"

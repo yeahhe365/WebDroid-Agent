@@ -4,9 +4,9 @@ import {
   LoaderCircle,
   ScrollText,
   Settings as SettingsIcon,
-  Square,
   SlidersHorizontal,
 } from 'lucide-react'
+import { IconStop } from './icons'
 import { useAppCopy } from './AppContext'
 import { Button, IconButton } from './primitives'
 
@@ -88,7 +88,7 @@ export function AppTopbar({
                 aria-label={copy.stopRun}
                 onClick={onStopRun}
               >
-                <Square size={12} fill="currentColor" />
+                <IconStop size={12} />
                 <span>{copy.stopRun}</span>
               </Button>
             ) : null}

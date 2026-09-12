@@ -92,3 +92,28 @@
   border-color: var(--warn-border);
   box-shadow: var(--glow-warn);
 }
+
+.model-provider-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+:root[data-theme='dark'] .model-provider-icon.invert-dark {
+  filter: invert(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) .model-provider-icon.invert-dark {
+    filter: invert(1);
+  }
+}
+
+.toggle-label-with-icon,
+.field-label-with-icon {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+

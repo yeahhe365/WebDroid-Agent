@@ -1,4 +1,5 @@
-import { PanelLeftClose, Search, SquarePen, Trash2, X } from 'lucide-react'
+import { Search, Trash2, X } from 'lucide-react'
+import { IconNewChat, IconSidebarToggle } from './icons'
 import { useMemo, useState, useEffect } from 'react'
 import type { AppCopy } from '../lib/appCopy'
 import type { BusyTask } from '../lib/busyTask'
@@ -79,7 +80,7 @@ export function ChatHistorySidebar({
           title={copy.closeHistorySidebar}
           onClick={onClose}
         >
-          <PanelLeftClose size={20} strokeWidth={2} />
+          <IconSidebarToggle size={20} strokeWidth={2} />
         </button>
         <span>{copy.history}</span>
         <small className="chat-history-count">{threadSummaries.length}</small>
@@ -95,7 +96,7 @@ export function ChatHistorySidebar({
               onClick={onNewChat}
               title={isBusy ? copy.waitForCurrentRun : copy.newChat}
             >
-              <SquarePen size={18} strokeWidth={2} />
+              <IconNewChat size={18} strokeWidth={1.8} />
               <span>{copy.newChat}</span>
             </button>
 
@@ -124,7 +125,7 @@ export function ChatHistorySidebar({
           <div className="chat-history-list">
             {filteredSummaries.length === 0 ? (
               <div className="chat-history-empty">
-                <SquarePen size={20} strokeWidth={2} aria-hidden="true" />
+                <IconNewChat size={20} strokeWidth={1.8} aria-hidden="true" />
                 <p>{emptyLabel}</p>
                 {threadSummaries.length > 0 && trimmedQuery ? (
                   <button

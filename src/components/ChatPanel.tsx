@@ -5,9 +5,8 @@ import {
   LoaderCircle,
   MessageSquare,
   Send,
-  Square,
-  SquarePen,
 } from 'lucide-react'
+import { IconNewChat, IconStop } from './icons'
 import {
   memo,
   useEffect,
@@ -245,7 +244,7 @@ export function ChatPanel({
           title={busyTask ? copy.waitForCurrentRun : copy.newChat}
           className="panel-title-action"
         >
-          <SquarePen size={16} strokeWidth={2} />
+          <IconNewChat size={16} strokeWidth={1.8} />
           {copy.newChat}
         </Button>
       </div>
@@ -431,7 +430,7 @@ export function ChatPanel({
                 aria-label={copy.stopRun}
                 className="chat-send chat-stop"
               >
-                <Square size={14} fill="currentColor" />
+                <IconStop size={14} />
               </IconButton>
             ) : (
               <IconButton
