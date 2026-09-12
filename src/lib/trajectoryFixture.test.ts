@@ -1,9 +1,16 @@
+/// <reference types="node" />
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   serializeFixture,
   trajectoryToActionFixtures,
   trajectoryToCoordinateFixtures,
 } from './trajectoryFixture'
+import type { ActionFixture, CoordinateFixture } from './trajectoryFixture'
 import type { TrajectoryArtifact } from './trajectory'
 
 function artifact(
@@ -78,6 +85,18 @@ describe('trajectoryToCoordinateFixtures', () => {
     })
     expect(trajectoryToCoordinateFixtures(bare)).toEqual([])
   })
+
+  it('projects a swipe as a coordinate fixture carrying all four touch points', () => {
+    const [fixture] = trajectoryToCoordinateFixtures(
+      artifact({
+        modelOutput: '{"action":"swipe","fromX":10,"fromY":20,"toX":30,"toY":40}',
+        action: { action: 'swipe', fromX: 10, fromY: 20, toX: 30, toY: 40 },
+        executionAction: { action: 'swipe', fromX: 15, fromY: 30, toX: 45, toY: 60 },
+      }),
+    )
+    expect(fixture?.input.action).toEqual({ action: 'swipe', fromX: 10, fromY: 20, toX: 30, toY: 40 })
+    expect(fixture?.expected.action).toEqual({ action: 'swipe', fromX: 15, fromY: 30, toX: 45, toY: 60 })
+  })
 })
 
 describe('determinism', () => {
@@ -95,5 +114,106 @@ describe('serializeFixture', () => {
     expect(text.endsWith('}\n')).toBe(true)
     expect(text).toContain('\n  "kind": "webdroid.action-fixture"')
     expect(JSON.parse(text)).toEqual(fixture)
+  })
+})
+
+const SCRIPT_PATH = fileURLToPath(new URL('../../scripts/trajectory-to-fixture.mjs', import.meta.url))
+
+/** Scratch directory outside the repository; every caller removes it in a `finally`. */
+function tempDir(): string {
+  return mkdtempSync(join(tmpdir(), 'trajectory-fixture-'))
+}
+
+function writeArtifact(dir: string, source: TrajectoryArtifact): string {
+  const artifactPath = join(dir, 'trajectory.json')
+  writeFileSync(artifactPath, JSON.stringify(source))
+  return artifactPath
+}
+
+function runGenerator(dir: string, args: string[]) {
+  return spawnSync(process.execPath, [SCRIPT_PATH, ...args], { cwd: dir, encoding: 'utf8' })
+}
+
+function expectDirectoryMatches(
+  outDir: string,
+  kind: 'actions' | 'coordinates',
+  fixtures: Array<ActionFixture | CoordinateFixture>,
+): void {
+  expect(readdirSync(join(outDir, kind)).sort()).toEqual(
+    fixtures.map((fixture) => `${fixture.name}.json`).sort(),
+  )
+  for (const fixture of fixtures) {
+    expect(readFileSync(join(outDir, kind, `${fixture.name}.json`), 'utf8')).toBe(
+      serializeFixture(fixture),
+    )
+  }
+}
+
+/**
+ * The script re-implements the projection on purpose (bare `node`, no build
+ * step, no `src/` import), so the only thing that keeps the twins honest is
+ * running the real script and comparing its bytes with `serializeFixture`.
+ * Both cases matter: a tap covers the `x`/`y` predicate, a swipe the
+ * `fromX`/`fromY`/`toX`/`toY` one.
+ */
+describe('generator script projection agreement', () => {
+  const cases: Array<[string, TrajectoryArtifact]> = [
+    ['tap', artifact()],
+    [
+      'swipe',
+      artifact({
+        modelOutput: '{"action":"swipe","fromX":10,"fromY":20,"toX":30,"toY":40}',
+        action: { action: 'swipe', fromX: 10, fromY: 20, toX: 30, toY: 40 },
+        executionAction: { action: 'swipe', fromX: 15, fromY: 30, toX: 45, toY: 60 },
+      }),
+    ],
+  ]
+
+  for (const [label, source] of cases) {
+    it(`writes exactly the TypeScript projection, file names included (${label})`, () => {
+      const dir = tempDir()
+      try {
+        const artifactPath = writeArtifact(dir, source)
+        const outDir = join(dir, 'out')
+        const result = runGenerator(dir, [artifactPath, '--out', outDir])
+        expect(result.status, `generator stderr: ${result.stderr}`).toBe(0)
+
+        expectDirectoryMatches(outDir, 'actions', trajectoryToActionFixtures(source))
+        expectDirectoryMatches(outDir, 'coordinates', trajectoryToCoordinateFixtures(source))
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+describe('generator script argument and input guards', () => {
+  it('refuses an empty or whitespace --out instead of writing into the working directory', () => {
+    for (const value of ['', '   ']) {
+      const dir = tempDir()
+      try {
+        const artifactPath = writeArtifact(dir, artifact())
+        const result = runGenerator(dir, [artifactPath, '--out', value])
+        expect(result.status, `--out ${JSON.stringify(value)}: ${result.stderr}`).not.toBe(0)
+        expect(result.stderr).toContain('Refusing to generate fixtures')
+        expect(readdirSync(dir)).toEqual(['trajectory.json'])
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('refuses inline image data whatever the case of the URI scheme', () => {
+    const dir = tempDir()
+    try {
+      const artifactPath = writeArtifact(dir, artifact({ modelOutput: 'DATA:image/png;base64,AAAA' }))
+      const outDir = join(dir, 'out')
+      const result = runGenerator(dir, [artifactPath, '--out', outDir])
+      expect(result.status, result.stderr).not.toBe(0)
+      expect(result.stderr).toContain('inline image data')
+      expect(existsSync(outDir)).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

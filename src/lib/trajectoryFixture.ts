@@ -76,8 +76,17 @@ export function trajectoryToCoordinateFixtures(artifact: TrajectoryArtifact): Co
     }))
 }
 
+/**
+ * The action shapes `mapActionCoordinates` can map, and therefore the only ones
+ * a coordinate fixture can replay: a single point (`x`/`y`, as in `tap`,
+ * `long_press` and `double_tap`) or a swipe (`fromX`/`fromY`/`toX`/`toY`).
+ * Anything else has no coordinate to translate.
+ */
 function hasCoordinates(action: AgentAction) {
-  return 'x' in action && 'y' in action
+  if ('x' in action && 'y' in action) {
+    return true
+  }
+  return 'fromX' in action && 'fromY' in action && 'toX' in action && 'toY' in action
 }
 
 export function serializeFixture(fixture: ActionFixture | CoordinateFixture): string {

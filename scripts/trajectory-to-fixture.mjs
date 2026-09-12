@@ -84,6 +84,11 @@ function parseArgs(argv) {
       if (value === undefined || value.startsWith('-')) {
         failUsage('--out needs a directory')
       }
+      if (value.trim() === '') {
+        // `resolve('')` is the process cwd, so an empty value would scatter
+        // `actions/` and `coordinates/` over whatever directory node ran in.
+        refuse('--out needs a non-empty directory, not an empty or blank value')
+      }
       options.out = value
       index += 1
     } else if (arg === '--help' || arg === '-h') {
@@ -123,8 +128,10 @@ function readArtifact(inputPath) {
     refuse(problem)
   }
   // Parsing first normalises \uXXXX escapes, so this still catches an inline
-  // image whose prefix was hidden behind an escape in the raw text.
-  if (JSON.stringify(artifact).includes('data:image')) {
+  // image whose prefix was hidden behind an escape in the raw text. The URI
+  // scheme is case-insensitive, so the haystack is lower-cased before matching
+  // and `DATA:image/png` is refused too.
+  if (JSON.stringify(artifact).toLowerCase().includes('data:image')) {
     refuse('the trajectory contains inline image data; fixtures must never carry pixels')
   }
   return artifact
@@ -245,7 +252,7 @@ function projectCoordinateFixtures(artifact) {
     return []
   }
   return artifact.steps
-    .filter((step) => 'x' in step.action && 'y' in step.action)
+    .filter((step) => hasCoordinates(step.action))
     .map((step) => ({
       schemaVersion: SCHEMA_VERSION,
       kind: COORDINATE_KIND,
@@ -259,6 +266,19 @@ function projectCoordinateFixtures(artifact) {
 
 function serializeFixture(fixture) {
   return `${JSON.stringify(fixture, null, 2)}\n`
+}
+
+/**
+ * The action shapes `mapActionCoordinates` can map, and therefore the only ones
+ * a coordinate fixture can replay: a single point (`x`/`y`, as in `tap`,
+ * `long_press` and `double_tap`) or a swipe (`fromX`/`fromY`/`toX`/`toY`).
+ * The same predicate as `hasCoordinates` in `src/lib/trajectoryFixture.ts`.
+ */
+function hasCoordinates(action) {
+  if ('x' in action && 'y' in action) {
+    return true
+  }
+  return 'fromX' in action && 'fromY' in action && 'toX' in action && 'toY' in action
 }
 
 function writeAll(dir, fixtures, options) {
