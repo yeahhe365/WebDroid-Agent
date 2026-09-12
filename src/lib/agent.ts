@@ -78,6 +78,7 @@ export type AgentTiming = {
 
 export type AgentStep = {
   index: number
+  runId?: string
   turnId?: string
   promptContext?: string
   screenshot: DeviceScreenshot
@@ -116,6 +117,7 @@ export type RunAgentStepInput = {
   memoryItems?: readonly string[]
   actionTools?: Record<string, ActionToolSignature>
   index?: number
+  runId?: string
   onSnapshot?: (snapshot: AgentDeviceSnapshot) => void | Promise<void>
   signal?: AbortSignal
 }
@@ -346,6 +348,7 @@ export async function runAgentStep({
   memoryItems,
   actionTools,
   index = 1,
+  runId,
   onSnapshot,
   secrets,
   signal,
@@ -452,6 +455,7 @@ export async function runAgentStep({
       throw createInvalidModelActionError({
         error: action,
         index,
+        runId,
         task,
         session,
         pendingUserMessages,
@@ -491,6 +495,7 @@ export async function runAgentStep({
         throw createInvalidModelActionError({
           error: caught,
           index,
+          runId,
           task,
           session,
           pendingUserMessages,
@@ -526,6 +531,7 @@ export async function runAgentStep({
   const turn = session
     ? startThreadTurn(session, {
         index,
+        runId,
         task,
         latestUserMessage: latestUserMessage(session.messages),
         promptContext,
@@ -553,6 +559,7 @@ export async function runAgentStep({
 
   return {
     index,
+    ...(runId ? { runId } : {}),
     turnId: turn?.id,
     promptContext,
     screenshot: retainedScreenshot,
@@ -569,6 +576,7 @@ export async function runAgentStep({
 function createInvalidModelActionError({
   error,
   index,
+  runId,
   task,
   session,
   pendingUserMessages,
@@ -582,6 +590,7 @@ function createInvalidModelActionError({
 }: {
   error: ActionValidationError
   index: number
+  runId?: string
   task: string
   session?: AgentSession
   pendingUserMessages: readonly QueuedUserMessage[]
@@ -597,6 +606,7 @@ function createInvalidModelActionError({
   const turn = session
     ? startThreadTurn(session, {
         index,
+        runId,
         task,
         latestUserMessage: latestUserMessage(session.messages),
         promptContext,
@@ -625,6 +635,7 @@ function createInvalidModelActionError({
 
   return new InvalidModelActionError(error.message, {
     index,
+    ...(runId ? { runId } : {}),
     turnId: turn?.id,
     promptContext,
     screenshot,
@@ -716,6 +727,7 @@ export function createAgentRunner({
       const steps: AgentStep[] = []
       const session = input.session ?? createAgentSession(input.task)
       const startIndex = nextAgentStepIndex(session)
+      const runId = createRunId()
       let recoverableExecutionFailures = 0
       let consecutiveModelErrors = 0
 
@@ -740,6 +752,7 @@ export function createAgentRunner({
             memoryItems: input.memoryItems,
             actionTools: toolRegistry.getSignatures(),
             index,
+            runId,
             onSnapshot: input.onSnapshot,
             secrets: input.secrets,
             signal: input.signal,
@@ -1066,4 +1079,8 @@ async function getScreenTreeOrUndefined(device: DeviceBackend, signal?: AbortSig
     throwIfAborted(signal)
     return undefined
   }
+}
+
+function createRunId() {
+  return `run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
 }

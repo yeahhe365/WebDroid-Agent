@@ -1440,3 +1440,41 @@ describe('failure classification and retry budget', () => {
     expect(session.turns[0]?.failureClass).toBe('unknown')
   })
 })
+
+describe('run identity', () => {
+  it('stamps every step of one run with the same runId, and a new run with a new one', async () => {
+    const client = sequentialClient(['{"action":"wait","ms":1}'])
+    const runner = createAgentRunner({ device: fakeDevice(), client })
+
+    const first = await runner.run({
+      modelConfig: MODEL_CONFIG,
+      task: 'a',
+      autoExecute: true,
+      maxSteps: 2,
+    })
+    const second = await runner.run({
+      modelConfig: MODEL_CONFIG,
+      task: 'b',
+      autoExecute: true,
+      maxSteps: 1,
+    })
+
+    const firstIds = new Set(first.steps.map((step) => step.runId))
+    expect(firstIds.size).toBe(1)
+    const [firstRunId] = [...firstIds]
+    expect(firstRunId).toBeTruthy()
+    expect(second.steps[0]?.runId).toBeTruthy()
+    expect(second.steps[0]?.runId).not.toBe(firstRunId)
+  })
+
+  it('stamps the run id on the invalid-model-action path too', async () => {
+    const session = createAgentSession('tap')
+    const result = await createAgentRunner({
+      device: fakeDevice(),
+      client: sequentialClient(['{"action":"tap","x":9999,"y":200}']),
+    }).run({ modelConfig: MODEL_CONFIG, task: 'tap', autoExecute: true, maxSteps: 1, session })
+
+    expect(result.steps[0]?.runId).toBeTruthy()
+    expect(session.turns[0]?.runId).toBe(result.steps[0]?.runId)
+  })
+})

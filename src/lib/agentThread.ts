@@ -76,6 +76,7 @@ export type AgentTurnTiming = {
 
 export type AgentTurn = {
   id: string
+  runId?: string
   index: number
   status: AgentTurnStatus
   toolName?: string
@@ -278,6 +279,7 @@ export function recordThreadUserMessage(
 
 export type StartThreadTurnInput = {
   id?: string
+  runId?: string
   index: number
   task: string
   latestUserMessage?: string
@@ -297,6 +299,7 @@ export function startThreadTurn(thread: AgentThread, input: StartThreadTurnInput
   const turnDeviceSnapshot = omitSnapshotScreenshot(input.deviceSnapshot)
   const turn: AgentTurn = {
     id: input.id ?? createId('turn'),
+    ...(input.runId ? { runId: input.runId } : {}),
     index: input.index,
     status: input.status ?? 'planned',
     task: input.task,

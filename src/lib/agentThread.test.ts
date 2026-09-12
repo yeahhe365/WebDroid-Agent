@@ -324,3 +324,27 @@ describe('run-level failure class', () => {
     expect(isAgentThread(thread)).toBe(true)
   })
 })
+
+describe('turn runId', () => {
+  it('persists the run id handed to startThreadTurn', () => {
+    const thread = createAgentThread('task')
+    const turn = startThreadTurn(thread, {
+      index: 1,
+      task: 'task',
+      promptContext: 'ctx',
+      deviceSnapshot: { currentApp: 'Chrome', deviceState: { app: 'Chrome' }, screenshot: { dataUrl: '', screen: { width: 1, height: 1 } } },
+      modelOutput: '{}',
+      action: { action: 'wait', ms: 1 },
+      executionAction: { action: 'wait', ms: 1 },
+      preview: 'wait 1ms',
+      timing: { captureMs: 0, currentAppMs: 0, modelMs: 0, parseMs: 0, totalMs: 0 },
+      runId: 'run_test',
+    })
+    expect(turn.runId).toBe('run_test')
+  })
+
+  it('still validates old threads that have no runId', () => {
+    const legacy = { id: 't1', status: 'idle', turns: [], messages: [], createdAt: 1, updatedAt: 1 }
+    expect(isAgentThread(legacy)).toBe(true)
+  })
+})
