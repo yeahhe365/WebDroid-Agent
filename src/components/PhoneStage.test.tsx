@@ -463,14 +463,27 @@ describe('PhoneStage', () => {
     )
   })
 
-  it('sizes the normal phone preview to use most of the preview area', () => {
+  it('sizes the normal phone preview from the stage it sits in, never the viewport', () => {
     expect(phoneStageCss).toMatch(
       /\.phone-stage\s*\{[\s\S]*padding:\s*var\(--space-5\)\s+var\(--space-4\)/,
     )
     expect(phoneStageCss).toMatch(/\.phone-frame\s*\{[\s\S]*border:\s*6px solid/)
-    expect(phoneStageCss).toMatch(/\.phone-frame\s*\{[\s\S]*max-height:\s*min\(86vh,\s*880px\)/)
-    expect(phoneStageCss).toMatch(/\.phone-frame\s*\{[\s\S]*width:\s*min\(100%,\s*420px\)/)
-    expect(responsiveCss).toMatch(/\.phone-frame\s*\{[\s\S]*max-height:\s*72vh/)
+    expect(phoneStageCss).toMatch(/\.phone-frame\s*\{[\s\S]*aspect-ratio:\s*9\s*\/\s*19\.5/)
+
+    // Fitting is the container's job. A viewport-based cap let the frame grow
+    // taller than its stage, and `.phone-stage`'s `overflow: hidden` then cut
+    // the bezel off the top and bottom - and, on short windows, 25px into the
+    // device screen on each side.
+    const frameRule = phoneStageCss.match(/\.phone-frame\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+    expect(frameRule).toContain('height: 100%')
+    expect(frameRule).toContain('width: auto')
+    expect(frameRule).not.toMatch(/^\s*max-height:[^;]*vh/m)
+    expect(frameRule).not.toMatch(/^\s*max-width:[^;]*vh/m)
+
+    // The width follows from the height, so a fixed width here would break the
+    // 9:19.5 shape instead of resizing the phone.
+    expect(frameRule).not.toMatch(/^\s*width:\s*min\(/m)
+    expect(responsiveCss).not.toMatch(/\.phone-frame\s*\{/)
   })
 
   it('keeps the empty phone preview the same size as the screenshot preview', () => {

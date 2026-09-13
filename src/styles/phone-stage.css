@@ -45,7 +45,17 @@
     0 8px 24px rgba(0, 0, 0, 0.18),
     0 16px 48px rgba(0, 0, 0, 0.22),
     inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-  max-height: min(86vh, 880px);
+  /* The phone is sized by the space its stage actually offers, never by the
+     viewport: `height: 100%` takes the stage's content box, `aspect-ratio`
+     derives the width from that height, and both dimensions therefore shrink
+     together so the 9:19.5 shape stays true. The old `max-height: min(86vh,
+     880px)` ignored the container entirely, so on a 727px-tall window the
+     frame stood 625px tall inside a 505px stage and `.phone-stage`'s
+     `overflow: hidden` sliced 40px off the top and bottom - through the whole
+     bezel and 25px into the device screen itself. `max-height: 880px` keeps
+     the phone from growing without bound on very tall displays. */
+  height: 100%;
+  max-height: 880px;
   max-width: 100%;
   overflow: hidden;
   padding: 9px 4px;
@@ -53,12 +63,12 @@
   transition:
     border-radius var(--duration-moderate) var(--ease-productive),
     box-shadow var(--duration-moderate) var(--ease-productive);
-  width: min(100%, 420px);
+  width: auto;
 }
 
-.workspace-running .phone-frame {
-  width: min(100%, 460px);
-}
+/* No running-mode width override: the frame is height-driven now, so a wider
+   phone is not reachable without also being taller - the fit rule above
+   already gives it the largest size the stage allows. */
 
 .phone-frame::after {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), transparent 30%);

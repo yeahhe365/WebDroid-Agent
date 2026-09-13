@@ -20,10 +20,6 @@
   .phone-stage {
     min-height: 560px;
   }
-
-  .phone-frame {
-    max-height: 72vh;
-  }
 }
 
 @media (max-width: 1099px) {

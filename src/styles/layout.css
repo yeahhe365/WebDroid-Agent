@@ -440,6 +440,10 @@ button.status:focus-visible {
   align-content: start;
   display: grid;
   gap: var(--space-3);
+  /* chrome / preview / quick controls. The preview row takes whatever height
+     is left in the column instead of stopping at the stage's own min-height,
+     so the phone ends up as large as the column allows. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
   justify-self: stretch;
   min-width: 0;
   width: 100%;
