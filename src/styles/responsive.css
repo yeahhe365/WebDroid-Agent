@@ -16,10 +16,6 @@
     gap: var(--space-3);
     grid-template-columns: minmax(320px, 1fr) minmax(300px, 0.9fr);
   }
-
-  .phone-stage {
-    min-height: 560px;
-  }
 }
 
 @media (max-width: 1099px) {

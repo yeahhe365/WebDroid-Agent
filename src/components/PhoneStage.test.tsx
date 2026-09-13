@@ -9,6 +9,7 @@ import { PhoneStage } from './PhoneStage'
 
 const phoneStageCss = readFileSync('src/styles/phone-stage.css', 'utf8')
 const responsiveCss = readFileSync('src/styles/responsive.css', 'utf8')
+const layoutCss = readFileSync('src/styles/layout.css', 'utf8')
 
 afterEach(() => {
   cleanup()
@@ -484,6 +485,30 @@ describe('PhoneStage', () => {
     // 9:19.5 shape instead of resizing the phone.
     expect(frameRule).not.toMatch(/^\s*width:\s*min\(/m)
     expect(responsiveCss).not.toMatch(/\.phone-frame\s*\{/)
+  })
+
+  it('gives the preview the flexible column row instead of forcing its own height', () => {
+    // A height floor on the stage made it taller than its own row, so it
+    // either overlapped the quick controls below (flexible row) or pushed them
+    // off-screen (auto row). The row owns the height; the stage takes what is
+    // left and the phone scales into it.
+    const stageRule = phoneStageCss.match(/\.phone-stage\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+    expect(stageRule).toContain('min-height: 0')
+    expect(stageRule).not.toMatch(/^\s*min-height:[^;]*dvh/m)
+    expect(layoutCss).toMatch(
+      /\.phone-column\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto/,
+    )
+    expect(responsiveCss).not.toMatch(/\.phone-stage\s*\{[\s\S]*min-height/)
+
+    // No mode may reintroduce a floor. Running mode used to raise one to
+    // min(780px, calc(100dvh - 180px)) - about 90px more than the rows below
+    // the preview leave - so the panel overlapped the quick controls.
+    expect(layoutCss).not.toMatch(/phone-stage[^{]*\{[^}]*min-height[^}]*dvh/)
+
+    // The console height is pinned for every side-by-side width; the layout
+    // stops being two columns below 900px. Unpinned, the columns grow with
+    // their content and the quick controls end up below the fold.
+    expect(layoutCss).toMatch(/@media \(min-width: 900px\) \{/)
   })
 
   it('keeps the empty phone preview the same size as the screenshot preview', () => {

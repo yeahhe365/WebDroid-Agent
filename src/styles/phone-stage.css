@@ -12,7 +12,12 @@
   box-shadow: var(--shadow-panel);
   display: flex;
   justify-content: center;
-  min-height: min(720px, calc(100dvh - 180px));
+  /* No height floor: `.phone-column` gives this panel the flexible row, so it
+     is exactly as tall as the space left over. A floor here (it used to be
+     min(720px, calc(100dvh - 180px))) made the panel taller than its own row
+     and it then overlapped the quick controls underneath - or, before the row
+     became flexible, pushed them off-screen. */
+  min-height: 0;
   overflow: hidden;
   padding: var(--space-5) var(--space-4);
   position: relative;

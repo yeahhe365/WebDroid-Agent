@@ -512,7 +512,11 @@ button.status:focus-visible {
   display: none;
 }
 
-@media (min-width: 981px) {
+/* Pinned console height for every side-by-side width: the workspace stops
+   being two columns only below 900px (see responsive.css), so this is where
+   the columns must stop growing with their content - otherwise the page
+   scrolls and the quick controls below the preview land off-screen. */
+@media (min-width: 900px) {
   .conversation-panel {
     height: calc(100dvh - 96px);
     min-height: 560px;
@@ -520,10 +524,6 @@ button.status:focus-visible {
 
   .phone-column {
     height: calc(100dvh - 96px);
-  }
-
-  .workspace-running .phone-column .phone-stage {
-    min-height: min(780px, calc(100dvh - 180px));
   }
 }
 
