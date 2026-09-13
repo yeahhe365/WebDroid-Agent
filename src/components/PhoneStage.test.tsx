@@ -511,6 +511,17 @@ describe('PhoneStage', () => {
     expect(layoutCss).toMatch(/@media \(min-width: 900px\) \{/)
   })
 
+  it('never squashes the phone when the column is narrower than the phone is tall', () => {
+    // Between 900px and 1099px the phone column is capped at ~380px. Sized by
+    // height alone the frame kept the height it wanted and merely got clamped
+    // narrower, which is a 346x818 phone - 2.36 instead of 9:19.5. The stage
+    // hands the frame both dimensions so the phone shrinks instead.
+    expect(phoneStageCss).toMatch(/container-type:\s*size/)
+    expect(phoneStageCss).toMatch(
+      /height:\s*min\(100cqh,\s*880px,\s*calc\(100cqw \* 19\.5 \/ 9\)\)/,
+    )
+  })
+
   it('keeps the empty phone preview the same size as the screenshot preview', () => {
     expect(phoneStageCss).not.toMatch(/\.phone-stage-empty\s*\{[\s\S]*min-height/)
     expect(phoneStageCss).not.toMatch(/\.phone-stage-empty\s+\.phone-frame\s*\{/)

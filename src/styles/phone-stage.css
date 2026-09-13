@@ -71,6 +71,23 @@
   width: auto;
 }
 
+@media (min-width: 900px) {
+  /* Size containment makes the stage's own box the authority: its height comes
+     from the pinned column rather than from the frame inside it, and `cqw` /
+     `cqh` hand the frame both available dimensions to fit the phone into. */
+  .phone-stage {
+    container-type: size;
+  }
+
+  /* As tall as the stage allows, but never taller than the width can carry at
+     9:19.5. Between 900px and 1099px the phone column is capped at ~380px, and
+     without this the frame kept the height it wanted and simply got clamped
+     narrower - a 346x818 phone, i.e. 2.36 instead of 2.1667. */
+  .phone-frame {
+    height: min(100cqh, 880px, calc(100cqw * 19.5 / 9));
+  }
+}
+
 /* No running-mode width override: the frame is height-driven now, so a wider
    phone is not reachable without also being taller - the fit rule above
    already gives it the largest size the stage allows. */
