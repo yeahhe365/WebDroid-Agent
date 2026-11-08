@@ -104,6 +104,7 @@ The app stores these values in the current browser's `localStorage`:
 - `Action protocol`: model action protocol. `webdroid_json` uses screenshot pixel coordinates; `webdroid_normalized_json` uses 0-1000 normalized coordinates.
 - `Max steps`: maximum auto-execution steps, default `150`.
 - `Confirm sensitive actions`: whether sensitive taps require human confirmation, default on.
+- `Safety strictness`: `Relaxed` / `Standard` (default) / `Strict`. It only moves verdicts inside each category's own floor and ceiling: relaxing never runs a payment or an account deletion, and tightening never turns a human step into a dead end.
 - `Unrestricted mode`: bypass local safety policy and sensitive confirmations, and prompt the model not to request human takeover.
 - `Stream responses`: whether to use streaming responses, default off.
 - `Use ADB Keyboard for text`: whether to prefer ADB Keyboard input, default off.
@@ -261,6 +262,8 @@ The frontend tries to constrain and confirm actions before execution:
 - The user can stop the run at any time.
 - Sensitive taps can require human confirmation; unrestricted mode skips those confirmations.
 - `type_secret` is the sanctioned password/verification-code path and is not mistaken for a login takeover just because its reason mentions "password"; irreversible payment/account-deletion actions are still blocked.
+- Every safety category carries a risk level (`medium` / `high` / `critical`) and sits on a verdict ladder (`allow < confirm < take_over < block`). The strictness setting only moves a verdict between that category's own floor and ceiling; the irreversible guard is outside its reach, and an imported settings file can never relax it.
+- A blocked action ends the turn as `reviewKind: blocked` and gets a "Blocked by safety policy" card with no Continue button; a payment instead ends as `takeoverKind: payment`, so the card asks the user to pay and then continue.
 - `take_over`, `note`, and `done` do not directly control the device; legacy `interact` and `call_api` are converted to human takeover unless unrestricted mode is enabled.
 - In Docker/Node deployments the server binds to loopback by default and can be further restricted with `PROXY_TOKEN` and `PROXY_ALLOW_HOSTS` (see "Docker Deployment · Proxy hardening"). The proxy also rejects cross-site requests and non-JSON bodies.
 - The ADB Keyboard APK is pinned to a specific commit and its SHA-256 is verified before installation, so upstream changes cannot silently reach the device. The APK comes from a third-party GPL-2.0 repository and is downloaded only on demand.
@@ -352,6 +355,7 @@ src/
     actionParser.ts           # action parsing and normalization
     actionPreview.ts          # action preview text formatting
     actionProtocol.ts         # explicit action protocol enum
+    actionRisk.ts             # risk levels, verdict ladder, and safety strictness
     actionSafetyPolicy.ts     # local action safety policy
     actionTypes.ts            # action types and validation error definitions
     actionValidation.ts       # action field validation (package names, URIs, control chars)
@@ -464,6 +468,8 @@ npm run css:audit   # reports CSS selectors no longer referenced (heuristic; con
 
 Derive replay fixtures from an exported trajectory:
 
+> React and `@yume-chan/adb` are split into their own chunks (see `vite.config.ts`), which leaves the entry chunk at roughly 318 kB / 99 kB gzip — about 180 kB of headroom under Vite's 500 kB warning. The Markdown stack is deliberately not chunked by hand: doing so makes Vite preload it from the entry and undoes the lazy import.
+
 ```bash
 npm run trajectory:fixture -- <trajectory.json>
 ```
@@ -484,8 +490,9 @@ The current tests mainly cover:
 - Screenshot coordinate mapping.
 - The run-log, screenshot preview, and main layout components.
 - Global hotkeys, split-pane dragging, dialog focus traps, and body scroll locking.
+- Safety-policy risk levels, the verdict ladder, the strictness setting, and the dedicated card for a blocked action.
 
-Real-device control still needs manual verification with an Android device.
+Real-device control still needs manual verification with an Android device. Work through [`docs/device-verification-matrix.md`](docs/device-verification-matrix.md): pause timing, resume without a new user message, resuming after a reload, streaming tokens per provider, and the safety strictness all live there.
 
 ## Roadmap
 
@@ -498,10 +505,10 @@ Real-device control still needs manual verification with an Android device.
 - [x] Installed-app list, text-clearing input, configurable waits, and basic failure recovery.
 - [x] Official OpenAI Responses API, native Gemini API, and Qwen presets.
 - [x] First-run Setup onboarding (connect device → configure model → enter the workspace).
-- [ ] A more complete real-device verification matrix.
+- [x] Real-device verification matrix (`docs/device-verification-matrix.md`); still has to be walked through on hardware, with the results filled in.
 - [x] More systematic failure classification, with per-class action retry (delivered in this milestone).
 - [x] Task pause and resume.
-- [ ] More systematic security policy and risk grading.
+- [x] More systematic safety policy and risk grading (risk levels + verdict ladder + configurable strictness, see `src/lib/actionRisk.ts`).
 
 ## Deploying to Cloudflare Pages
 

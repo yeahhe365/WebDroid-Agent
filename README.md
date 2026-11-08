@@ -145,6 +145,7 @@ npm run preview
 - `Action protocol`：模型动作协议。`webdroid_json` 使用截图像素坐标；`webdroid_normalized_json` 使用 0-1000 归一化坐标。
 - `Max steps`：自动执行的最大步数，默认 `150`。
 - `Confirm sensitive actions`：敏感点击是否需要人工确认，默认开启。
+- `安全策略强度`（`Safety strictness`）：`宽松` / `标准`（默认）/ `严格`。只在本地区间内调整判定：登录、验证码、支付、不可逆操作各有上下限，宽松不会让支付或删除账号直接执行，严格也不会把需要人工处理的步骤变成无法继续的死结。
 - `完全无限制模式`：绕过本地安全策略和敏感确认，模型也会被提示不要请求人工接管。
 - `Stream responses`：是否启用流式响应，默认关闭。
 - `Use ADB Keyboard for text`：是否优先使用 ADB Keyboard 输入文本，默认关闭。
@@ -302,6 +303,8 @@ canonical JSON 推荐使用的标准动作：
 - 用户可以随时停止运行。
 - 敏感点击可要求人工确认；开启完全无限制模式时会跳过这些确认。
 - `type_secret` 是输入密码/验证码的受控通道，不会因为动作理由里出现 “password” 而被误判为登录接管；支付、删除账号等不可逆操作仍会被拦截。
+- 每个安全类别都有风险等级（`medium` / `high` / `critical`）和一条判定阶梯（`allow < confirm < take_over < block`）。强度设置只在类别自带的上下限之间移动判定，不可逆动作的拦截不受该设置影响，也不会被设置导入放宽。
+- 被策略拦下的动作（`block`）会以 `reviewKind: blocked` 结束本轮，界面给的是「被安全策略拦下」卡片，没有「继续」按钮；支付则按 `takeoverKind: payment` 走接管卡片，由用户自己完成后再继续。
 - `take_over`、`note`、`done` 不会直接操作设备；遗留 `interact` 和 `call_api` 会转成人工接管。
 - Docker / Node 部署时服务端默认只监听回环地址，并可用 `PROXY_TOKEN`、`PROXY_ALLOW_HOSTS` 限制代理访问（见「Docker 部署 · 代理加固」）。代理同时拒绝跨站请求和非 JSON 请求体。
 - ADB Keyboard APK 固定到具体 commit，并在安装前校验 SHA-256；上游内容变化不会静默进入设备。该 APK 来自第三方仓库（GPL-2.0），仅作为可选文本输入依赖按需下载。
@@ -503,6 +506,8 @@ npm run build:server
 npm run css:audit   # 扫描不再被引用的 CSS 选择器（启发式，结果需人工确认）
 ```
 
+> 打包时 React 与 `@yume-chan/adb` 被拆成独立 chunk（见 `vite.config.ts`），入口 chunk 当前约 318 KB / gzip 99 KB，距 Vite 的 500 KB 警告线留有约 180 KB 余量。Markdown 渲染栈不参与手动分块，否则 Vite 会把它预加载回入口，反而丢掉懒加载。
+
 从一次导出的 trajectory 生成重放夹具：
 
 ```bash
@@ -524,9 +529,10 @@ npm run trajectory:fixture -- <trajectory.json>
 - 已安装应用解析、匹配和完整上下文注入。
 - 截图坐标映射。
 - 运行日志、截图预览和主界面布局组件。
+- 安全策略的风险等级、判定阶梯与强度设置，以及被拦截动作的独立卡片。
 - 全局快捷键、分栏拖拽、对话框焦点陷阱和 body 滚动锁。
 
-真实设备控制仍需要连接 Android 设备进行手动验证。
+真实设备控制仍需要连接 Android 设备进行手动验证。按 [`docs/device-verification-matrix.md`](docs/device-verification-matrix.md) 逐项执行：暂停时机、恢复不新增用户消息、刷新后能否继续、各家 provider 的流式 token 与安全强度，都在这份矩阵里。
 
 ## 路线图
 
@@ -539,10 +545,10 @@ npm run trajectory:fixture -- <trajectory.json>
 - [x] 支持已安装应用列表、文本清空输入、可配置等待和基础失败恢复。
 - [x] 支持 OpenAI 官方 Responses API、Gemini 原生接口与 Qwen 预设。
 - [x] 首次使用 Setup 引导（连接设备 → 配置模型 → 进入工作台）。
-- [ ] 补充更完整的真实设备验证矩阵。
+- [x] 真实设备验证矩阵（`docs/device-verification-matrix.md`）；仍需按矩阵在实机上逐项跑一遍并回填结果。
 - [x] 更系统的失败分类，以及按失败类别重试动作（本次里程碑交付）。
 - [x] 完善任务暂停与恢复体验。
-- [ ] 提供更系统的安全策略和风险分级。
+- [x] 更系统的安全策略与风险分级（风险等级 + 判定阶梯 + 可配置强度，见 `src/lib/actionRisk.ts`）。
 
 ## 贡献说明
 
