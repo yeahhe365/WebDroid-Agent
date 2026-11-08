@@ -37,6 +37,12 @@ describe('repository hardening guards', () => {
     expect(headers).toContain('X-Frame-Options: DENY')
   })
 
+  it('allows the external origins the UI fetches directly', () => {
+    const headers = readRepoFile('public/_headers')
+    expect(headers).toContain('https://api.github.com')
+    expect(headers).toContain('https://raw.githubusercontent.com')
+  })
+
   it('compiles the frontend under TypeScript strict mode', () => {
     // tsconfig files are JSONC (they carry comments), so strip them first.
     const source = readRepoFile('tsconfig.app.json')

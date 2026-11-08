@@ -6,6 +6,7 @@ import type { AgentAction } from '../lib/actionTypes'
 import { delayWithAbort, isAbortError, throwIfAborted, withAbort } from '../lib/abortSignal'
 import {
   ADB_KEYBOARD_REMOTE_APK_PATH,
+  assertAdbKeyboardApk,
   encodeAdbKeyboardText,
   findAdbKeyboardIme,
   isAndroidInputTextSafe,
@@ -423,8 +424,10 @@ export class WebAdbDeviceBackend implements DeviceBackend {
   }
 
   async installAdbKeyboard(apkBytes: Uint8Array): Promise<string> {
-    if (apkBytes.byteLength === 0) {
-      throw new DeviceBackendError('Downloaded ADB Keyboard APK is empty.')
+    try {
+      await assertAdbKeyboardApk(apkBytes)
+    } catch (caught) {
+      throw new DeviceBackendError(caught instanceof Error ? caught.message : String(caught))
     }
 
     const adb = this.#requireAdb()
