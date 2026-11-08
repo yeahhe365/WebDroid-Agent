@@ -62,9 +62,9 @@ Docker:
 - 支持输入前清空文本、动作后固定等待、瞬时模型 API 错误/模型空回复重试，以及仅限瞬时设备错误（`device_io` / `device_timeout`，最多三次尝试后转入 `awaiting_review`）的自动恢复；其余失败类别一次即停。
 - 支持可编辑 App Cards、本地 Custom Tools，以及只向模型暴露 ID/标签的安全 Secret 输入。
 - 发送聊天消息后默认自动执行，也保留单步计划等高级调试能力。
-- 支持敏感动作确认、完全无限制模式、最大步数限制、停止运行，以及高级区中的上下文重置和运行日志导出。
+- 支持敏感动作确认、完全无限制模式、最大步数限制、真正暂停并在断点恢复、停止运行，以及高级区中的上下文重置和运行日志导出。
 - 页面配置持久化到本机浏览器 `localStorage`，Agent thread/turn 历史持久化到 IndexedDB。
-- 操作台快捷键：`Cmd/Ctrl+K` 聚焦输入框、`Cmd/Ctrl+B` 开关配置面板、`Cmd/Ctrl+J` 开关运行日志、`Esc` 停止运行；手机预览与聊天区之间的分隔条可拖拽调整宽度并记住比例（双击复位）。
+- 操作台快捷键：`Cmd/Ctrl+K` 聚焦输入框、`Cmd/Ctrl+B` 开关配置面板、`Cmd/Ctrl+J` 开关运行日志；`Esc` 只关闭最上层弹窗（不再误停 Agent，停止请用界面上的停止按钮）；手机预览与聊天区之间的分隔条可拖拽调整宽度并记住比例（双击复位）。
 
 ## 适合谁使用
 
@@ -97,7 +97,7 @@ Docker:
 
 1. 在 Chromium 系浏览器中打开应用。
 2. 连接开启 USB 调试的 Android 设备，并在手机上授权 ADB 调试。
-3. 填写 OpenAI 兼容接口的 `Base URL`、`API Key` 和 `Model`。
+3. 填写 OpenAI 兼容接口的 `Base URL`、`API Key` 和 `Model`，可点“测试连接”先验证（Docker 模式会走同源代理）。
 4. 在右侧聊天区输入自然语言指令，例如「打开设置并进入 Wi-Fi 页面」。
 5. 发送后应用截屏并请求模型返回一个动作。
 6. 前端解析、校验动作，并自动执行安全动作；敏感动作默认仍会请求确认。
@@ -198,10 +198,12 @@ Docker 运行时不需要把 API Key 写进环境变量；继续在页面里的�
 
 | 变量 | 作用 |
 | --- | --- |
-| `PROXY_TOKEN` | 设置后，代理请求必须携带 `x-proxy-token: <token>` 或 `Authorization: Bearer <token>`，否则返回 401。 |
+| `PROXY_TOKEN` | 设置后，代理请求必须携带 `x-proxy-token: <token>` 或 `Authorization: Bearer <token>`，否则返回 401。页面会在运行时从同源 `GET /api/proxy-token` 获取该 token（仅同源返回、`Cache-Control: no-store`），无需重新构建前端。 |
 | `PROXY_ALLOW_HOSTS` | 逗号分隔的上游主机白名单（如 `api.openai.com,dashscope.aliyuncs.com`；支持 `host:port` 与 `*.example.com` 通配）。设置后，不在名单内的 `Base URL` 返回 403。 |
 | `CSP_CONNECT_SRC` | 追加到前端 `Content-Security-Policy` 的 `connect-src` 的额外来源（空格分隔），用于自定义 OpenAI 兼容提供商端点。 |
 | `HOST` | 服务端监听地址，默认 `127.0.0.1`；Docker 镜像内已设为 `0.0.0.0`。 |
+
+代理还会拒绝跨站浏览器请求（`Origin` / `Sec-Fetch-Site` 不匹配）和非 `application/json` 请求体，避免本机代理被其他网页当作 SSRF/开放中继使用。`PROXY_TOKEN` 不能替代这些检查，但能在共享本机环境中挡住不了解该端点的进程。
 
 示例：
 
@@ -246,7 +248,7 @@ canonical JSON 推荐使用的标准动作：
 | `long_press` | 长按坐标 |
 | `double_tap` | 双击坐标 |
 | `wait` | 等待一段时间，推荐使用 `duration` 秒数 |
-| `take_over` | 请求人工接管 |
+| `take_over` | 请求人工接管；`kind` 可标记为 `login`、`captcha`、`payment` 或 `other` |
 | `note` | 记录观察，不执行设备动作 |
 | `done` | 任务完成 |
 
@@ -261,7 +263,7 @@ canonical JSON 推荐使用的标准动作：
 ```
 
 ```json
-{ "action": "take_over", "message": "需要用户输入验证码" }
+{ "action": "take_over", "kind": "captcha", "message": "需要用户输入验证码" }
 ```
 
 ```json
@@ -299,8 +301,11 @@ canonical JSON 推荐使用的标准动作：
 - 自动执行有最大步数限制。
 - 用户可以随时停止运行。
 - 敏感点击可要求人工确认；开启完全无限制模式时会跳过这些确认。
+- `type_secret` 是输入密码/验证码的受控通道，不会因为动作理由里出现 “password” 而被误判为登录接管；支付、删除账号等不可逆操作仍会被拦截。
 - `take_over`、`note`、`done` 不会直接操作设备；遗留 `interact` 和 `call_api` 会转成人工接管。
-- Docker / Node 部署时服务端默认只监听回环地址，并可用 `PROXY_TOKEN`、`PROXY_ALLOW_HOSTS` 限制代理访问（见「Docker 部署 · 代理加固」）。
+- Docker / Node 部署时服务端默认只监听回环地址，并可用 `PROXY_TOKEN`、`PROXY_ALLOW_HOSTS` 限制代理访问（见「Docker 部署 · 代理加固」）。代理同时拒绝跨站请求和非 JSON 请求体。
+- ADB Keyboard APK 固定到具体 commit，并在安装前校验 SHA-256；上游内容变化不会静默进入设备。该 APK 来自第三方仓库（GPL-2.0），仅作为可选文本输入依赖按需下载。
+- 模型请求有 180 秒总超时；上游无响应时会失败并归类为 `model_transport`，不会无限挂起。
 - 服务端响应带有 CSP、`X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff` 等安全头；CSP 的 `connect-src` 可用 `CSP_CONNECT_SRC` 扩展。
 
 仍然建议避免让 Agent 操作账号登录、支付、下单、删除、授权、验证码、隐私页面等高风险流程。默认情况下模型返回 `take_over` 时，自动执行会停止并等待人工接管；开启完全无限制模式后不会因接管请求停止。
@@ -536,7 +541,7 @@ npm run trajectory:fixture -- <trajectory.json>
 - [x] 首次使用 Setup 引导（连接设备 → 配置模型 → 进入工作台）。
 - [ ] 补充更完整的真实设备验证矩阵。
 - [x] 更系统的失败分类，以及按失败类别重试动作（本次里程碑交付）。
-- [ ] 完善任务暂停与恢复体验。
+- [x] 完善任务暂停与恢复体验。
 - [ ] 提供更系统的安全策略和风险分级。
 
 ## 贡献说明

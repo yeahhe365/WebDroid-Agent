@@ -34,9 +34,9 @@ Docker:
 - Support editable App Cards, local Custom Tools, and safe Secret typing that exposes only IDs/labels to the model.
 - Support continuous auto-execution as well as step-by-step human confirmation.
 - Send chat messages to run automatically, with one-step planning kept in advanced debug controls.
-- Support sensitive-action confirmation, unrestricted mode, max-step limits, stop controls, and advanced reset/run-log export.
+- Support sensitive-action confirmation, unrestricted mode, max-step limits, true pause/resume from the current checkpoint, stop controls, and advanced reset/run-log export.
 - Persist page settings in the local browser `localStorage`, and persist agent thread/turn history in IndexedDB.
-- Operate the console from the keyboard: `Cmd/Ctrl+K` focuses the composer, `Cmd/Ctrl+B` toggles the configuration panel, `Cmd/Ctrl+J` toggles the run log, and `Esc` stops a running task. The divider between the phone preview and the chat pane can be dragged (double-click resets it).
+- Operate the console from the keyboard: `Cmd/Ctrl+K` focuses the composer, `Cmd/Ctrl+B` toggles the configuration panel, `Cmd/Ctrl+J` toggles the run log. `Esc` closes only the top-most dialog and never stops a run by itself; use the Stop button instead. The divider between the phone preview and the chat pane can be dragged (double-click resets it).
 
 ## Good Fits
 
@@ -56,7 +56,7 @@ It is not a good fit for:
 
 1. Open the app in a Chromium-based browser.
 2. Connect an Android device with USB debugging enabled and authorize ADB on the phone.
-3. Fill in the OpenAI-compatible `Base URL`, `API Key`, and `Model`.
+3. Fill in the OpenAI-compatible `Base URL`, `API Key`, and `Model`; use **Test connection** to verify them first (Docker routes the check through the same-origin proxy).
 4. Type a natural-language instruction in the chat, such as "Open Settings and go to Wi-Fi".
 5. Sending the message captures the screen and asks the model for one action.
 6. The frontend parses and validates the action, then executes safe actions automatically while sensitive actions ask for confirmation by default.
@@ -157,10 +157,12 @@ The defaults are deliberately conservative: the published port binds to `127.0.0
 
 | Variable | Effect |
 | --- | --- |
-| `PROXY_TOKEN` | When set, proxy requests must carry `x-proxy-token: <token>` or `Authorization: Bearer <token>`; otherwise the proxy answers 401. |
+| `PROXY_TOKEN` | When set, proxy requests must carry `x-proxy-token: <token>` or `Authorization: Bearer <token>`; otherwise the proxy answers 401. The UI reads it at runtime from same-origin `GET /api/proxy-token` (`Cache-Control: no-store`, same-origin only), so no frontend rebuild is needed. |
 | `PROXY_ALLOW_HOSTS` | Comma-separated upstream host allowlist (e.g. `api.openai.com,dashscope.aliyuncs.com`; supports `host:port` and `*.example.com`). Non-matching `Base URL` hosts receive 403. |
 | `CSP_CONNECT_SRC` | Extra space-separated origins appended to the frontend `Content-Security-Policy` `connect-src`, for custom OpenAI-compatible provider endpoints. |
 | `HOST` | Server listen address, default `127.0.0.1`; the Docker image sets `0.0.0.0`. |
+
+The proxy also rejects cross-site browser requests (`Origin` / `Sec-Fetch-Site` mismatch) and non-`application/json` bodies, so another web page cannot turn a loopback proxy into a blind SSRF/open relay. `PROXY_TOKEN` complements these checks rather than replacing them.
 
 Example:
 
@@ -205,7 +207,7 @@ Recommended canonical JSON actions:
 | `long_press` | Long-press a coordinate |
 | `double_tap` | Double-tap a coordinate |
 | `wait` | Wait for a duration, preferably with `duration` in seconds |
-| `take_over` | Request human takeover |
+| `take_over` | Request human takeover; `kind` may be `login`, `captcha`, `payment`, or `other` |
 | `note` | Record an observation without touching the device |
 | `done` | Mark the task as complete |
 
@@ -220,7 +222,7 @@ Examples:
 ```
 
 ```json
-{ "action": "take_over", "message": "The user needs to enter a verification code" }
+{ "action": "take_over", "kind": "captcha", "message": "The user needs to enter a verification code" }
 ```
 
 ```json
@@ -258,8 +260,11 @@ The frontend tries to constrain and confirm actions before execution:
 - Auto-execution has a maximum step count.
 - The user can stop the run at any time.
 - Sensitive taps can require human confirmation; unrestricted mode skips those confirmations.
+- `type_secret` is the sanctioned password/verification-code path and is not mistaken for a login takeover just because its reason mentions "password"; irreversible payment/account-deletion actions are still blocked.
 - `take_over`, `note`, and `done` do not directly control the device; legacy `interact` and `call_api` are converted to human takeover unless unrestricted mode is enabled.
-- In Docker/Node deployments the server binds to loopback by default and can be further restricted with `PROXY_TOKEN` and `PROXY_ALLOW_HOSTS` (see "Docker Deployment · Proxy hardening").
+- In Docker/Node deployments the server binds to loopback by default and can be further restricted with `PROXY_TOKEN` and `PROXY_ALLOW_HOSTS` (see "Docker Deployment · Proxy hardening"). The proxy also rejects cross-site requests and non-JSON bodies.
+- The ADB Keyboard APK is pinned to a specific commit and its SHA-256 is verified before installation, so upstream changes cannot silently reach the device. The APK comes from a third-party GPL-2.0 repository and is downloaded only on demand.
+- Model requests have a 180-second overall timeout; a stalled upstream fails as `model_transport` instead of hanging forever.
 - Server responses carry CSP, `X-Frame-Options: DENY`, and `X-Content-Type-Options: nosniff`; the CSP `connect-src` list can be extended with `CSP_CONNECT_SRC`.
 
 It is still strongly recommended to avoid letting the agent handle account login, payments, checkout, deletions, authorization, verification codes, or privacy-sensitive pages. By default, when the model returns `take_over`, auto-execution stops and waits for a human; unrestricted mode does not stop on takeover requests.
@@ -495,7 +500,7 @@ Real-device control still needs manual verification with an Android device.
 - [x] First-run Setup onboarding (connect device → configure model → enter the workspace).
 - [ ] A more complete real-device verification matrix.
 - [x] More systematic failure classification, with per-class action retry (delivered in this milestone).
-- [ ] Task pause and resume.
+- [x] Task pause and resume.
 - [ ] More systematic security policy and risk grading.
 
 ## Deploying to Cloudflare Pages
