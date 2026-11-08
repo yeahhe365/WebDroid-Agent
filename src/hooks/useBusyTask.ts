@@ -6,7 +6,21 @@ export type BusyTaskError = {
   message: string
 }
 
-export function useBusyTask(onError?: (error: BusyTaskError) => void) {
+/**
+ * Turns a thrown value into the string the banner and the log show. Injected so
+ * that errors raised outside React (device adapters, model clients) can be
+ * translated before they reach the UI instead of leaking English.
+ */
+export type BusyTaskErrorFormatter = (caught: unknown) => string
+
+function defaultFormatError(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught)
+}
+
+export function useBusyTask(
+  onError?: (error: BusyTaskError) => void,
+  formatError: BusyTaskErrorFormatter = defaultFormatError,
+) {
   const [busyTask, setBusyTask] = useState<BusyTask | null>(null)
   const [error, setError] = useState<string | null>(null)
   const inFlightRef = useRef(false)
@@ -23,7 +37,7 @@ export function useBusyTask(onError?: (error: BusyTaskError) => void) {
       try {
         await action()
       } catch (caught) {
-        const message = caught instanceof Error ? caught.message : String(caught)
+        const message = formatError(caught)
         setError(message)
         onError?.({ label, message })
       } finally {
@@ -31,7 +45,7 @@ export function useBusyTask(onError?: (error: BusyTaskError) => void) {
         setBusyTask(null)
       }
     },
-    [onError],
+    [formatError, onError],
   )
 
   return {

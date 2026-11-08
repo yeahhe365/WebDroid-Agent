@@ -89,12 +89,30 @@ export type DeviceBackend = {
 
 export type DeviceBackendErrorKind = 'io' | 'timeout'
 
+/**
+ * Failures the user is expected to read. The adapter cannot translate (it has
+ * no access to the active locale), so it tags the message with a code and the
+ * UI maps that code onto `AppCopy`. Untagged errors keep their raw message and
+ * stay in the log, where English is acceptable.
+ */
+export type DeviceBackendErrorCode =
+  | 'webusb-unavailable'
+  | 'no-device-selected'
+  | 'device-not-connected'
+  | 'invalid-screenshot'
+
 export class DeviceBackendError extends Error {
   readonly kind: DeviceBackendErrorKind
+  readonly code?: DeviceBackendErrorCode
 
-  constructor(message: string, kind: DeviceBackendErrorKind = 'io') {
+  constructor(
+    message: string,
+    kind: DeviceBackendErrorKind = 'io',
+    code?: DeviceBackendErrorCode,
+  ) {
     super(message)
     this.name = 'DeviceBackendError'
     this.kind = kind
+    this.code = code
   }
 }

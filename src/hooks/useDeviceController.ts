@@ -11,6 +11,7 @@ import type {
 import { getInstalledAppDisplayName } from '../adapters/installedApps'
 import { isWebUsbSupported } from '../adapters/webUsbSupport'
 import { buildActionPreview } from '../lib/actionPreview'
+import { deviceErrorCode } from '../lib/deviceErrors'
 import type { AgentAction } from '../lib/actionTypes'
 import type { AgentSession } from '../lib/agent'
 import type { AppCopy } from '../lib/appCopy'
@@ -155,7 +156,19 @@ export function useDeviceController({
 
   const connectDevice = useCallback(async () => {
     await runTask('connect-device', copy.connectDeviceTask, async () => {
-      const info = await backend.connect()
+      // Closing the WebUSB picker is a choice, not a failure. Log it quietly so
+      // the error banner stays for things that actually went wrong.
+      let info
+      try {
+        info = await backend.connect()
+      } catch (caught) {
+        if (deviceErrorCode(caught) === 'no-device-selected') {
+          addLog({ tone: 'info', title: copy.deviceSelectionCancelled })
+          return
+        }
+        throw caught
+      }
+
       setDeviceInfo(info)
       addLog({ tone: 'ok', title: copy.deviceConnected, detail: `${info.name} (${info.serial})` })
       const { screenshot: nextScreenshot, deviceState: nextDeviceState } =

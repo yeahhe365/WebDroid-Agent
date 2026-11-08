@@ -30,7 +30,11 @@ export function parsePngSize(bytes: Uint8Array): ScreenSize {
   const isPng = signature.every((value, index) => bytes[index] === value)
 
   if (!isPng || bytes.length < 24) {
-    throw new DeviceBackendError('Screenshot is not a valid PNG.')
+    throw new DeviceBackendError(
+      'Screenshot is not a valid PNG.',
+      'io',
+      'invalid-screenshot',
+    )
   }
 
   return {

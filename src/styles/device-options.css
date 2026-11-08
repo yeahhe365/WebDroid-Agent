@@ -58,6 +58,9 @@
 .home-device-options-panel .config-inline-field {
   align-items: center;
   display: flex;
+  /* A label plus a 6.5rem select need ~12rem. Wrapping the field onto two
+     lines beats letting the label collapse into one character per line. */
+  flex-wrap: wrap;
   gap: var(--space-2);
   justify-content: space-between;
   min-width: 0;
@@ -65,8 +68,11 @@
 
 .home-device-options-panel .config-inline-field label {
   color: var(--text-muted);
+  /* Chinese wraps between any two characters, so a shrinkable label turned
+     「安全策略强度」 into a vertical stack of single characters. */
+  flex: 0 0 auto;
   font-size: var(--font-size-sm);
-  min-width: 0;
+  white-space: nowrap;
 }
 
 .home-device-options-panel .config-inline-field select {

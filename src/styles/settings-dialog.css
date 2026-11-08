@@ -439,9 +439,21 @@
 }
 
 .settings-resource-grid {
+  align-items: start;
   display: grid;
   gap: var(--space-6);
   grid-template-columns: 1fr;
+}
+
+/*
+ * Four independent editors stacked in one column made the tab a long scroll
+ * with no visible end. Two columns halve the height and put the two text areas
+ * that get compared (App Cards / Custom Tools) on the same row.
+ */
+@media (min-width: 900px) {
+  .settings-resource-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .settings-resource-title {

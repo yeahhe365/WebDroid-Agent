@@ -1,4 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { APP_COPY, resolveLocale, type AppCopy } from '../lib/appCopy'
+import { loadSettings } from '../lib/settings'
 
 type AppErrorBoundaryProps = {
   children: ReactNode
@@ -6,6 +8,20 @@ type AppErrorBoundaryProps = {
 
 type AppErrorBoundaryState = {
   error: Error | null
+}
+
+/**
+ * The boundary renders above every provider, so it cannot read the copy out of
+ * context. Reading the stored language is best-effort on purpose: unreadable
+ * storage is one of the crashes this boundary exists to catch, and the fallback
+ * only touches `navigator`.
+ */
+function resolveBoundaryCopy(): AppCopy {
+  try {
+    return APP_COPY[resolveLocale(loadSettings().languageMode)]
+  } catch {
+    return APP_COPY[resolveLocale('system')]
+  }
 }
 
 /**
@@ -29,14 +45,15 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
       return this.props.children
     }
 
+    const copy = resolveBoundaryCopy()
+
     return (
       <div className="app-crash" role="alert">
         <h1>WebDroid Agent</h1>
-        <p>Something went wrong while starting the app. Reloading usually fixes it.</p>
-        <p>应用启动时出错了，刷新页面通常可以恢复。</p>
+        <p>{copy.crashMessage}</p>
         <pre>{error.message}</pre>
         <button type="button" onClick={() => window.location.reload()}>
-          Reload / 重新加载
+          {copy.crashReload}
         </button>
       </div>
     )
