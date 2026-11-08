@@ -1,5 +1,5 @@
 import type { DeviceState } from '../adapters/deviceTypes'
-import type { AgentAction } from './actionTypes'
+import type { AgentAction, TakeOverKind } from './actionTypes'
 
 function normalizeNFKC(value: string): string {
   return value.normalize('NFKC')
@@ -11,6 +11,8 @@ export type ActionSafetyPolicyResult = {
   decision: ActionSafetyDecision
   category?: string
   message?: string
+  /** Structured reason for a take_over decision, for stable UI cards. */
+  takeoverKind?: TakeOverKind
 }
 
 export type ActionSafetyContext = {
@@ -27,14 +29,29 @@ const PAYMENT_CRITICAL_PATTERNS = [
   /\b(pay now|payment|checkout|place order|submit order|buy now|send money|transfer money)\b/i,
 ]
 
+// Context-level signals that the current screen belongs to a payment flow.
+// Deliberately narrow: bare "order" / "订单" also appears in read-only flows
+// such as "查看我的订单" (view my orders), and matching it turned every tap into
+// a confirmation prompt. Committing actions are still covered by
+// PAYMENT_CRITICAL_PATTERNS above.
 const PAYMENT_CONTEXT_PATTERNS = [
-  /支付|订单|账单|收款|付款|支付宝|微信支付/,
-  /\b(payment|checkout|order|invoice|billing|wallet|paypal|venmo|cash app)\b/i,
+  /支付|账单|收款|付款|支付宝|微信支付/,
+  /\b(payment|checkout|billing|invoice|wallet|paypal|venmo|cash app|place order|submit order)\b/i,
 ]
 
 const SECRET_OR_LOGIN_PATTERNS = [
   /密码|验证码|校验码|动态码|短信码|口令|人机验证|验证码|登录|登陆/,
   /\b(password|passcode|verification code|one[- ]?time code|otp|captcha|login|log in|sign in|2fa|mfa)\b/i,
+]
+
+const CAPTCHA_EVIDENCE_PATTERNS = [
+  /验证码|校验码|动态码|短信码|人机验证/,
+  /\b(captcha|verification code|one[- ]?time code|otp|2fa|mfa)\b/i,
+]
+
+const LOGIN_EVIDENCE_PATTERNS = [
+  /密码|口令|登录|登陆/,
+  /\b(password|passcode|login|log in|sign in)\b/i,
 ]
 
 const DESTRUCTIVE_CRITICAL_PATTERNS = [
@@ -80,10 +97,16 @@ export function evaluateActionSafety(
   const evidence = collectPolicyEvidence(action, context)
   const isPaymentApp = matchesAny(evidence.device, PAYMENT_PACKAGE_PATTERNS)
 
-  if (matchesAny(evidence.all, SECRET_OR_LOGIN_PATTERNS)) {
+  // `type_secret` is the sanctioned way to enter a password: the value never
+  // reaches the model or the logs. Treating its own reason ("enter the
+  // password") as a login step would block the only safe path, so the
+  // secret/login takeover rule does not apply to it. Irreversible-action
+  // checks below still do.
+  if (action.action !== 'type_secret' && matchesAny(evidence.all, SECRET_OR_LOGIN_PATTERNS)) {
     return {
       decision: 'take_over',
       category: 'secret_or_login',
+      takeoverKind: secretOrLoginTakeoverKind(evidence.all),
       message:
         'Safety policy requires manual takeover for login, password, captcha, or verification-code steps.',
     }
@@ -122,7 +145,7 @@ export function evaluateActionSafety(
     }
   }
 
-  if (isPaymentApp || matchesAny(evidence.all, PAYMENT_CONTEXT_PATTERNS)) {
+  if (isPaymentApp || matchesAny(evidence.actionOrDevice, PAYMENT_CONTEXT_PATTERNS)) {
     return {
       decision: 'confirm',
       category: 'payment_context',
@@ -189,7 +212,15 @@ function collectPolicyEvidence(action: AgentAction, context: ActionSafetyContext
   ].map((field) => (field ? normalizeNFKC(field) : field))
 
   return {
+    // The whole task/model output is intentionally included for the critical
+    // block rules: if the user's task is "delete account" or "pay now", any
+    // candidate action deserves the stricter verdict.
     all: [...actionFields, ...deviceFields, context.task, context.modelOutput]
+      .map((field) => (field ? normalizeNFKC(field) : field))
+      .join('\n'),
+    // Confirmation-level rules look only at the action and the screen, so a
+    // read-only task such as "view my orders" does not make every tap prompt.
+    actionOrDevice: [...actionFields, ...deviceFields]
       .map((field) => (field ? normalizeNFKC(field) : field))
       .join('\n'),
     device: deviceFields.join('\n'),
@@ -198,4 +229,14 @@ function collectPolicyEvidence(action: AgentAction, context: ActionSafetyContext
 
 function matchesAny(value: string, patterns: readonly RegExp[]) {
   return patterns.some((pattern) => pattern.test(value))
+}
+
+function secretOrLoginTakeoverKind(value: string): TakeOverKind {
+  if (matchesAny(value, CAPTCHA_EVIDENCE_PATTERNS)) {
+    return 'captcha'
+  }
+  if (matchesAny(value, LOGIN_EVIDENCE_PATTERNS)) {
+    return 'login'
+  }
+  return 'other'
 }

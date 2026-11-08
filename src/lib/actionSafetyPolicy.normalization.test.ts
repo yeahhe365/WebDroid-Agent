@@ -30,15 +30,23 @@ describe('evaluateActionSafety NFKC normalization', () => {
     )
   })
 
-  it('checks type_secret for safety based on context', () => {
+  it('allows type_secret in a password context but still blocks irreversible tasks', () => {
     expect(
       evaluateActionSafety(
         { action: 'type_secret', secretId: 'password' },
         { task: 'Enter the password' },
       ),
+    ).toEqual({ decision: 'allow' })
+
+    expect(
+      evaluateActionSafety(
+        { action: 'type_secret', secretId: 'password' },
+        { task: 'Delete account permanently' },
+      ),
     ).toEqual(
       expect.objectContaining({
-        decision: 'take_over',
+        decision: 'block',
+        category: 'critical_destructive',
       }),
     )
   })

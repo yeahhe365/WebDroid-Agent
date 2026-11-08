@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { TakeOverKind } from '../lib/actionTypes'
 import { createAgentSession, type AgentSession } from '../lib/agent'
 import {
   recoverInterruptedThread,
   type AgentThread,
   type AgentThreadStatus,
+  type ReviewKind,
 } from '../lib/agentThread'
+import type { FailureClass } from '../lib/failureTaxonomy'
 import type { AppCopy } from '../lib/appCopy'
 import { buildInteractionStream } from '../lib/interactionStream'
 import type { AgentConversationMessage } from '../lib/openAiTypes'
@@ -38,6 +41,18 @@ export type AgentSessionSummary = {
   pendingUserMessageCount: number
   contextCompactedThroughStep: number
   latestStatusMessage?: string
+  latestFailureClass?: FailureClass
+  /** Structured reason from the latest takeover turn, when the model provided one. */
+  latestTakeoverKind?: TakeOverKind
+  /** Structured reason from the latest review status/turn. */
+  latestReviewKind?: ReviewKind
+  /** Wall-clock start of the latest run, from its user message. */
+  runStartedAt?: number
+  /** Wall-clock end of the latest run, once it is no longer running. */
+  runFinishedAt?: number
+  runStepCount: number
+  /** Sum of provider-reported token usage across the latest run. */
+  runTokenCount?: number
   updatedAt: number
 }
 
@@ -326,10 +341,48 @@ export function useAgentSessionHistory({
   }
 }
 
-function summarizeSession(session: AgentSession): AgentSessionSummary {
+export function summarizeSession(session: AgentSession): AgentSessionSummary {
   const latestStatusEvent = [...session.events]
     .reverse()
     .find((event) => event.type === 'status_change')
+  const latestUserMessageEvent = [...session.events]
+    .reverse()
+    .find((event) => event.type === 'user_message')
+  const latestTurn = session.turns.at(-1)
+  const latestAction = latestTurn?.action
+  const latestTakeoverKind =
+    session.status === 'awaiting_takeover'
+      ? latestTurn?.takeoverKind ??
+        (latestAction?.action === 'take_over' ? latestAction.kind : undefined)
+      : undefined
+  const latestTakeoverMessage =
+    session.status === 'awaiting_takeover' && latestAction?.action === 'take_over'
+      ? latestAction.message
+      : undefined
+  const latestStatusMessage =
+    (latestStatusEvent?.type === 'status_change' ? latestStatusEvent.message : undefined) ??
+    latestTakeoverMessage
+  const latestReviewKind =
+    session.status === 'awaiting_review'
+      ? latestStatusEvent?.type === 'status_change' && latestStatusEvent.reviewKind
+        ? latestStatusEvent.reviewKind
+        : latestTurn?.reviewKind
+      : undefined
+  const runStartedAt = latestUserMessageEvent?.type === 'user_message'
+    ? latestUserMessageEvent.createdAt
+    : session.turns[0]?.createdAt
+  const runTurns = runStartedAt === undefined
+    ? session.turns
+    : session.turns.filter((turn) => turn.createdAt >= runStartedAt)
+  const runTokenCount = runTurns.reduce(
+    (total, turn) => total + (turn.usage?.totalTokens ?? 0),
+    0,
+  )
+  const runFinishedAt = latestStatusEvent?.type === 'status_change' &&
+    latestStatusEvent.status !== 'running' &&
+    latestStatusEvent.status !== 'idle'
+    ? latestStatusEvent.createdAt
+    : undefined
 
   return {
     status: session.status,
@@ -337,9 +390,16 @@ function summarizeSession(session: AgentSession): AgentSessionSummary {
     turnCount: session.turns.length,
     pendingUserMessageCount: session.pendingUserMessages.length,
     contextCompactedThroughStep: session.contextCompactedThroughStep,
-    ...(latestStatusEvent?.type === 'status_change' && latestStatusEvent.message
-      ? { latestStatusMessage: latestStatusEvent.message }
+    ...(latestStatusMessage ? { latestStatusMessage } : {}),
+    ...(latestStatusEvent?.type === 'status_change' && latestStatusEvent.failureClass
+      ? { latestFailureClass: latestStatusEvent.failureClass }
       : {}),
+    ...(latestTakeoverKind ? { latestTakeoverKind } : {}),
+    ...(latestReviewKind ? { latestReviewKind } : {}),
+    ...(runStartedAt !== undefined ? { runStartedAt } : {}),
+    ...(runFinishedAt !== undefined ? { runFinishedAt } : {}),
+    runStepCount: runTurns.length,
+    ...(runTokenCount > 0 ? { runTokenCount } : {}),
     updatedAt: session.updatedAt,
   }
 }

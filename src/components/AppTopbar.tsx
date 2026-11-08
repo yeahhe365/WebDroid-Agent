@@ -2,6 +2,7 @@ import {
   BookOpen,
   CheckCircle2,
   LoaderCircle,
+  Pause,
   ScrollText,
   Settings as SettingsIcon,
   SlidersHorizontal,
@@ -16,6 +17,7 @@ type AppTopbarProps = {
   isAgentRunning?: boolean
   isConfigOpen?: boolean
   isInspectOpen?: boolean
+  isSettingsOpen?: boolean
   isTutorialOpen: boolean
   latestLogTitle?: string | null
   modelLabel?: string | null
@@ -24,6 +26,7 @@ type AppTopbarProps = {
   onOpenInspect: () => void
   onOpenSettings: () => void
   onReadinessClick?: () => void
+  onPauseRun?: () => void
   onStopRun?: () => void
   onToggleTutorial: () => void
 }
@@ -34,6 +37,7 @@ export function AppTopbar({
   isAgentRunning = false,
   isConfigOpen = false,
   isInspectOpen = false,
+  isSettingsOpen = false,
   isTutorialOpen,
   latestLogTitle = null,
   modelLabel = null,
@@ -42,6 +46,7 @@ export function AppTopbar({
   onOpenInspect,
   onOpenSettings,
   onReadinessClick,
+  onPauseRun,
   onStopRun,
   onToggleTutorial,
 }: AppTopbarProps) {
@@ -80,6 +85,18 @@ export function AppTopbar({
           <div className="run-strip" role="status">
             <LoaderCircle size={15} className="spin" aria-hidden="true" />
             <span className="run-strip-label">{runningLabel}</span>
+            {onPauseRun ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="run-strip-pause"
+                aria-label={copy.pauseRun}
+                onClick={onPauseRun}
+              >
+                <Pause size={12} />
+                <span>{copy.pauseRun}</span>
+              </Button>
+            ) : null}
             {onStopRun ? (
               <Button
                 variant="danger"
@@ -108,7 +125,7 @@ export function AppTopbar({
               <span className="model-chip-label">{modelChip}</span>
             </button>
           </div>
-        ) : (
+        ) : onReadinessClick ? (
           <button
             type="button"
             className="status warn readiness-pill readiness-action"
@@ -117,6 +134,10 @@ export function AppTopbar({
           >
             <span className="status-label">{readinessLabel}</span>
           </button>
+        ) : (
+          <span className="status warn readiness-pill" title={readinessLabel}>
+            <span className="status-label">{readinessLabel}</span>
+          </span>
         )}
       </div>
 
@@ -124,6 +145,7 @@ export function AppTopbar({
         <IconButton
           size="md"
           aria-expanded={isInspectOpen}
+          aria-haspopup="dialog"
           aria-label={isInspectOpen ? copy.closeInspect : copy.openInspect}
           title={latestLogTitle ? `${copy.inspect}: ${latestLogTitle}` : copy.inspect}
           onClick={onOpenInspect}
@@ -134,6 +156,7 @@ export function AppTopbar({
         <IconButton
           size="md"
           aria-expanded={isConfigOpen}
+          aria-haspopup="dialog"
           aria-label={isConfigOpen ? copy.closeConfigurationPanel : copy.openConfigurationPanel}
           title={copy.configurationPanel}
           onClick={onOpenConfig}
@@ -148,14 +171,17 @@ export function AppTopbar({
           aria-expanded={isTutorialOpen}
           aria-label={tutorialButtonLabel}
           onClick={onToggleTutorial}
-          className="topbar-tutorial"
+          className="topbar-tutorial topbar-button"
         >
           <BookOpen size={16} />
           <span className="topbar-button-label">{copy.tutorial}</span>
         </Button>
         <IconButton
           size="md"
+          aria-expanded={isSettingsOpen}
+          aria-haspopup="dialog"
           aria-label={copy.settings}
+          title={copy.settings}
           onClick={onOpenSettings}
           className="settings-button"
         >

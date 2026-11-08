@@ -23,6 +23,9 @@ export type ConversationPanelProps = {
   onConnectDevice?: () => void
   onDeleteThread: (threadId: string) => void
   onExecutePendingStep: () => void
+  onOpenRunLog: () => void
+  onPauseRun: () => void
+  onResumeRun: () => void
   onSelectThread: (threadId: string) => void
   onStartNewChat: () => void
   onStopRun: () => void
@@ -43,6 +46,9 @@ export function ConversationPanel({
   onConnectDevice,
   onDeleteThread,
   onExecutePendingStep,
+  onOpenRunLog,
+  onPauseRun,
+  onResumeRun,
   onSelectThread,
   onStartNewChat,
   onStopRun,
@@ -71,6 +77,9 @@ export function ConversationPanel({
         onConnectDevice={onConnectDevice}
         onDeleteThread={onDeleteThread}
         onExecutePendingStep={onExecutePendingStep}
+        onOpenRunLog={onOpenRunLog}
+        onPauseRun={onPauseRun}
+        onResumeRun={onResumeRun}
         onSelectThread={onSelectThread}
         onStartNewChat={onStartNewChat}
         onStopRun={onStopRun}

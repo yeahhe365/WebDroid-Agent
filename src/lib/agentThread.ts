@@ -1,10 +1,15 @@
 import type { DeviceScreenshot, DeviceState } from '../adapters/deviceTypes'
-import type { AgentAction } from './actionTypes'
+import type { AgentAction, TakeOverKind } from './actionTypes'
 import type { ActionProtocol } from './actionProtocol'
 import type { ActionSafetyDecision } from './actionSafetyPolicy'
 import { createUnknownDeviceState, UNKNOWN_APP_NAME } from './deviceState'
 import type { FailureClass } from './failureTaxonomy'
-import type { AgentConversationMessage, AgentHistoryItem, ModelConfig } from './openAiTypes'
+import type {
+  AgentConversationMessage,
+  AgentHistoryItem,
+  ModelConfig,
+  ModelTokenUsage,
+} from './openAiTypes'
 import { compactScreenshotForMemory } from './screenshot'
 import { truncateRetainedTailText, truncateRetainedText } from './textRetention'
 
@@ -16,11 +21,15 @@ export const MAX_THREAD_SCREENSHOT_REFERENCES = 32
 export type AgentThreadStatus =
   | 'idle'
   | 'running'
+  | 'paused'
   | 'awaiting_review'
   | 'awaiting_takeover'
   | 'done'
   | 'stopped'
   | 'error'
+
+/** Why a run is waiting for review. Presentation metadata, not a safety gate. */
+export type ReviewKind = 'answer' | 'confirm' | 'max_steps' | 'other'
 
 export type AgentTurnStatus =
   | 'planned'
@@ -89,10 +98,13 @@ export type AgentTurn = {
   executionAction: AgentAction
   preview: string
   timing: AgentTurnTiming
+  usage?: ModelTokenUsage
   executionResult?: string
   success?: boolean
   failureClass?: FailureClass
   safetyDecision?: ActionSafetyDecision
+  takeoverKind?: TakeOverKind
+  reviewKind?: ReviewKind
   deviceCommands?: string[][]
   createdAt: number
   completedAt?: number
@@ -154,6 +166,7 @@ export type AgentThreadEvent =
       status: AgentThreadStatus
       message?: string
       failureClass?: FailureClass
+      reviewKind?: ReviewKind
       createdAt: number
     }
 
@@ -291,6 +304,7 @@ export type StartThreadTurnInput = {
   executionAction: AgentAction
   preview: string
   timing: AgentTurnTiming
+  usage?: ModelTokenUsage
   status?: AgentTurnStatus
   now?: number
 }
@@ -312,6 +326,10 @@ export function startThreadTurn(thread: AgentThread, input: StartThreadTurnInput
     executionAction: input.executionAction,
     preview: input.preview,
     timing: input.timing,
+    ...(input.usage ? { usage: input.usage } : {}),
+    ...(input.action.action === 'take_over' && input.action.kind
+      ? { takeoverKind: input.action.kind }
+      : {}),
     createdAt: now,
   }
 
@@ -351,6 +369,8 @@ export function recordThreadTurnExecution(
     timing?: AgentTurnTiming
     failureClass?: FailureClass
     safetyDecision?: ActionSafetyDecision
+    takeoverKind?: TakeOverKind
+    reviewKind?: ReviewKind
     deviceCommands?: string[][]
     now?: number
   } = {},
@@ -374,6 +394,12 @@ export function recordThreadTurnExecution(
   }
   if (input.safetyDecision) {
     turn.safetyDecision = input.safetyDecision
+  }
+  if (input.takeoverKind) {
+    turn.takeoverKind = input.takeoverKind
+  }
+  if (input.reviewKind) {
+    turn.reviewKind = input.reviewKind
   }
   if (input.deviceCommands && input.deviceCommands.length > 0) {
     turn.deviceCommands = input.deviceCommands
@@ -541,7 +567,7 @@ export function recordThreadStatus(
   thread: AgentThread,
   status: AgentThreadStatus,
   message?: string,
-  options: { now?: number; failureClass?: FailureClass } = {},
+  options: { now?: number; failureClass?: FailureClass; reviewKind?: ReviewKind } = {},
 ) {
   const latestStatusEvent = [...thread.events]
     .reverse()
@@ -549,7 +575,8 @@ export function recordThreadStatus(
   if (
     thread.status === status &&
     latestStatusEvent?.type === 'status_change' &&
-    latestStatusEvent.message === message
+    latestStatusEvent.message === message &&
+    latestStatusEvent.reviewKind === options.reviewKind
   ) {
     touchThread(thread, options.now)
     return latestStatusEvent
@@ -562,6 +589,7 @@ export function recordThreadStatus(
       status,
       ...(message ? { message } : {}),
       ...(options.failureClass ? { failureClass: options.failureClass } : {}),
+      ...(options.reviewKind ? { reviewKind: options.reviewKind } : {}),
     },
     options,
   )

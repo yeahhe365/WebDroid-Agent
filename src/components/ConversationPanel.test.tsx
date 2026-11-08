@@ -38,6 +38,9 @@ function renderConversationPanel(
     onCloseHistorySidebar: vi.fn(),
     onDeleteThread: vi.fn(),
     onExecutePendingStep: vi.fn(),
+    onOpenRunLog: vi.fn(),
+    onPauseRun: vi.fn(),
+    onResumeRun: vi.fn(),
     onSelectThread: vi.fn(),
     onStartNewChat: vi.fn(),
     onStopRun: vi.fn(),
@@ -97,7 +100,22 @@ describe('ConversationPanel', () => {
     expect(screen.queryByRole('button', { name: /run agent/i })).toBeNull()
   })
 
-  it('opens the AMC-style chat history sidebar and routes history actions', () => {
+  it('shows pause and stop controls while a run is active', () => {
+    const onPauseRun = vi.fn()
+    const onStopRun = vi.fn()
+    renderConversationPanel({
+      busyTask: { id: 'run-agent', label: 'Run agent', startedAt: 1000 },
+      onPauseRun,
+      onStopRun,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause run' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stop run' }))
+    expect(onPauseRun).toHaveBeenCalledTimes(1)
+    expect(onStopRun).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the AMC-style chat history sidebar and routes history actions', async () => {
     const onCloseHistorySidebar = vi.fn()
     const onDeleteThread = vi.fn()
     const onSelectThread = vi.fn()
@@ -129,7 +147,7 @@ describe('ConversationPanel', () => {
       ],
     })
 
-    const sidebar = screen.getByRole('complementary', { name: /history/i })
+    const sidebar = await screen.findByRole('complementary', { name: /history/i })
     expect(sidebar).toBeTruthy()
     expect(sidebar.querySelector('.chat-history-count')?.textContent).toBe('2')
     expect(sidebar.querySelectorAll('.chat-history-status-dot')).toHaveLength(2)
@@ -143,6 +161,7 @@ describe('ConversationPanel', () => {
     expect(onSelectThread).toHaveBeenCalledWith('thread-1')
 
     fireEvent.click(screen.getByRole('button', { name: /delete chat first task/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
     expect(onDeleteThread).toHaveBeenCalledWith('thread-1')
 
     fireEvent.click(within(sidebar).getByRole('button', { name: /^new chat$/i }))
@@ -165,7 +184,7 @@ describe('ConversationPanel', () => {
       ],
     })
 
-    const search = screen.getByRole('textbox', { name: /search chat history/i })
+    const search = await screen.findByRole('textbox', { name: /search chat history/i })
     fireEvent.change(search, { target: { value: 'billing' } })
 
     await waitFor(() =>
@@ -277,7 +296,7 @@ describe('ConversationPanel', () => {
     expect(chatStream.querySelector('script')).toBeNull()
   })
 
-  it('renders agent steps with their execution result in the chat stream', () => {
+  it('renders agent steps with their execution result in the chat stream', async () => {
     const thread = createAgentThread('Open Wi-Fi settings', { now: 1000 })
     const action: AgentAction = { action: 'tap', x: 120, y: 240, reason: 'open Wi-Fi' }
     const turn = startThreadTurn(thread, {
@@ -313,31 +332,42 @@ describe('ConversationPanel', () => {
     })
 
     renderConversationPanel({
+      busyTask: { id: 'run-agent', label: 'Run agent', startedAt: 1000 },
       conversation: thread.messages,
       interactionItems: buildInteractionStream(thread),
+      sessionSummary: {
+        status: 'running',
+        stepNumber: 1,
+        turnCount: 1,
+        pendingUserMessageCount: 0,
+        contextCompactedThroughStep: 0,
+        runStartedAt: 1000,
+        runStepCount: 1,
+        updatedAt: 1200,
+      },
     })
 
     const chatStream = screen.getByLabelText('Conversation')
-    const step = within(chatStream).getByLabelText('Step 1: Tap')
+    const step = await within(chatStream).findByLabelText('Step 1: Tap')
 
     expect(within(step).getByText('Tap')).toBeTruthy()
     expect(within(step).getByText('#1')).toBeTruthy()
-    expect(step.querySelector('.agent-step-action-icon svg')).toBeTruthy()
     expect(within(step).getByText('Executed')).toBeTruthy()
-    expect(step.querySelector('.agent-step-quick-meta')).toBeTruthy()
+    expect(step.querySelector('.run-progress-step-time')).toBeTruthy()
     expect(within(step).getByText('2 s')).toBeTruthy()
-    expect(within(step).queryByText('Total 2010 ms')).toBeNull()
-    expect(within(step).queryByText('Tool 890 ms')).toBeNull()
     expect(within(step).queryByText('Settings')).toBeNull()
     expect(within(step).queryByText('tap')).toBeNull()
     expect(within(step).queryByText('input tap 120 240')).toBeNull()
-    fireEvent.click(within(step).getByText('Details'))
-    expect(within(step).getByText('Total 2010 ms')).toBeTruthy()
-    expect(within(step).getByText('Tool 890 ms')).toBeTruthy()
-    expect(within(step).getByText(/Current app: Settings/)).toBeTruthy()
-    expect(step.textContent).toContain('Tool: tap')
-    expect(within(step).getByText('tap (120, 240) - open Wi-Fi')).toBeTruthy()
-    expect(within(step).getByText('input tap 120 240')).toBeTruthy()
+    fireEvent.click(step)
+    const stepRow = step.closest('.run-progress-step') as HTMLElement
+    expect(within(stepRow).getByText('Result')).toBeTruthy()
+    expect(within(stepRow).getByText('Tool')).toBeTruthy()
+    expect(within(stepRow).getByText('App')).toBeTruthy()
+    expect(within(stepRow).getByText('Model output')).toBeTruthy()
+    expect(within(stepRow).getByText('Settings')).toBeTruthy()
+    expect(within(stepRow).getByText('tap')).toBeTruthy()
+    expect(within(stepRow).getByText('tap (120, 240) - open Wi-Fi')).toBeTruthy()
+    expect(within(stepRow).getByText('input tap 120 240')).toBeTruthy()
     expect(within(chatStream).queryAllByText('input tap 120 240')).toHaveLength(1)
   })
 
@@ -358,6 +388,48 @@ describe('ConversationPanel', () => {
     expect(chatHistoryCss).toMatch(
       /\.chat-history-toggle\s*\{[^}]*transition:\s*[^}]*color/,
     )
+  })
+
+  it('renders the structured takeover kind as the matching card', async () => {
+    renderConversationPanel({
+      sessionSummary: {
+        status: 'awaiting_takeover',
+        stepNumber: 1,
+        turnCount: 1,
+        pendingUserMessageCount: 0,
+        contextCompactedThroughStep: 0,
+        latestStatusMessage: 'Please complete the captcha.',
+        latestTakeoverKind: 'login',
+        runStepCount: 1,
+        updatedAt: 2000,
+      },
+    })
+
+    expect(
+      await screen.findByRole('heading', { name: 'Sign in to continue' }),
+    ).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Complete the verification' })).toBeNull()
+  })
+
+  it('resumes a paused run from the needs-you card', async () => {
+    const onResumeRun = vi.fn()
+    renderConversationPanel({
+      onResumeRun,
+      sessionSummary: {
+        status: 'paused',
+        stepNumber: 1,
+        turnCount: 1,
+        pendingUserMessageCount: 0,
+        contextCompactedThroughStep: 0,
+        latestStatusMessage: 'Run paused',
+        runStepCount: 1,
+        updatedAt: 2000,
+      },
+    })
+
+    expect(await screen.findByRole('heading', { name: 'Paused' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Resume run' }))
+    expect(onResumeRun).toHaveBeenCalledTimes(1)
   })
 
   it('draws a subtle divider below the chat header', () => {
@@ -421,6 +493,22 @@ describe('ConversationPanel', () => {
 
     expect(screen.getByRole('status').textContent).toContain('Run agent')
     expect(screen.getByRole('button', { name: /scroll to latest/i })).toBeTruthy()
+  })
+
+  it('offers an explicit way to reveal messages hidden by the render cap', () => {
+    const conversation = Array.from({ length: 165 }, (_, index) => ({
+      id: `message-${index}`,
+      role: 'user' as const,
+      content: `Message ${index}`,
+    }))
+
+    renderConversationPanel({ conversation })
+
+    const loadEarlier = screen.getByRole('button', { name: /show 5 earlier messages/i })
+    expect(screen.queryByText('Message 0')).toBeNull()
+
+    fireEvent.click(loadEarlier)
+    expect(screen.getByText('Message 0')).toBeTruthy()
   })
 
   it('explains disabled chat without showing advanced run actions or an inert execute button', () => {

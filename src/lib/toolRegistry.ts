@@ -11,8 +11,8 @@ import {
   type ActionSafetyContext,
   type ActionSafetyDecision,
 } from './actionSafetyPolicy'
-import type { AgentAction } from './actionTypes'
-import { recallThreadScreenshot, type AgentThread } from './agentThread'
+import type { AgentAction, TakeOverKind } from './actionTypes'
+import { recallThreadScreenshot, type AgentThread, type ReviewKind } from './agentThread'
 import { delayWithAbort, isAbortError, throwIfAborted, withAbort } from './abortSignal'
 import { classifyThrownFailure, type FailureClass } from './failureTaxonomy'
 
@@ -34,6 +34,8 @@ export type ActionToolResult = {
   summary: string
   failureKind?: FailureClass
   safetyDecision?: Exclude<ActionSafetyDecision, 'allow'>
+  takeoverKind?: TakeOverKind
+  reviewKind?: ReviewKind
 }
 
 export type ActionToolContext = {
@@ -374,6 +376,9 @@ export class ActionToolRegistry {
           success: false,
           summary: irreversible.message ?? `Safety policy blocked ${toolName}.`,
           safetyDecision: irreversible.decision,
+          ...(irreversible.takeoverKind
+            ? { takeoverKind: irreversible.takeoverKind }
+            : {}),
         }
       }
     }
@@ -384,6 +389,7 @@ export class ActionToolRegistry {
         success: false,
         summary: safety.message ?? `Safety policy stopped ${toolName}.`,
         safetyDecision: safety.decision,
+        ...(safety.takeoverKind ? { takeoverKind: safety.takeoverKind } : {}),
       }
     }
 
@@ -402,6 +408,7 @@ export class ActionToolRegistry {
           success: false,
           summary: `Sensitive action blocked: ${message}`,
           safetyDecision: 'confirm',
+          reviewKind: 'confirm',
         }
       }
       safetyConfirmed = true
@@ -462,6 +469,8 @@ export class ActionToolRegistry {
           summary: [`${action.action} stopped at ${stepLabel}.`, ...summaries].join('\n'),
           ...(result.failureKind ? { failureKind: result.failureKind } : {}),
           ...(result.safetyDecision ? { safetyDecision: result.safetyDecision } : {}),
+          ...(result.takeoverKind ? { takeoverKind: result.takeoverKind } : {}),
+          ...(result.reviewKind ? { reviewKind: result.reviewKind } : {}),
         }
       }
 

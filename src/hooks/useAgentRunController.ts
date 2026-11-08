@@ -110,6 +110,7 @@ export function useAgentRunController({
 }: UseAgentRunControllerInput) {
   const abortRef = useRef<AbortController | null>(null)
   const pendingAbortRef = useRef<AbortController | null>(null)
+  const pauseRequestedRef = useRef(false)
   const flushingQueuedMessageRef = useRef(false)
   const queuedMessagesRef = useRef<string[]>([])
   const [queuedChatMessages, setQueuedChatMessages] = useState<string[]>([])
@@ -183,6 +184,12 @@ export function useAgentRunController({
       if (result.safetyDecision) {
         pendingStep.safetyDecision = result.safetyDecision
       }
+      if (result.takeoverKind) {
+        pendingStep.takeoverKind = result.takeoverKind
+      }
+      if (result.reviewKind) {
+        pendingStep.reviewKind = result.reviewKind
+      }
       recordAgentStep(ensureSession(), pendingStep, result.summary, result.success, {
         memoryEnabled,
         onMemoryItem,
@@ -202,7 +209,10 @@ export function useAgentRunController({
           ensureSession(),
           result.safetyDecision === 'take_over' ? 'awaiting_takeover' : 'awaiting_review',
           result.summary,
-          pendingStep.failureClass ? { failureClass: pendingStep.failureClass } : {},
+          {
+            ...(pendingStep.failureClass ? { failureClass: pendingStep.failureClass } : {}),
+            ...(result.reviewKind ? { reviewKind: result.reviewKind } : {}),
+          },
         )
       } else {
         recordThreadStatus(ensureSession(), 'idle')
@@ -245,6 +255,7 @@ export function useAgentRunController({
     const session = ensureSession()
     const abortController = new AbortController()
     abortRef.current = abortController
+    pauseRequestedRef.current = false
 
     await runTask('run-agent', copy.runAgentTask, async () => {
       let screenBlackoutActive = false
@@ -274,6 +285,7 @@ export function useAgentRunController({
           onMemoryItem,
           confirmSensitiveAction: device.confirmSensitiveAction,
           unrestrictedMode,
+          shouldPause: () => pauseRequestedRef.current,
           onSnapshot: device.applyDeviceSnapshot,
           onStep: async (step) => {
             device.applyDeviceSnapshot(step)
@@ -310,7 +322,13 @@ export function useAgentRunController({
         }
         if (result.status === 'max_steps') {
           addLog({ tone: 'warn', title: copy.maxStepsReached, detail: `${maxSteps} steps` })
-          recordThreadStatus(session, 'awaiting_review', `${copy.maxStepsReached}: ${maxSteps}`)
+          recordThreadStatus(session, 'awaiting_review', `${copy.maxStepsReached}: ${maxSteps}`, {
+            reviewKind: 'max_steps',
+          })
+        }
+        if (result.status === 'paused') {
+          addLog({ tone: 'info', title: copy.runPaused })
+          recordThreadStatus(session, 'paused', copy.runPaused)
         }
         if (result.status === 'stopped') {
           addLog({ tone: 'warn', title: copy.runStopped })
@@ -318,7 +336,9 @@ export function useAgentRunController({
         }
         if (result.status === 'awaiting_review') {
           addLog({ tone: 'warn', title: copy.stepStatusAwaitingReview, detail: result.reason })
-          recordThreadStatus(session, 'awaiting_review', result.reason)
+          recordThreadStatus(session, 'awaiting_review', result.reason, {
+            ...(result.reviewKind ? { reviewKind: result.reviewKind } : {}),
+          })
         }
         if (result.status === 'awaiting_takeover') {
           addLog({ tone: 'warn', title: copy.manualTakeoverRequested })
@@ -354,6 +374,7 @@ export function useAgentRunController({
         if (abortRef.current === abortController) {
           abortRef.current = null
         }
+        pauseRequestedRef.current = false
       }
     })
   }, [
@@ -446,13 +467,30 @@ export function useAgentRunController({
   }, [busyTask, flushNextQueuedMessage])
 
   const stopCurrentRun = useCallback(() => {
+    pauseRequestedRef.current = false
     abortRef.current?.abort()
     pendingAbortRef.current?.abort()
   }, [])
 
+  const pauseCurrentRun = useCallback(() => {
+    if (!abortRef.current) {
+      return
+    }
+    pauseRequestedRef.current = true
+  }, [])
+
+  const resumeRun = useCallback(async () => {
+    if (busyTask || ensureSession().status !== 'paused') {
+      return
+    }
+    await runAutoLoop()
+  }, [busyTask, ensureSession, runAutoLoop])
+
   return {
     executePendingStep,
     queuedChatMessageCount: queuedChatMessages.length,
+    pauseCurrentRun,
+    resumeRun,
     stopCurrentRun,
     submitChatMessage,
   }
@@ -475,6 +513,12 @@ export function createRunEndNotification(
       status: result.status,
       title: copy.maxStepsReached,
       detail: `${maxSteps} steps`,
+    }
+  }
+  if (result.status === 'paused') {
+    return {
+      status: result.status,
+      title: copy.runPaused,
     }
   }
   if (result.status === 'stopped') {

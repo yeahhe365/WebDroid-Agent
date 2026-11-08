@@ -680,7 +680,10 @@ describe('createAgentRunner', () => {
     const session = createAgentSession('Open app')
     const client: OpenAiClient = {
       completeAction: vi.fn(async () => '{"action":"done","summary":"finished"}'),
-      completeFinalResponse: vi.fn(async () => 'All set, the app is open.'),
+      completeFinalResponse: vi.fn(async (request) => {
+        request.onUsage?.({ inputTokens: 2, outputTokens: 1, totalTokens: 3 })
+        return 'All set, the app is open.'
+      }),
     }
     const runner = createAgentRunner({ device, client })
 
@@ -694,6 +697,11 @@ describe('createAgentRunner', () => {
 
     expect(result.status).toBe('done')
     expect(result.finalResponse).toBe('All set, the app is open.')
+    expect(session.turns.at(-1)?.usage).toEqual({
+      inputTokens: 2,
+      outputTokens: 1,
+      totalTokens: 3,
+    })
     expect(client.completeFinalResponse).toHaveBeenCalledWith(
       expect.objectContaining({
         task: 'Open app',
@@ -736,8 +744,12 @@ describe('createAgentRunner', () => {
   it('stops for manual takeover even when auto-execute is enabled', async () => {
     const device = fakeDevice()
     const client: OpenAiClient = {
-      completeAction: vi.fn(async () => '{"action":"Take_over","message":"login required"}'),
+      completeAction: vi.fn(
+        async () =>
+          '{"action":"Take_over","kind":"login","message":"login required"}',
+      ),
     }
+    const session = createAgentSession('Open app')
     const runner = createAgentRunner({ device, client })
 
     const result = await runner.run({
@@ -745,10 +757,65 @@ describe('createAgentRunner', () => {
       task: 'Open app',
       autoExecute: true,
       maxSteps: 5,
+      session,
     })
 
     expect(result.status).toBe('awaiting_takeover')
+    expect(result.reason).toBe('login required')
+    expect(result.steps[0].action).toEqual({
+      action: 'take_over',
+      kind: 'login',
+      message: 'login required',
+    })
+    expect(session.turns[0]?.action).toEqual({
+      action: 'take_over',
+      kind: 'login',
+      message: 'login required',
+    })
     expect(device.executed).toEqual([])
+  })
+
+  it('pauses between steps and resumes the same session', async () => {
+    const device = fakeDevice()
+    const session = createAgentSession('Tap once then finish')
+    const client: OpenAiClient = {
+      completeAction: vi
+        .fn()
+        .mockResolvedValueOnce('{"action":"tap","x":1,"y":2}')
+        .mockResolvedValueOnce('{"action":"done","summary":"finished"}'),
+      completeFinalResponse: vi.fn(async () => 'All done.'),
+    }
+    const runner = createAgentRunner({ device, client })
+    let pause = false
+
+    const paused = await runner.run({
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Tap once then finish',
+      autoExecute: true,
+      maxSteps: 5,
+      session,
+      shouldPause: () => pause,
+      onExecuted: () => {
+        pause = true
+      },
+    })
+
+    expect(paused.status).toBe('paused')
+    expect(device.executed).toEqual(['tap'])
+
+    pause = false
+    const resumed = await runner.run({
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Tap once then finish',
+      autoExecute: true,
+      maxSteps: 5,
+      session,
+      shouldPause: () => pause,
+    })
+
+    expect(resumed.status).toBe('done')
+    expect(resumed.finalResponse).toBe('All done.')
+    expect(device.executed).toEqual(['tap'])
   })
 
   it('continues through takeover actions in unrestricted mode', async () => {
@@ -815,6 +882,7 @@ describe('createAgentRunner', () => {
     expect(result.reason).toContain('manual takeover')
     expect(device.executed).toEqual([])
     expect(session.turns[0]?.safetyDecision).toBe('take_over')
+    expect(session.turns[0]?.takeoverKind).toBe('captcha')
   })
 
   it('bypasses local safety takeover decisions in unrestricted mode', async () => {

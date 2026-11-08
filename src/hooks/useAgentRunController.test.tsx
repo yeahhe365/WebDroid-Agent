@@ -71,6 +71,10 @@ describe('useAgentRunController', () => {
       title: 'Max steps reached',
       detail: '3 steps',
     })
+    expect(createRunEndNotification({ status: 'paused', steps: [] }, copy, 3)).toEqual({
+      status: 'paused',
+      title: 'Run paused',
+    })
     expect(createRunEndNotification({ status: 'stopped', steps: [] }, copy, 3)).toEqual({
       status: 'stopped',
       title: 'Run stopped',
@@ -169,6 +173,90 @@ describe('useAgentRunController', () => {
       title: APP_COPY['en-US'].taskComplete,
       detail: 'All done.',
     })
+  })
+
+  it('pauses the active run and resumes without adding another user message', async () => {
+    const backend = createDevice()
+    const session = createAgentSession('')
+    const onRunEndNotification = vi.fn()
+    const client: OpenAiClient = {
+      completeAction: vi
+        .fn()
+        .mockResolvedValueOnce('{"action":"tap","x":540,"y":1200}')
+        .mockResolvedValueOnce('{"action":"done","summary":"done"}'),
+      completeFinalResponse: vi.fn(async () => 'All done.'),
+    }
+    let pauseCurrentRun: (() => void) | null = null
+    let requestedPause = false
+
+    const { result } = renderHook(() =>
+      useAgentRunController({
+        actionProtocol: 'webdroid_json',
+        actionToolRegistry: createDefaultActionToolRegistry(),
+        addLog: vi.fn(),
+        appCards: createDefaultAppCards(),
+        backend,
+        busyTask: null,
+        canRunAgent: true,
+        client,
+        copy: APP_COPY['en-US'],
+        customTools: [],
+        device: {
+          applyDeviceSnapshot: vi.fn(),
+          confirmSensitiveAction: vi.fn(() => true),
+          refreshDisplayedSnapshot: vi.fn(async () => ({
+            deviceState: { app: 'Chrome' },
+            screenshot: {
+              bytes: new Uint8Array(),
+              dataUrl: 'data:image/png;base64,abc',
+              screen: { width: 1080, height: 2400 },
+            },
+          })),
+        },
+        ensureSession: () => session,
+        maxSteps: 3,
+        memoryEnabled: false,
+        memoryItems: [],
+        modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+        onMemoryItem: vi.fn(),
+        onRunEndNotification,
+        pendingStep: null,
+        runTask: async (_id, _label, action) => {
+          await action()
+        },
+        screenBlackoutDuringAutoControl: false,
+        secrets: [],
+        setError: vi.fn(),
+        setPendingStep: (step) => {
+          if (step && !requestedPause) {
+            requestedPause = true
+            pauseCurrentRun?.()
+          }
+        },
+        streamResponses: false,
+        syncConversation: vi.fn(),
+        unrestrictedMode: false,
+      }),
+    )
+    pauseCurrentRun = result.current.pauseCurrentRun
+
+    await act(async () => {
+      await result.current.submitChatMessage('Tap once.')
+    })
+
+    expect(session.status).toBe('paused')
+    expect(session.messages.filter((message) => message.role === 'user')).toHaveLength(1)
+    expect(onRunEndNotification).toHaveBeenCalledWith({
+      status: 'paused',
+      title: APP_COPY['en-US'].runPaused,
+    })
+
+    await act(async () => {
+      await result.current.resumeRun()
+    })
+
+    expect(session.status).toBe('done')
+    expect(session.messages.filter((message) => message.role === 'user')).toHaveLength(1)
   })
 
   it('classifies a thrown run failure on the thread status event', async () => {

@@ -151,13 +151,13 @@ function expandConfigurationPanel() {
   fireEvent.click(openButton)
 }
 
-function openInspectDrawer() {
-  if (document.querySelector('.inspect-drawer')) {
-    return
+async function openInspectDrawer() {
+  if (!document.querySelector('.inspect-drawer')) {
+    fireEvent.click(
+      screen.getByRole('button', { name: /open inspect|打开检查/i }),
+    )
   }
-  fireEvent.click(
-    screen.getByRole('button', { name: /open inspect|打开检查/i }),
-  )
+  await screen.findByRole('heading', { name: /run log|运行日志/i })
 }
 
 function expectScreenshotSource(
@@ -341,6 +341,17 @@ describe('App', () => {
     expect(await screen.findByRole('dialog', { name: /settings/i })).toBeTruthy()
   })
 
+  it('closes the tutorial panel when pressing Escape', async () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: /open tutorial/i }))
+    expect(await screen.findByRole('region', { name: /tutorial/i })).toBeTruthy()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByRole('region', { name: /tutorial/i })).toBeNull()
+  })
+
   it('shows the app version in settings', async () => {
     render(<App />)
 
@@ -404,7 +415,7 @@ describe('App', () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: /new chat/i }))
-    openInspectDrawer()
+    await openInspectDrawer()
     expect(screen.getAllByText('New chat started').length).toBeGreaterThan(0)
 
     fireEvent.click(screen.getByRole('button', { name: /settings/i }))
@@ -413,7 +424,7 @@ describe('App', () => {
     fireEvent.click(within(settingsDialog).getByRole('button', { name: /clear run log/i }))
 
     fireEvent.click(within(settingsDialog).getByRole('button', { name: /close settings/i }))
-    openInspectDrawer()
+    await openInspectDrawer()
     expect(screen.queryByText('New chat started')).toBeNull()
     expect(screen.getAllByText('No events yet').length).toBeGreaterThan(0)
   })
@@ -514,7 +525,7 @@ describe('App', () => {
     fireEvent.click(within(settingsDialog).getByRole('button', { name: /close settings/i }))
 
     expect(download).not.toHaveBeenCalled()
-    openInspectDrawer()
+    await openInspectDrawer()
     expect(screen.getAllByText('No run to export yet.').length).toBeGreaterThan(0)
   })
 
@@ -613,6 +624,21 @@ describe('App', () => {
     expect(layoutCss).toMatch(/\.phone-column\s*\{[\s\S]*width:\s*100%/)
     expect(layoutCss).toContain('.config-drawer')
     expect(layoutCss).toContain('.inspect-drawer')
+    expect(layoutCss).toMatch(
+      /\.inspect-drawer\s+\.log-section\s*\{[\s\S]*display:\s*flex/,
+    )
+    expect(layoutCss).toMatch(
+      /\.inspect-drawer\s+\.log-section\s*\{[\s\S]*flex-direction:\s*column/,
+    )
+    expect(layoutCss).toMatch(
+      /\.inspect-drawer\s+\.log-section\s*\{[\s\S]*flex:\s*1\s+1\s+auto/,
+    )
+    expect(layoutCss).toMatch(
+      /\.inspect-drawer\s+\.log-section\s*\{[\s\S]*min-height:\s*0/,
+    )
+    expect(layoutCss).toMatch(
+      /\.inspect-drawer\s+\.log-section\s*\{[\s\S]*padding:\s*0/,
+    )
     expect(compactWorkspaceBreakpoint).toMatch(
       /\.workspace[\s\S]*grid-template-columns:\s*minmax\(320px,\s*1fr\)\s+minmax\(300px,\s*0\.9fr\)/,
     )
@@ -632,6 +658,18 @@ describe('App', () => {
 
     expect(document.querySelector('.workspace')).toBeTruthy()
     expect(localStorage.setItem).toHaveBeenCalledWith('webdroid-setup-dismissed', '1')
+  })
+
+  it('expands model settings when opened from the setup card', async () => {
+    localStorage.clear()
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: /^configure model$/i }))
+
+    await waitFor(() => expect(document.querySelector('.config-panel')).toBeTruthy())
+    await waitFor(() => {
+      expect(document.querySelector('details.model-details')?.hasAttribute('open')).toBe(true)
+    })
   })
 
   it('does not expose the removed AutoGLM native prompt mode', () => {
@@ -987,14 +1025,20 @@ describe('App', () => {
       'webdroid-agent-settings',
       expect.stringContaining('"screenBlackoutDuringAutoControl":true'),
     )
-    selectSettingsTab(settingsDialog, /project/i)
+
+    // Configuration and settings are mutually exclusive top-level surfaces now;
+    // close the drawer and reopen settings to continue with the project tab.
+    fireEvent.click(within(configPanel).getByRole('button', { name: /close configuration/i }))
+    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
+    const reopenedSettings = await screen.findByRole('dialog', { name: /settings/i })
+    selectSettingsTab(reopenedSettings, /project/i)
     expect(screen.getByRole('link', { name: /github repository/i }).getAttribute('href')).toBe(
       'https://github.com/yeahhe365/WebDroid-Agent',
     )
     expect(await screen.findByText('123')).toBeTruthy()
     expect(screen.getByText('45')).toBeTruthy()
     expect(screen.getByText('6')).toBeTruthy()
-    selectSettingsTab(settingsDialog, /data management/i)
+    selectSettingsTab(reopenedSettings, /data management/i)
     expect(await screen.findByText('5 MB of 64 MB')).toBeTruthy()
     const cacheMeter = screen.getByLabelText(/local cache usage/i)
     expect(cacheMeter.getAttribute('value')).toBe(String(5 * 1024 * 1024))
@@ -1008,6 +1052,7 @@ describe('App', () => {
 
     const maxStepsInput = await screen.findByLabelText(/max steps/i) as HTMLInputElement
     fireEvent.change(maxStepsInput, { target: { value: '500' } })
+    fireEvent.blur(maxStepsInput)
 
     expect(maxStepsInput.value).toBe('500')
     expect(localStorage.setItem).toHaveBeenLastCalledWith(
@@ -1432,6 +1477,7 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /open history sidebar/i }))
     fireEvent.click(await screen.findByRole('button', { name: /delete chat older task/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^delete$/i }))
 
     await waitFor(() => expect(threadStoreMock.store.delete).toHaveBeenCalledWith('thread-older'))
   })
@@ -1477,12 +1523,13 @@ describe('App', () => {
     const settingsDialog = await screen.findByRole('dialog', { name: /settings/i })
     selectSettingsTab(settingsDialog, /data management/i)
     fireEvent.click(within(settingsDialog).getByRole('button', { name: /clear chat history/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /clear all history/i }))
 
     await waitFor(() => expect(threadStoreMock.store.clear).toHaveBeenCalledTimes(1))
     expect(within(conversation).queryByText('Latest task')).toBeNull()
     expect(screen.queryByText('Older task')).toBeNull()
     fireEvent.click(within(settingsDialog).getByRole('button', { name: /close settings/i }))
-    openInspectDrawer()
+    await openInspectDrawer()
     expect(screen.getAllByText('Chat history cleared').length).toBeGreaterThan(0)
   })
 
@@ -1565,7 +1612,7 @@ describe('App', () => {
 
     await waitFor(() => expect(backendMock.installAdbKeyboard).toHaveBeenCalledTimes(1))
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'https://raw.githubusercontent.com/senzhk/ADBKeyBoard/master/ADBKeyboard.apk',
+      'https://raw.githubusercontent.com/senzhk/ADBKeyBoard/8dd0b6924e45ac5565f77f13cf8e8eaf47dbb1b0/ADBKeyboard.apk',
     )
     expect(Array.from(backendMock.installAdbKeyboard.mock.calls[0][0])).toEqual([
       80,
@@ -1574,7 +1621,7 @@ describe('App', () => {
       4,
     ])
     expect(backendMock.enableAdbKeyboard).toHaveBeenCalled()
-    openInspectDrawer()
+    await openInspectDrawer()
     expect((await screen.findAllByText('ADB text input enabled')).length).toBeGreaterThan(0)
   })
 
@@ -1627,8 +1674,8 @@ describe('App', () => {
       toJSON: () => ({}),
     })
 
-    fireEvent.mouseDown(layer, { clientX: 145, clientY: 320 })
-    fireEvent.mouseUp(layer, { clientX: 145, clientY: 320 })
+    fireEvent.pointerDown(layer, { clientX: 145, clientY: 320, pointerId: 1 })
+    fireEvent.pointerUp(layer, { clientX: 145, clientY: 320, pointerId: 1 })
     fireEvent.click(screen.getByRole('button', { name: 'Run generated action' }))
 
     await waitFor(() =>
@@ -1666,8 +1713,8 @@ describe('App', () => {
       toJSON: () => ({}),
     })
 
-    fireEvent.mouseDown(layer, { clientX: 145, clientY: 320 })
-    fireEvent.mouseUp(layer, { clientX: 145, clientY: 320 })
+    fireEvent.pointerDown(layer, { clientX: 145, clientY: 320, pointerId: 1 })
+    fireEvent.pointerUp(layer, { clientX: 145, clientY: 320, pointerId: 1 })
     fireEvent.click(screen.getByRole('button', { name: 'Run generated action' }))
 
     await waitFor(() => {
@@ -1837,21 +1884,20 @@ describe('App', () => {
     )
   })
 
-  it('uses an AMC-style horizontal settings nav on narrow screens', () => {
+  it('uses a two-by-two settings nav grid on narrow screens', () => {
     const mobileSettingsCss = readMediaBlock(settingsDialogCss, 'max-width: 760px')
-    const narrowSettingsCss = readMediaBlock(settingsDialogCss, 'max-width: 560px')
 
     expect(mobileSettingsCss).toMatch(
       /\.settings-panel\s*\{[\s\S]*flex-direction:\s*column/,
     )
     expect(mobileSettingsCss).toMatch(
-      /\.settings-nav\s*\{[\s\S]*flex-direction:\s*row/,
+      /\.settings-nav\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,/,
     )
-    expect(mobileSettingsCss).toMatch(/\.settings-nav\s*\{[\s\S]*overflow-x:\s*auto/)
-    expect(mobileSettingsCss).toMatch(/\.settings-tab-button\s*\{[\s\S]*width:\s*auto/)
-    expect(narrowSettingsCss).not.toMatch(/\.settings-nav\s*\{[\s\S]*display:\s*grid/)
-    expect(narrowSettingsCss).not.toContain('grid-template-columns: repeat(4')
-    expect(narrowSettingsCss).not.toMatch(/\.settings-nav-group\s*\{[\s\S]*display:\s*contents/)
+    expect(mobileSettingsCss).toMatch(/\.settings-nav\s*\{[\s\S]*overflow:\s*visible/)
+    expect(mobileSettingsCss).toMatch(/\.settings-tab-button\s*\{[\s\S]*width:\s*100%/)
+    expect(mobileSettingsCss).toMatch(/\.settings-nav-group\s*\{[\s\S]*display:\s*contents/)
+    expect(mobileSettingsCss).toMatch(/\.settings-tab-full-label\s*\{[\s\S]*display:\s*none/)
+    expect(mobileSettingsCss).toMatch(/\.settings-tab-compact-label\s*\{[\s\S]*display:\s*inline/)
   })
 
   it('keeps project repository stats compact on narrow settings screens', () => {
@@ -1901,12 +1947,12 @@ describe('App', () => {
     expect(screen.queryByText(/browser-based android agent/i)).toBeNull()
   })
 
-  it('shows a black phone preview before ADB is connected', () => {
+  it('shows the device dock before ADB is connected', () => {
     const { container } = render(<App />)
 
     expect(container.querySelector('.phone-stage')).toBeTruthy()
-    expect(container.querySelector('.phone-frame')).toBeTruthy()
-    expect(container.querySelector('.phone-screen-placeholder')).toBeTruthy()
+    expect(container.querySelector('.device-dock')).toBeTruthy()
+    expect(container.querySelector('.phone-frame')).toBeNull()
   })
 
   it('focuses the chat composer from the global focus shortcut', () => {

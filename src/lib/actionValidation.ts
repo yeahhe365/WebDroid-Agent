@@ -14,6 +14,7 @@ import type {
   AgentAction,
   ExecutableAtomicAction,
   ScreenSize,
+  TakeOverKind,
   TapAction,
 } from './actionTypes'
 
@@ -21,6 +22,42 @@ const MAX_SEQUENCE_ACTIONS = 8
 const MAX_REPEAT_COUNT = 10
 const MAX_REPEAT_DELAY_MS = 5000
 const MAX_COMPOSITE_ACTION_DEPTH = 1
+
+const TAKE_OVER_KIND_ALIASES: Record<string, TakeOverKind> = {
+  captcha: 'captcha',
+  verification: 'captcha',
+  verification_code: 'captcha',
+  verify: 'captcha',
+  otp: 'captcha',
+  one_time_code: 'captcha',
+  '2fa': 'captcha',
+  mfa: 'captcha',
+  sms_code: 'captcha',
+  login: 'login',
+  log_in: 'login',
+  signin: 'login',
+  sign_in: 'login',
+  password: 'login',
+  passcode: 'login',
+  auth: 'login',
+  authentication: 'login',
+  credentials: 'login',
+  payment: 'payment',
+  pay: 'payment',
+  checkout: 'payment',
+  purchase: 'payment',
+  order: 'payment',
+  billing: 'payment',
+  transfer: 'payment',
+  wallet: 'payment',
+  other: 'other',
+  takeover: 'other',
+  take_over: 'other',
+  generic: 'other',
+  manual: 'other',
+  unknown: 'other',
+  none: 'other',
+}
 export type ActionValidationOptions = {
   coordinateMode?: ActionCoordinateMode
 }
@@ -143,7 +180,8 @@ function validateActionAtDepth(
         optionalString(candidate, 'message') ??
         optionalString(candidate, 'reason') ??
         'Manual takeover requested.'
-      return withReason({ action, message }, candidate)
+      const kind = readTakeOverKind(candidate.kind)
+      return withReason(kind ? { action, kind, message } : { action, message }, candidate)
     }
     case 'note': {
       const message = optionalString(candidate, 'message') ?? 'Observation noted.'
@@ -427,6 +465,19 @@ function isCompositeChildAction(action: AgentAction): action is ExecutableAtomic
 function optionalString(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key]
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function readTakeOverKind(value: unknown): TakeOverKind | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (!normalized) {
+    return undefined
+  }
+  // Unknown values fall back to the generic takeover card instead of rejecting
+  // the whole action. The field is presentation metadata, not a safety gate.
+  return TAKE_OVER_KIND_ALIASES[normalized] ?? 'other'
 }
 
 function withReason<T extends AgentAction>(action: T, source: Record<string, unknown>): T {

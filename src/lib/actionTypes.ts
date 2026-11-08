@@ -107,8 +107,13 @@ export type WaitAction = {
   reason?: string
 }
 
+/** Why the agent needs a human. Kept as a small closed set so UI cards do not
+ * depend on parsing the model's free-form message. */
+export type TakeOverKind = 'login' | 'captcha' | 'payment' | 'other'
+
 export type TakeOverAction = {
   action: 'take_over'
+  kind?: TakeOverKind
   message: string
   reason?: string
 }

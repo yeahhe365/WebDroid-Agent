@@ -190,6 +190,7 @@
   line-height: var(--leading-relaxed);
   margin: 0;
   max-width: 36ch;
+  text-wrap: balance;
 }
 
 .chat-quick-starts {
@@ -254,16 +255,6 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 120px;
   min-width: 0;
-}
-
-.chat-stream-virtual {
-  min-width: 0;
-  width: 100%;
-}
-
-.chat-stream-window {
-  min-width: 0;
-  width: 100%;
 }
 
 .chat-message.user .chat-message-content {
@@ -369,5 +360,43 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* Non-virtualized stream list: CSS content-visibility already skips offscreen
+   work, and variable-height step cards no longer fight a fixed height estimate. */
+.chat-stream-list {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.chat-load-earlier {
+  align-self: start;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  justify-self: center;
+  min-height: 32px;
+  padding: 0 var(--space-4);
+}
+
+.chat-load-earlier:hover:not(:disabled) {
+  background: var(--button-bg-hover);
+  color: var(--text);
+}
+
+.conversation-panel-label {
+  color: var(--text);
+  display: none;
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+@media (min-width: 900px) {
+  .conversation-panel-label {
+    display: block;
   }
 }

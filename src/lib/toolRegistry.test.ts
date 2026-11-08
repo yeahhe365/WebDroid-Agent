@@ -191,6 +191,26 @@ describe('ActionToolRegistry', () => {
     expect(device.executed).toEqual([])
   })
 
+  it('propagates a structured takeover kind from local safety policy', async () => {
+    const device = fakeDevice()
+    const registry = createDefaultActionToolRegistry()
+
+    const result = await registry.execute(
+      { action: 'input_text', text: 'hunter2' },
+      { device, safetyContext: { task: 'Sign in with the account password' } },
+    )
+
+    expect(result).toEqual({
+      success: false,
+      summary:
+        'Safety policy requires manual takeover for login, password, captcha, or verification-code steps.',
+      toolName: 'input_text',
+      safetyDecision: 'take_over',
+      takeoverKind: 'login',
+    })
+    expect(device.executed).toEqual([])
+  })
+
   it('bypasses local safety policy in unrestricted mode for non-irreversible actions', async () => {
     const device = fakeDevice()
     const registry = createDefaultActionToolRegistry()

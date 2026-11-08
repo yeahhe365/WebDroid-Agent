@@ -6,10 +6,11 @@ import type {
   AgentThreadStatus,
   AgentTurn,
   AgentTurnTiming,
+  ReviewKind,
 } from './agentThread'
 import type { ActionCoordinateMode, ActionProtocol } from './actionProtocol'
 import type { ActionSafetyDecision } from './actionSafetyPolicy'
-import type { AgentAction, ExecutableAtomicAction, ScreenSize } from './actionTypes'
+import type { AgentAction, ExecutableAtomicAction, ScreenSize, TakeOverKind } from './actionTypes'
 import { actionPairRecordsSecretValue } from './actionSecrets'
 import { coordinateModeForActionProtocol } from './coordinateSystems'
 import type { FailureClass } from './failureTaxonomy'
@@ -54,6 +55,8 @@ export type TrajectoryStep = {
   success?: boolean
   failure?: { class: FailureClass; message: string }
   safetyDecision?: ActionSafetyDecision
+  takeoverKind?: TakeOverKind
+  reviewKind?: ReviewKind
   deviceCommands?: string[][]
   /**
    * True when context compaction had already discarded this turn's
@@ -265,6 +268,12 @@ function projectStep(
   if (turn.safetyDecision !== undefined) {
     step.safetyDecision = turn.safetyDecision
   }
+  if (turn.takeoverKind !== undefined) {
+    step.takeoverKind = turn.takeoverKind
+  }
+  if (turn.reviewKind !== undefined) {
+    step.reviewKind = turn.reviewKind
+  }
   const deviceCommands = projectDeviceCommands(turn)
   if (deviceCommands !== undefined) {
     step.deviceCommands = deviceCommands
@@ -443,6 +452,7 @@ function projectAction(action: AgentAction): AgentAction {
     case 'take_over':
       return presentFields({
         action: 'take_over' as const,
+        kind: action.kind,
         message: action.message,
         reason: action.reason,
       })
@@ -603,6 +613,7 @@ function projectRunStatus(
   switch (status) {
     case 'idle':
     case 'running':
+    case 'paused':
     case 'awaiting_review':
     case 'awaiting_takeover':
     case 'done':

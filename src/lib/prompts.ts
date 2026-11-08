@@ -36,9 +36,10 @@ export const PHONE_OPERATION_RULES = [
     'so the user can confirm.',
   ].join(' '),
   [
-    'For login, captcha, verification code, and password entry, use take_over',
-    'unless a matching available secret id is listed and the user asked to use it;',
-    'then use type_secret instead of input_text.',
+    'For login, captcha, verification code, and password entry, use take_over with',
+    'kind "login" or "captcha"; for payment or checkout, use kind "payment";',
+    'otherwise use kind "other". Use type_secret instead of take_over when a',
+    'matching available secret id is listed and the user asked to use it.',
   ].join(' '),
   [
     'Before done, verify the task is fully and accurately completed.',
@@ -167,7 +168,7 @@ function buildProtocolInstructions(actionProtocol: ActionProtocol) {
     '{"action":"wait","duration":number,"reason":"short reason"}',
     '{"action":"sequence","actions":[{"action":"tap","x":number,"y":number},{"action":"input_text","text":"value"}],"reason":"short reason"}',
     '{"action":"repeat","count":number,"actionToRepeat":{"action":"swipe","fromX":number,"fromY":number,"toX":number,"toY":number},"delayMs":number,"reason":"short reason"}',
-    '{"action":"take_over","message":"what the human must do"}',
+    '{"action":"take_over","kind":"login|captcha|payment|other","message":"what the human must do"}',
     '{"action":"note","message":"short observation"}',
     '{"action":"done","summary":"what was completed"}',
     'Use sequence or repeat only for short, visible, stable action chains. sequence is capped at 8 child actions and repeat count at 10. Child actions cannot be done, take_over, sequence, or repeat.',

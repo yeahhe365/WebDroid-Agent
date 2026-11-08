@@ -6,7 +6,7 @@ import type {
   InstalledApp,
 } from '../adapters/deviceTypes'
 import { buildActionPreview } from './actionPreview'
-import { ActionValidationError, type AgentAction } from './actionTypes'
+import { ActionValidationError, type AgentAction, type TakeOverKind } from './actionTypes'
 import { parseModelAction } from './actionParser'
 import { createDefaultAppCards, resolveAppCard, type AppCardMap } from './appCards'
 import type { ActionProtocol } from './actionProtocol'
@@ -26,6 +26,7 @@ import type {
   AgentHistoryItem,
   CompletionRequest,
   ModelConfig,
+  ModelTokenUsage,
   OpenAiClient,
   PromptScreenshotAttachment,
 } from './openAiTypes'
@@ -47,6 +48,7 @@ import {
   type AgentRecalledScreenshot,
   type AgentThread,
   type QueuedUserMessage,
+  type ReviewKind,
 } from './agentThread'
 import {
   createDefaultActionToolRegistry,
@@ -89,10 +91,13 @@ export type AgentStep = {
   executionAction: AgentAction
   preview: string
   timing: AgentTiming
+  usage?: ModelTokenUsage
   toolName?: string
   executionResult?: string
   failureClass?: FailureClass
   safetyDecision?: ActionSafetyDecision
+  takeoverKind?: TakeOverKind
+  reviewKind?: ReviewKind
   deviceCommands?: string[][]
 }
 
@@ -129,6 +134,7 @@ export type AgentRunStatus =
   | 'done'
   | 'loop_guard'
   | 'max_steps'
+  | 'paused'
   | 'stopped'
 
 export type AgentRunResult = {
@@ -136,6 +142,7 @@ export type AgentRunResult = {
   steps: AgentStep[]
   reason?: string
   finalResponse?: string
+  reviewKind?: ReviewKind
 }
 
 export type AgentRunnerInput = {
@@ -158,6 +165,8 @@ export type AgentRunnerInput = {
   onFinalResponse?: (response: string) => void | Promise<void>
   confirmSensitiveAction?: ExecuteActionOptions['confirmSensitiveAction']
   unrestrictedMode?: boolean
+  /** Cooperative pause between steps; the current step is allowed to finish. */
+  shouldPause?: () => boolean
 }
 
 export type CreateAgentRunnerInput = {
@@ -232,6 +241,8 @@ export function recordAgentStep(
       success,
       ...(step.failureClass ? { failureClass: step.failureClass } : {}),
       ...(step.safetyDecision ? { safetyDecision: step.safetyDecision } : {}),
+      ...(step.takeoverKind ? { takeoverKind: step.takeoverKind } : {}),
+      ...(step.reviewKind ? { reviewKind: step.reviewKind } : {}),
       ...(step.deviceCommands ? { deviceCommands: step.deviceCommands } : {}),
     })
     if (options.memoryEnabled && turn.action.action === 'note' && success !== false) {
@@ -304,6 +315,7 @@ export async function recordAgentFinalResponse({
   throwIfAborted(signal)
   const fallback = session.progressSummary.trim() || 'Task completed.'
   let finalResponse = fallback
+  let finalUsage: ModelTokenUsage | undefined
 
   if (client.completeFinalResponse) {
     try {
@@ -319,6 +331,9 @@ export async function recordAgentFinalResponse({
               deviceState: session.deviceState,
               progressSummary: session.progressSummary,
               signal,
+              onUsage: (usage) => {
+                finalUsage = usage
+              },
             }),
             signal,
           )
@@ -332,9 +347,27 @@ export async function recordAgentFinalResponse({
   }
 
   throwIfAborted(signal)
+  if (finalUsage && session.turns.length > 0) {
+    const lastTurn = session.turns[session.turns.length - 1]
+    lastTurn.usage = mergeTokenUsage(lastTurn.usage, finalUsage)
+  }
   const message = recordThreadFinalResponse(session, finalResponse)
   compactThreadContext(session)
   return message.content
+}
+
+function mergeTokenUsage(
+  current: ModelTokenUsage | undefined,
+  next: ModelTokenUsage,
+): ModelTokenUsage {
+  if (!current) {
+    return next
+  }
+  return {
+    inputTokens: current.inputTokens + next.inputTokens,
+    outputTokens: current.outputTokens + next.outputTokens,
+    totalTokens: current.totalTokens + next.totalTokens,
+  }
 }
 
 export async function runAgentStep({
@@ -417,6 +450,7 @@ export async function runAgentStep({
     recalledScreenshot,
   })
   const promptContext = builtContext.text
+  let modelUsage: ModelTokenUsage | undefined
   const completionRequest: CompletionRequest = {
     ...modelConfig,
     actionProtocol,
@@ -442,6 +476,9 @@ export async function runAgentStep({
     promptContext,
     unrestrictedMode,
     signal,
+    onUsage: (usage) => {
+      modelUsage = usage
+    },
   }
   let modelOutput = await completeActionWithEmptyContentRetry(client, completionRequest)
   let modelMs = elapsed(modelStartedAt)
@@ -543,6 +580,7 @@ export async function runAgentStep({
         executionAction,
         preview,
         timing,
+        usage: modelUsage,
       })
     : undefined
   if (session) {
@@ -572,6 +610,8 @@ export async function runAgentStep({
     executionAction,
     preview,
     timing,
+    usage: modelUsage,
+    ...(action.action === 'take_over' && action.kind ? { takeoverKind: action.kind } : {}),
   }
 }
 
@@ -738,6 +778,9 @@ export function createAgentRunner({
         if (input.signal?.aborted) {
           return { status: 'stopped', steps }
         }
+        if (input.shouldPause?.()) {
+          return { status: 'paused', steps }
+        }
 
         let step: AgentStep
         try {
@@ -784,7 +827,15 @@ export function createAgentRunner({
             steps.push(retainStepForRunResult(step))
             consecutiveModelErrors += 1
             if (consecutiveModelErrors > MAX_AUTO_RECOVERABLE_EXECUTION_FAILURES) {
-              return { status: 'awaiting_review', steps, reason: caught.message }
+              return {
+                status: 'awaiting_review',
+                steps,
+                reason: caught.message,
+                reviewKind: 'other',
+              }
+            }
+            if (input.shouldPause?.()) {
+              return { status: 'paused', steps }
             }
             continue
           }
@@ -809,6 +860,9 @@ export function createAgentRunner({
             onMemoryItem: input.onMemoryItem,
           })
           if (session.pendingUserMessages.length > 0) {
+            if (input.shouldPause?.()) {
+              return { status: 'paused', steps }
+            }
             continue
           }
           try {
@@ -834,7 +888,7 @@ export function createAgentRunner({
             memoryEnabled: input.memoryEnabled,
             onMemoryItem: input.onMemoryItem,
           })
-          return { status: 'awaiting_takeover', steps }
+          return { status: 'awaiting_takeover', steps, reason: step.action.message }
         }
 
         const loopSignal = detectLoopGuard(session, step)
@@ -847,7 +901,7 @@ export function createAgentRunner({
         }
 
         if (!input.autoExecute) {
-          return { status: 'awaiting_review', steps }
+          return { status: 'awaiting_review', steps, reviewKind: 'confirm' }
         }
 
         if (input.signal?.aborted) {
@@ -890,6 +944,12 @@ export function createAgentRunner({
         if (result.safetyDecision) {
           step.safetyDecision = result.safetyDecision
         }
+        if (result.takeoverKind) {
+          step.takeoverKind = result.takeoverKind
+        }
+        if (result.reviewKind) {
+          step.reviewKind = result.reviewKind
+        }
         recordAgentStepExecutionDuration(step, elapsed(executionStartedAt))
         // The device action has already been applied, so the step must be
         // recorded BEFORE honouring an abort. Otherwise the side effect stays
@@ -918,20 +978,36 @@ export function createAgentRunner({
             return { status: 'awaiting_takeover', steps, reason: result.summary }
           }
           if (!isAutoRecoverableExecutionFailure(result)) {
-            return { status: 'awaiting_review', steps, reason: result.summary }
+            return {
+              status: 'awaiting_review',
+              steps,
+              reason: result.summary,
+              reviewKind: result.reviewKind ?? 'other',
+            }
           }
 
           recoverableExecutionFailures += 1
           if (recoverableExecutionFailures > MAX_AUTO_RECOVERABLE_EXECUTION_FAILURES) {
-            return { status: 'awaiting_review', steps, reason: result.summary }
+            return {
+              status: 'awaiting_review',
+              steps,
+              reason: result.summary,
+              reviewKind: result.reviewKind ?? 'other',
+            }
+          }
+          if (input.shouldPause?.()) {
+            return { status: 'paused', steps }
           }
           continue
         }
         recoverableExecutionFailures = 0
         consecutiveModelErrors = 0
+        if (input.shouldPause?.()) {
+          return { status: 'paused', steps }
+        }
       }
 
-      return { status: 'max_steps', steps }
+      return { status: 'max_steps', steps, reviewKind: 'max_steps' }
     },
   }
 }

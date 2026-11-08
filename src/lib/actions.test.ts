@@ -350,6 +350,42 @@ describe('validateAction', () => {
     })
   })
 
+  it('normalizes structured takeover kinds and keeps unknown values generic', () => {
+    expect(
+      validateAction(
+        { action: 'take_over', kind: 'captcha', message: 'Enter the one-time code.' },
+        screen,
+      ),
+    ).toEqual({
+      action: 'take_over',
+      kind: 'captcha',
+      message: 'Enter the one-time code.',
+    })
+    expect(
+      validateAction(
+        { action: 'take_over', kind: 'verification-code', message: 'Verify.' },
+        screen,
+      ),
+    ).toEqual({
+      action: 'take_over',
+      kind: 'captcha',
+      message: 'Verify.',
+    })
+    expect(
+      validateAction({ action: 'take_over', kind: 'surprise', message: 'Help.' }, screen),
+    ).toEqual({
+      action: 'take_over',
+      kind: 'other',
+      message: 'Help.',
+    })
+    expect(
+      validateAction({ action: 'take_over', kind: undefined, message: 'Help.' }, screen),
+    ).toEqual({
+      action: 'take_over',
+      message: 'Help.',
+    })
+  })
+
   it('rejects removed protocol aliases and coordinate payloads', () => {
     expect(() => validateAction({ action: 'click_at', x: 100, y: 200 }, screen)).toThrow(
       'Unsupported action',

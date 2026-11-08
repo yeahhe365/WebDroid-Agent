@@ -1,6 +1,5 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, X } from 'lucide-react'
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -19,7 +18,8 @@ import { createGeminiClient } from './lib/geminiClient'
 import { isGeminiProvider } from './lib/geminiTypes'
 import { isOpenAiProvider } from './lib/modelProviders'
 import type { ModelConfig } from './lib/openAiTypes'
-import { OPENAI_PROXY_URL } from './lib/openAiRuntimeConfig'
+import { OPENAI_PROXY_TOKEN_URL, OPENAI_PROXY_URL } from './lib/openAiRuntimeConfig'
+import { fetchProxyToken } from './lib/proxyToken'
 import { APP_COPY, resolveLocale } from './lib/appCopy'
 import {
   createSettingsExportData,
@@ -44,6 +44,8 @@ import { useDeviceController } from './hooks/useDeviceController'
 import { useAgentSessionHistory } from './hooks/useAgentSessionHistory'
 import { useBodyOverflow } from './hooks/useBodyOverflow'
 import { useHotkeys } from './hooks/useHotkeys'
+import { useDialogFocusTrap } from './hooks/useDialogFocusTrap'
+import { useOverlayLayer } from './hooks/useOverlayLayer'
 import { useSplitPane, WORKSPACE_SPLIT_STORAGE_KEY } from './hooks/useSplitPane'
 import { useBusyTask } from './hooks/useBusyTask'
 import { useBusyTaskDocumentTitle } from './hooks/useBusyTaskDocumentTitle'
@@ -59,32 +61,62 @@ import { focusChatComposer } from './lib/chatComposer'
 import { ConfigSidebar } from './components/ConfigSidebar'
 import { DeviceQuickControls } from './components/DeviceQuickControls'
 import { PhoneStage } from './components/PhoneStage'
-import { RunLog } from './components/RunLog'
 import { ConversationPanel } from './components/ConversationPanel'
 import { SetupHome } from './components/SetupHome'
-import {
-  SensitiveActionDialog,
-  type SensitiveActionDialogRequest,
-} from './components/SensitiveActionDialog'
-import { UnrestrictedModeConfirmDialog } from './components/UnrestrictedModeConfirmDialog'
+import type { SensitiveActionDialogRequest } from './components/SensitiveActionDialog'
+import { useToasts } from './hooks/useToasts'
 import { appendAuditEntry } from './lib/auditLog'
 import { buildActionPreview } from './lib/actionPreview'
+import { testModelConnection } from './lib/modelConnectionTest'
+import { formatCurrentAppLabel } from './components/deviceDisplay'
+import { UNKNOWN_APP_NAME } from './lib/deviceState'
+import { lazyWithRetry } from './lib/lazyWithRetry'
 
 function createModelClient(modelConfig: ModelConfig) {
+  const proxyTokenUrl = OPENAI_PROXY_URL ? OPENAI_PROXY_TOKEN_URL : undefined
+  const proxyTokenProvider = proxyTokenUrl
+    ? () => fetchProxyToken(proxyTokenUrl)
+    : undefined
+
   if (isGeminiProvider(modelConfig.provider)) {
     return createGeminiClient(globalThis.fetch)
   }
   if (isOpenAiProvider(modelConfig.provider)) {
-    return createOpenAiResponsesClient(globalThis.fetch, { proxyUrl: OPENAI_PROXY_URL })
+    return createOpenAiResponsesClient(globalThis.fetch, {
+      proxyUrl: OPENAI_PROXY_URL,
+      proxyTokenProvider,
+    })
   }
-  return createOpenAiClient(globalThis.fetch, { proxyUrl: OPENAI_PROXY_URL })
+  return createOpenAiClient(globalThis.fetch, {
+    proxyUrl: OPENAI_PROXY_URL,
+    proxyTokenProvider,
+  })
 }
 
-const SettingsDialog = lazy(() =>
+const SettingsDialog = lazyWithRetry(() =>
   import('./components/SettingsDialog').then((module) => ({ default: module.SettingsDialog })),
 )
-const TutorialPanel = lazy(() =>
+const TutorialPanel = lazyWithRetry(() =>
   import('./components/TutorialPanel').then((module) => ({ default: module.TutorialPanel })),
+)
+const RunLog = lazyWithRetry(() =>
+  import('./components/RunLog').then((module) => ({ default: module.RunLog })),
+)
+const SensitiveActionDialog = lazyWithRetry(() =>
+  import('./components/SensitiveActionDialog').then((module) => ({
+    default: module.SensitiveActionDialog,
+  })),
+)
+const UnrestrictedModeConfirmDialog = lazyWithRetry(() =>
+  import('./components/UnrestrictedModeConfirmDialog').then((module) => ({
+    default: module.UnrestrictedModeConfirmDialog,
+  })),
+)
+const ConfirmDialog = lazyWithRetry(() =>
+  import('./components/ConfirmDialog').then((module) => ({ default: module.ConfirmDialog })),
+)
+const ToastViewport = lazyWithRetry(() =>
+  import('./components/ToastViewport').then((module) => ({ default: module.ToastViewport })),
 )
 
 function App() {
@@ -133,6 +165,9 @@ function App() {
   )
   const [themeMode, setThemeMode] = useState(settings.themeMode)
   const [languageMode, setLanguageMode] = useState(settings.languageMode)
+  const activeLocale = useMemo(() => resolveLocale(languageMode), [languageMode])
+  const copy = APP_COPY[activeLocale]
+  const appContextValue = useMemo(() => ({ copy, locale: activeLocale }), [activeLocale, copy])
   const [configSidebarOpen, setConfigSidebarOpen] = useState(false)
   const {
     containerRef: workspaceSplitRef,
@@ -140,6 +175,7 @@ function App() {
     isCustom: workspaceSplitIsCustom,
     splitPercent: workspaceSplitPercent,
   } = useSplitPane({
+    ariaLabel: copy.resizePanes,
     defaultSplit: 52,
     storageKey: WORKSPACE_SPLIT_STORAGE_KEY,
   })
@@ -155,6 +191,15 @@ function App() {
   })
   const dismissSetup = useCallback(() => {
     setSetupDismissed(true)
+    // Setup can be taller than a phone-sized viewport; entering the workspace
+    // should not inherit the setup page's scroll offset.
+    try {
+      // Setting the scroll roots works in browsers and stays a no-op in jsdom.
+      document.documentElement.scrollTop = 0
+      document.body.scrollTop = 0
+    } catch {
+      // Ignore document access failures in non-browser runtimes.
+    }
     try {
       globalThis.localStorage?.setItem('webdroid-setup-dismissed', '1')
     } catch {
@@ -163,18 +208,21 @@ function App() {
   }, [])
   const [pendingStep, setPendingStep] = useState<AgentStep | null>(null)
   const { logs, addLog, clearLogs } = useRunLog()
+  const { dismissToast, pushToast, toasts } = useToasts()
   const { busyTask, error, runTask, setError } = useBusyTask(({ label, message }) => {
+    // Keep task failures in the persistent banner; toasts are for short-lived
+    // confirmations from explicit user actions.
     addLog({ tone: 'error', title: label, detail: message })
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [clearHistoryConfirmOpen, setClearHistoryConfirmOpen] = useState(false)
   const [tutorialOpen, setTutorialOpen] = useState(false)
   const [runLogOpen, setRunLogOpen] = useState(false)
   const runLogDrawerRef = useRef<HTMLElement | null>(null)
+  const runLogCloseButtonRef = useRef<HTMLButtonElement | null>(null)
   const { repositoryStats, repositoryStatsStatus } = useRepositoryStats(settingsOpen)
   const { storageEstimate, storageEstimateStatus } = useStorageEstimate(settingsOpen)
 
-  const activeLocale = useMemo(() => resolveLocale(languageMode), [languageMode])
-  const copy = APP_COPY[activeLocale]
   const [sensitiveActionRequest, setSensitiveActionRequest] =
     useState<SensitiveActionDialogRequest | null>(null)
   const sensitiveActionResolverRef = useRef<((confirmed: boolean) => void) | null>(null)
@@ -211,6 +259,9 @@ function App() {
     onPendingStepReset: resetPendingStep,
     runTask,
   })
+  const currentAppLabel = device.currentApp
+    ? formatCurrentAppLabel(device.currentApp, copy)
+    : copy.unknownApp
   const {
     actionSettleMs,
     confirmSensitiveActions,
@@ -271,11 +322,17 @@ function App() {
   const handleConfigureModelFromSetup = useCallback(() => {
     dismissSetup()
     setWorkspaceTab('chat')
+    setSettingsOpen(false)
+    setTutorialOpen(false)
+    setRunLogOpen(false)
     openConfigTarget('model')
   }, [dismissSetup, openConfigTarget])
   const handleConfigureDeviceFromSetup = useCallback(() => {
     dismissSetup()
     setWorkspaceTab('phone')
+    setSettingsOpen(false)
+    setTutorialOpen(false)
+    setRunLogOpen(false)
     openConfigTarget('device')
   }, [dismissSetup, openConfigTarget])
   const handleReadinessClick = useCallback(() => {
@@ -353,6 +410,7 @@ function App() {
     settingsOpen ||
     configSidebarOpen ||
     runLogOpen ||
+    clearHistoryConfirmOpen ||
     sensitiveActionRequest !== null
   useBodyOverflow(modalOverlayOpen)
   const rememberMemory = useCallback((information: string) => {
@@ -370,9 +428,13 @@ function App() {
       }
 
       const permission = await requestTaskNotificationPermission()
-      setTaskNotificationsEnabled(permission === 'granted')
+      const granted = permission === 'granted'
+      setTaskNotificationsEnabled(granted)
+      if (!granted) {
+        pushToast({ tone: 'warn', title: copy.notificationPermissionDenied })
+      }
     },
-    [],
+    [copy.notificationPermissionDenied, pushToast],
   )
   const handleRunEndNotification = useCallback(
     (notification: { title: string; detail?: string }) => {
@@ -417,7 +479,9 @@ function App() {
   })
   const {
     executePendingStep,
+    pauseCurrentRun,
     queuedChatMessageCount,
+    resumeRun,
     stopCurrentRun,
     submitChatMessage,
   } = useAgentRunController({
@@ -455,6 +519,7 @@ function App() {
       clear: copy.clear,
       closeScreenshotPreview: copy.closeScreenshotPreview,
       empty: copy.noEvents,
+      emptyHint: copy.runLogIdleHint,
       executionResult: copy.stepExecutionResult,
       expandedScreenshotFor: (title: string) => `${copy.expandedAndroidScreenshot}: ${title}`,
       failureClass: copy.failureClassLabel,
@@ -472,19 +537,47 @@ function App() {
     }),
     [copy],
   )
+  const handleTestModelConnection = useCallback(async () => {
+    const proxyToken =
+      OPENAI_PROXY_URL && OPENAI_PROXY_TOKEN_URL
+        ? await fetchProxyToken(OPENAI_PROXY_TOKEN_URL)
+        : undefined
+    return testModelConnection({
+      modelConfig,
+      proxyToken,
+      proxyUrl: OPENAI_PROXY_URL,
+    })
+  }, [modelConfig])
+
   const handleOpenConfigTarget = useCallback(
     (target: Parameters<typeof openConfigTarget>[0]) => {
+      setSettingsOpen(false)
+      setTutorialOpen(false)
+      setRunLogOpen(false)
+      setHistorySidebarOpen(false)
       openConfigTarget(target)
     },
     [openConfigTarget],
   )
   const handleToggleConfigSidebar = useCallback(() => {
+    setSettingsOpen(false)
+    setTutorialOpen(false)
+    setRunLogOpen(false)
+    setHistorySidebarOpen(false)
     setConfigSidebarOpen((current) => !current)
   }, [])
   const handleOpenConfig = useCallback(() => {
+    setSettingsOpen(false)
+    setTutorialOpen(false)
+    setRunLogOpen(false)
+    setHistorySidebarOpen(false)
     setConfigSidebarOpen((current) => !current)
   }, [])
   const handleToggleInspect = useCallback(() => {
+    setSettingsOpen(false)
+    setTutorialOpen(false)
+    setConfigSidebarOpen(false)
+    setHistorySidebarOpen(false)
     setRunLogOpen((current) => !current)
   }, [])
   const handleSelectWorkspaceTab = useCallback((tab: WorkspaceTab) => {
@@ -532,6 +625,7 @@ function App() {
       data: { threads: result.threads },
     })
     addLog({ tone: 'info', title: copy.chatHistoryExported(result.count) })
+    pushToast({ tone: 'ok', title: copy.chatHistoryExported(result.count) })
   }
 
   function handleExportTrajectory() {
@@ -539,6 +633,7 @@ function App() {
     const lastTurn = [...session.turns].reverse().find((turn) => turn.runId)
     if (!lastTurn?.runId) {
       addLog({ tone: 'warn', title: copy.exportTrajectoryUnavailable })
+      pushToast({ tone: 'warn', title: copy.exportTrajectoryUnavailable })
       return
     }
     // Neither `includeContext` nor `includeDiagnostics` is set: the file is meant
@@ -557,6 +652,7 @@ function App() {
       }),
     )
     addLog({ tone: 'info', title: copy.trajectoryExported })
+    pushToast({ tone: 'ok', title: copy.trajectoryExported })
   }
 
   async function handleImportChatHistory() {
@@ -566,6 +662,7 @@ function App() {
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : String(caught)
       addLog({ tone: 'warn', title: copy.importInvalidFile, detail })
+      pushToast({ tone: 'warn', title: copy.importInvalidFile, detail })
       return
     }
     if (parsed === null) {
@@ -574,9 +671,14 @@ function App() {
     const threads = parseChatHistoryImport(parsed)
     if (threads.length === 0) {
       addLog({ tone: 'warn', title: copy.importInvalidFile })
+      pushToast({ tone: 'warn', title: copy.importInvalidFile })
       return
     }
-    await importChatHistory(threads)
+    const imported = await importChatHistory(threads)
+    pushToast({
+      tone: imported > 0 ? 'ok' : 'warn',
+      title: imported > 0 ? copy.chatHistoryImported(imported) : copy.importInvalidFile,
+    })
   }
 
   function handleExportSettings() {
@@ -587,6 +689,7 @@ function App() {
       data: createSettingsExportData(currentSettings),
     })
     addLog({ tone: 'info', title: copy.settingsExported })
+    pushToast({ tone: 'ok', title: copy.settingsExported })
   }
 
   async function handleImportSettings() {
@@ -596,6 +699,7 @@ function App() {
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : String(caught)
       addLog({ tone: 'warn', title: copy.importInvalidFile, detail })
+      pushToast({ tone: 'warn', title: copy.importInvalidFile, detail })
       return
     }
     if (parsed === null) {
@@ -603,6 +707,7 @@ function App() {
     }
     applySettings(mergeImportedSettings(currentSettings, parseSettingsImport(parsed)))
     addLog({ tone: 'info', title: copy.settingsImported })
+    pushToast({ tone: 'ok', title: copy.settingsImported })
   }
 
   function startNewChat() {
@@ -613,11 +718,33 @@ function App() {
     addLog({ tone: 'info', title: copy.newChatStarted })
   }
 
-  async function clearChatHistoryFromSettings() {
+  function requestClearChatHistory() {
+    setClearHistoryConfirmOpen(true)
+  }
+
+  function handleReopenSetup() {
+    setSettingsOpen(false)
+    setSetupDismissed(false)
+    setWorkspaceTab('chat')
+    try {
+      globalThis.localStorage?.removeItem('webdroid-setup-dismissed')
+    } catch {
+      // Ignore storage failures; the in-memory flag still reopens the wizard.
+    }
+  }
+
+  function handleClearRunLog() {
+    clearLogs()
+    pushToast({ tone: 'info', title: copy.runLogCleared })
+  }
+
+  async function confirmClearChatHistory() {
+    setClearHistoryConfirmOpen(false)
     const cleared = await clearHistoryThreads()
     if (cleared) {
       setPendingStep(null)
       setHistorySidebarOpen(false)
+      pushToast({ tone: 'ok', title: copy.chatHistoryCleared })
     }
   }
 
@@ -647,11 +774,17 @@ function App() {
 
   function openSettings() {
     setTutorialOpen(false)
+    setConfigSidebarOpen(false)
+    setRunLogOpen(false)
+    setHistorySidebarOpen(false)
     setSettingsOpen(true)
   }
 
   function toggleTutorial() {
     setSettingsOpen(false)
+    setConfigSidebarOpen(false)
+    setRunLogOpen(false)
+    setHistorySidebarOpen(false)
     setTutorialOpen((current) => !current)
   }
 
@@ -660,38 +793,62 @@ function App() {
     settleSensitiveActionRequest(false)
   }
 
-  // Enter already sends from the composer, so no modifier is bound to send.
+  function handlePauseRun() {
+    pauseCurrentRun()
+  }
+
+  function handleResumeRun() {
+    void resumeRun()
+  }
+
+  // Escape is owned by the top-most overlay (see overlayStack). Bare Escape no
+  // longer stops an agent run; the explicit Stop controls remain available.
+  const shortcutBlockedByModal =
+    settingsOpen ||
+    tutorialOpen ||
+    historySidebarOpen ||
+    clearHistoryConfirmOpen ||
+    sensitiveActionRequest !== null
+
   useHotkeys([
-    { handler: focusChatComposer, key: 'k', metaOrCtrl: true },
-    { handler: handleToggleConfigSidebar, key: 'b', metaOrCtrl: true },
-    { handler: handleToggleInspect, key: 'j', metaOrCtrl: true },
     {
       handler: () => {
-        if (modalOverlayOpen || !isAgentRunning) {
-          return
+        if (!shortcutBlockedByModal && !configSidebarOpen && !runLogOpen) {
+          focusChatComposer()
         }
-        handleStopRun()
       },
-      key: 'Escape',
+      key: 'k',
+      metaOrCtrl: true,
+    },
+    {
+      handler: () => {
+        if (!shortcutBlockedByModal) {
+          handleToggleConfigSidebar()
+        }
+      },
+      key: 'b',
+      metaOrCtrl: true,
+    },
+    {
+      handler: () => {
+        if (!shortcutBlockedByModal && !configSidebarOpen) {
+          handleToggleInspect()
+        }
+      },
+      key: 'j',
+      metaOrCtrl: true,
     },
   ])
 
-  useEffect(() => {
-    if (!runLogOpen) {
-      return
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !configSidebarOpen && !settingsOpen) {
-        setRunLogOpen(false)
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [configSidebarOpen, runLogOpen, settingsOpen])
+  useOverlayLayer(runLogOpen, () => setRunLogOpen(false))
+  useDialogFocusTrap({
+    active: runLogOpen,
+    containerRef: runLogDrawerRef,
+    initialFocusRef: runLogCloseButtonRef,
+  })
 
   return (
-    <AppProvider value={{ copy, locale: activeLocale }}>
+    <AppProvider value={appContextValue}>
       <main
         className={[
           'app-shell',
@@ -707,6 +864,7 @@ function App() {
           isAgentRunning={isAgentRunning}
           isConfigOpen={configSidebarOpen}
           isInspectOpen={runLogOpen}
+          isSettingsOpen={settingsOpen}
           isTutorialOpen={tutorialOpen}
           latestLogTitle={logs[0]?.title ?? null}
           modelLabel={modelConfig.model}
@@ -714,12 +872,19 @@ function App() {
           onOpenConfig={handleOpenConfig}
           onOpenInspect={handleToggleInspect}
           onOpenSettings={openSettings}
-          onReadinessClick={handleReadinessClick}
+          onReadinessClick={showSetupHome ? undefined : handleReadinessClick}
+          onPauseRun={handlePauseRun}
           onStopRun={handleStopRun}
           onToggleTutorial={toggleTutorial}
         />
 
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            <div className="panel-loading" role="status">
+              {copy.loadingPanel}
+            </div>
+          }
+        >
           {settingsOpen ? (
             <SettingsDialog
               copy={copy}
@@ -734,10 +899,8 @@ function App() {
               onAppCardsJsonChange={updateAppCardsJson}
               onCustomToolsJsonChange={updateCustomToolsJson}
               onDisabledActionToolsChange={setDisabledActionTools}
-              onClearChatHistory={() => {
-                void clearChatHistoryFromSettings()
-              }}
-              onClearRunLog={clearLogs}
+              onClearChatHistory={requestClearChatHistory}
+              onClearRunLog={handleClearRunLog}
               onClose={() => setSettingsOpen(false)}
               onExportChatHistory={() => {
                 void handleExportChatHistory()
@@ -752,9 +915,10 @@ function App() {
               }}
               onLanguageModeChange={setLanguageMode}
               onMaxStepsChange={updateMaxSteps}
+              onReopenSetup={agentReady ? undefined : handleReopenSetup}
               onResetAppCards={resetAppCards}
               onSecretRecordsJsonChange={updateSecretRecordsJson}
-              onTaskNotificationsEnabledChange={(value) => {
+              onTaskNotificationsEnabledChange={(value: boolean) => {
                 void handleTaskNotificationsEnabledChange(value)
               }}
               onThemeModeChange={setThemeMode}
@@ -773,25 +937,55 @@ function App() {
           ) : null}
         </Suspense>
 
-        <SensitiveActionDialog
-          copy={copy}
-          request={sensitiveActionRequest}
-          onCancel={() => settleSensitiveActionRequest(false)}
-          onConfirm={() => settleSensitiveActionRequest(true)}
-        />
+        {sensitiveActionRequest ? (
+          <Suspense fallback={null}>
+            <SensitiveActionDialog
+              copy={copy}
+              request={sensitiveActionRequest}
+              onCancel={() => settleSensitiveActionRequest(false)}
+              onConfirm={() => settleSensitiveActionRequest(true)}
+            />
+          </Suspense>
+        ) : null}
+
+        <Suspense fallback={null}>
+          <ConfirmDialog
+            cancelLabel={copy.cancel}
+            confirmLabel={copy.clearChatHistoryConfirmAction}
+            danger
+            message={copy.clearChatHistoryConfirmMessage}
+            onCancel={() => setClearHistoryConfirmOpen(false)}
+            onConfirm={() => {
+              void confirmClearChatHistory()
+            }}
+            open={clearHistoryConfirmOpen}
+            title={copy.clearChatHistoryConfirmTitle}
+          />
+        </Suspense>
 
         {unrestrictedConfirmOpen ? (
-          <UnrestrictedModeConfirmDialog
-            copy={copy}
-            onCancel={() => settleUnrestrictedModeConfirmation(false)}
-            onConfirm={() => settleUnrestrictedModeConfirmation(true)}
-          />
+          <Suspense fallback={null}>
+            <UnrestrictedModeConfirmDialog
+              copy={copy}
+              onCancel={() => settleUnrestrictedModeConfirmation(false)}
+              onConfirm={() => settleUnrestrictedModeConfirmation(true)}
+            />
+          </Suspense>
         ) : null}
 
         {error ? (
-          <div className="alert">
+          <div className="alert" role="alert">
             <AlertTriangle size={18} />
             <span>{error}</span>
+            <button
+              type="button"
+              className="alert-dismiss"
+              aria-label={copy.dismissNotification}
+              title={copy.dismissNotification}
+              onClick={() => setError(null)}
+            >
+              ×
+            </button>
           </div>
         ) : null}
 
@@ -857,12 +1051,23 @@ function App() {
                   void deleteHistoryThread(threadId)
                 }}
                 onExecutePendingStep={executePendingStep}
+                onOpenRunLog={() => setRunLogOpen(true)}
+                onPauseRun={handlePauseRun}
+                onResumeRun={handleResumeRun}
                 onSelectThread={(threadId) => {
                   void selectHistoryThread(threadId)
                 }}
                 onStartNewChat={startNewChat}
                 onStopRun={handleStopRun}
                 onSubmitChatMessage={(message) => {
+                  if (!device.connected || !hasModelConfig) {
+                    pushToast({
+                      tone: 'warn',
+                      title: device.connected
+                        ? copy.chatPlaceholderNeedsModel
+                        : copy.chatPlaceholderNeedsDevice,
+                    })
+                  }
                   void submitChatMessage(message)
                 }}
                 onToggleHistorySidebar={() => setHistorySidebarOpen((current) => !current)}
@@ -878,14 +1083,14 @@ function App() {
               <div className="phone-column">
                 <div className="phone-stage-chrome">
                   {device.connected ||
-                  (device.currentApp && device.currentApp !== copy.unknownApp) ? (
+                  (device.currentApp && device.currentApp !== UNKNOWN_APP_NAME) ? (
                     <div
                       className="status current-app-status phone-current-app"
-                      title={`${copy.currentApp}: ${device.currentApp || copy.unknownApp}`}
+                      title={`${copy.currentApp}: ${currentAppLabel}`}
                     >
                       <span className="status-label">
                         <span className="status-prefix">{copy.currentApp}: </span>
-                        {device.currentApp || copy.unknownApp}
+                        {currentAppLabel}
                       </span>
                     </div>
                   ) : (
@@ -933,6 +1138,7 @@ function App() {
               onScreenBlackoutDuringAutoControlChange={setScreenBlackoutDuringAutoControl}
               onSelectTarget={handleOpenConfigTarget}
               onStreamResponsesChange={setStreamResponses}
+              onTestConnection={handleTestModelConnection}
               onToggleOpen={handleToggleConfigSidebar}
               screenBlackoutDuringAutoControl={screenBlackoutDuringAutoControl}
               streamResponses={streamResponses}
@@ -943,8 +1149,9 @@ function App() {
                 <button
                   type="button"
                   className="inspect-drawer-backdrop"
-                  aria-label={copy.closeInspect}
+                  aria-hidden="true"
                   onClick={() => setRunLogOpen(false)}
+                  tabIndex={-1}
                 />
                 <section
                   className="inspect-drawer panel"
@@ -956,30 +1163,47 @@ function App() {
                   <div className="inspect-drawer-header">
                     <div>
                       <span className="inspect-drawer-title">{copy.inspect}</span>
-                      <small className="inspect-drawer-subtitle">
-                        {logs[0]?.title ?? copy.noEvents}
-                      </small>
+                      {logs[0]?.title ? (
+                        <small className="inspect-drawer-subtitle">{logs[0].title}</small>
+                      ) : null}
                     </div>
                     <button
                       type="button"
                       className="button icon-button icon-button--md"
                       aria-label={copy.closeInspectPanel}
+                      title={copy.closeInspectPanel}
                       onClick={() => setRunLogOpen(false)}
+                      ref={runLogCloseButtonRef}
                     >
-                      ×
+                      <X size={17} />
                     </button>
                   </div>
-                  <RunLog
-                    logs={logs}
-                    onClear={clearLogs}
-                    labels={runLogLabels}
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="log-loading" role="status">
+                        {copy.loadingPanel}
+                      </div>
+                    }
+                  >
+                    <RunLog
+                      logs={logs}
+                      onClear={clearLogs}
+                      labels={runLogLabels}
+                    />
+                  </Suspense>
                 </section>
               </div>
             ) : null}
           </>
         )}
       </main>
+      <Suspense fallback={null}>
+        <ToastViewport
+          dismissLabel={copy.dismissNotification}
+          onDismiss={dismissToast}
+          toasts={toasts}
+        />
+      </Suspense>
     </AppProvider>
   )
 }

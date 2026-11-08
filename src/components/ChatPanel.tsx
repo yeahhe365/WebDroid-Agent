@@ -4,6 +4,7 @@ import {
   Layers3,
   LoaderCircle,
   MessageSquare,
+  Pause,
   Send,
 } from 'lucide-react'
 import { IconNewChat, IconStop } from './icons'
@@ -11,6 +12,8 @@ import {
   memo,
   useEffect,
   useId,
+  useLayoutEffect,
+  Suspense,
   useMemo,
   useRef,
   useState,
@@ -23,15 +26,14 @@ import type { AppCopy } from '../lib/appCopy'
 import type { AgentStep } from '../lib/agent'
 import type { BusyTask } from '../lib/busyTask'
 import type { AgentSessionSummary } from '../hooks/useAgentSessionHistory'
-import { useVirtualWindow } from '../hooks/useVirtualWindow'
+import { groupChatItems, type ChatDisplayItem } from '../lib/chatRun'
 import type { InteractionStreamItem } from '../lib/interactionStream'
 import type { AgentConversationMessage } from '../lib/openAiTypes'
 import type { AgentThreadSummary } from '../lib/threadStore'
 import { useAppCopy } from './AppContext'
-import { AgentStepCard } from './AgentStepCard'
 import { Button, IconButton } from './primitives'
-import { ChatHistorySidebar } from './ChatHistorySidebar'
 import { LazyMarkdownContent } from './LazyMarkdownContent'
+import { lazyWithRetry } from '../lib/lazyWithRetry'
 import { PendingActionCard } from './PendingActionCard'
 
 type ChatPanelProps = {
@@ -51,6 +53,9 @@ type ChatPanelProps = {
   onConnectDevice?: () => void
   onDeleteThread: (threadId: string) => void
   onExecutePendingStep: () => void
+  onOpenRunLog: () => void
+  onPauseRun: () => void
+  onResumeRun: () => void
   onSelectThread: (threadId: string) => void
   onStartNewChat: () => void
   onStopRun: () => void
@@ -58,8 +63,20 @@ type ChatPanelProps = {
   onToggleHistorySidebar: () => void
 }
 
+const ChatHistorySidebar = lazyWithRetry(() =>
+  import('./ChatHistorySidebar').then((module) => ({ default: module.ChatHistorySidebar })),
+)
+const NeedsYouCard = lazyWithRetry(() =>
+  import('./NeedsYouCard').then((module) => ({ default: module.NeedsYouCard })),
+)
+const RunProgressBlock = lazyWithRetry(() =>
+  import('./RunProgressBlock').then((module) => ({ default: module.RunProgressBlock })),
+)
+const RunProgressPlaceholder = lazyWithRetry(() =>
+  import('./RunProgressBlock').then((module) => ({ default: module.RunProgressPlaceholder })),
+)
+
 const MAX_RENDERED_CHAT_ITEMS = 160
-const CHAT_ITEM_ESTIMATE_PX = 148
 
 export function ChatPanel({
   activeThreadId,
@@ -76,6 +93,9 @@ export function ChatPanel({
   onConnectDevice,
   onDeleteThread,
   onExecutePendingStep,
+  onOpenRunLog,
+  onPauseRun,
+  onResumeRun,
   onSelectThread,
   onStartNewChat,
   onStopRun,
@@ -92,21 +112,30 @@ export function ChatPanel({
   const [composerThreadId, setComposerThreadId] = useState(activeThreadId)
   const [chatInput, setChatInput] = useState('')
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const [showAllHistory, setShowAllHistory] = useState(false)
+  const restoreScrollHeightRef = useRef<number | null>(null)
   // Reset the draft when the active thread changes (new chat / history restore).
   if (composerThreadId !== activeThreadId) {
     setComposerThreadId(activeThreadId)
     setChatInput('')
+    setShowAllHistory(false)
   }
   const chatIsEmpty = chatInput.trim().length === 0
   const isBusy = Boolean(busyTask)
   const canStopRun = busyTask?.id === 'run-agent'
-  const items =
-    interactionItems ?? conversation.map<InteractionStreamItem>((message) => messageToItem(message))
-  const visibleItems = useMemo(
-    () => items.slice(Math.max(0, items.length - MAX_RENDERED_CHAT_ITEMS)),
-    [items],
+  const items = groupChatItems(
+    interactionItems ?? conversation.map<InteractionStreamItem>((message) => messageToItem(message)),
   )
-  const activeStepId = isAgentStepBusyTask(busyTask) ? findLatestOpenStepId(visibleItems) : null
+  const hiddenItemCount = Math.max(0, items.length - MAX_RENDERED_CHAT_ITEMS)
+  const visibleItems = useMemo(
+    () => (showAllHistory ? items : items.slice(hiddenItemCount)),
+    [hiddenItemCount, items, showAllHistory],
+  )
+  const latestRunItem = useMemo(
+    () => [...visibleItems].reverse().find((item): item is ChatDisplayItem & { type: 'run' } => item.type === 'run'),
+    [visibleItems],
+  )
+  const hasActiveRunTurns = !sessionSummary || sessionSummary.runStepCount > 0
   const chatInputRows = Math.min(6, Math.max(1, chatInput.split('\n').length))
   const visibleQueuedMessageCount =
     queuedChatMessageCount + (sessionSummary?.pendingUserMessageCount ?? 0)
@@ -114,10 +143,14 @@ export function ChatPanel({
     Boolean(busyTask) ||
     visibleQueuedMessageCount > 0 ||
     Boolean(sessionSummary && shouldShowSessionSummary(sessionSummary))
-  const virtual = useVirtualWindow(visibleItems.length, {
-    estimateHeight: CHAT_ITEM_ESTIMATE_PX,
-    overscan: 5,
-  })
+  const lastVisibleItem = visibleItems[visibleItems.length - 1]
+  const lastItemSignature = lastVisibleItem
+    ? lastVisibleItem.type === 'run'
+      ? `${lastVisibleItem.id}:${lastVisibleItem.turns.length}:${
+          lastVisibleItem.turns[lastVisibleItem.turns.length - 1]?.completedAt ?? 0
+        }:${lastVisibleItem.turns[lastVisibleItem.turns.length - 1]?.usage?.totalTokens ?? 0}`
+      : `${lastVisibleItem.id}:${lastVisibleItem.message.content.length}`
+    : ''
 
   const submitChatIfNotEmpty = () => {
     if (chatIsEmpty) {
@@ -161,7 +194,6 @@ export function ChatPanel({
     chatInputRef.current?.focus()
   }
   const handleStreamScroll = (event: UIEvent<HTMLDivElement>) => {
-    virtual.onScroll(event)
     const target = event.currentTarget
     const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight
     const isNearBottom = distanceFromBottom < 96
@@ -194,11 +226,19 @@ export function ChatPanel({
     if (shouldFollowOutputRef.current) {
       scrollToBottom('auto')
     }
-  }, [visibleItems.length, busyTask?.id, pendingStep?.index])
+  }, [visibleItems.length, lastItemSignature, busyTask?.id, pendingStep?.index])
 
-  const windowedItems = visibleItems.slice(virtual.startIndex, virtual.endIndex)
-  const trailingSpacer =
-    Math.max(0, visibleItems.length - virtual.endIndex) * CHAT_ITEM_ESTIMATE_PX
+  useLayoutEffect(() => {
+    if (restoreScrollHeightRef.current === null) {
+      return
+    }
+    const stream = chatStreamRef.current
+    if (stream) {
+      stream.scrollTop += stream.scrollHeight - restoreScrollHeightRef.current
+    }
+    restoreScrollHeightRef.current = null
+  }, [showAllHistory])
+
 
   return (
     <section className="chat-shell" aria-label={copy.chat}>
@@ -206,21 +246,24 @@ export function ChatPanel({
         <button
           type="button"
           className="chat-history-backdrop"
-          aria-label={copy.closeHistorySidebar}
+          aria-hidden="true"
           onClick={onCloseHistorySidebar}
+          tabIndex={-1}
         />
       ) : null}
-      <ChatHistorySidebar
-        activeThreadId={activeThreadId}
-        busyTask={busyTask}
-        copy={copy}
-        isOpen={historySidebarOpen}
-        onClose={onCloseHistorySidebar}
-        onDeleteThread={onDeleteThread}
-        onNewChat={handleHistoryNewChat}
-        onSelectThread={onSelectThread}
-        threadSummaries={threadSummaries}
-      />
+      <Suspense fallback={null}>
+        <ChatHistorySidebar
+          activeThreadId={activeThreadId}
+          busyTask={busyTask}
+          copy={copy}
+          isOpen={historySidebarOpen}
+          onClose={onCloseHistorySidebar}
+          onDeleteThread={onDeleteThread}
+          onNewChat={handleHistoryNewChat}
+          onSelectThread={onSelectThread}
+          threadSummaries={threadSummaries}
+        />
+      </Suspense>
       <div className="panel-title conversation-panel-title chat-shell-header">
         <div className="panel-title-main">
           <IconButton
@@ -233,6 +276,9 @@ export function ChatPanel({
           >
             <IconSidebarToggle size={18} strokeWidth={2} />
           </IconButton>
+          <span className="conversation-panel-label" aria-hidden="true">
+            {copy.chat}
+          </span>
           <h2 className="visually-hidden">{copy.chat}</h2>
         </div>
         <Button
@@ -277,18 +323,12 @@ export function ChatPanel({
               {copy.contextCompactedThroughStep(sessionSummary.contextCompactedThroughStep)}
             </span>
           ) : null}
-          {sessionSummary?.latestStatusMessage ? (
-            <span className="chat-session-message" title={sessionSummary.latestStatusMessage}>
-              {sessionSummary.latestStatusMessage}
-            </span>
-          ) : null}
         </div>
       ) : null}
       <div
         className="chat-stream"
         aria-label={copy.conversation}
-        aria-live="polite"
-        aria-relevant="additions text"
+        aria-live="off"
         onScroll={handleStreamScroll}
         ref={chatStreamRef}
         role="log"
@@ -303,7 +343,7 @@ export function ChatPanel({
                 <strong>{copy.chatEmptyNeedsDeviceTitle}</strong>
                 <p className="chat-empty-body">{copy.chatEmptyNeedsDeviceBody}</p>
                 {onConnectDevice ? (
-                  <Button variant="primary" size="sm" onClick={onConnectDevice}>
+                  <Button variant="secondary" size="sm" onClick={onConnectDevice}>
                     {copy.chatEmptyConnectDevice}
                   </Button>
                 ) : null}
@@ -341,40 +381,60 @@ export function ChatPanel({
             )}
           </div>
         ) : null}
-        {visibleItems.length > 0 ? (
-          <div
-            className="chat-stream-virtual"
-            style={{ height: virtual.totalHeight, position: 'relative' }}
+        {hiddenItemCount > 0 && !showAllHistory ? (
+          <button
+            type="button"
+            className="chat-load-earlier"
+            onClick={() => {
+              const stream = chatStreamRef.current
+              restoreScrollHeightRef.current = stream?.scrollHeight ?? null
+              shouldFollowOutputRef.current = false
+              setShowAllHistory(true)
+            }}
           >
-            <div
-              className="chat-stream-window"
-              style={{
-                display: 'grid',
-                gap: 'var(--space-4)',
-                paddingTop: virtual.offsetTop,
-                paddingBottom: trailingSpacer,
-              }}
-            >
-              {windowedItems.map((item) =>
-                item.type === 'step' ? (
-                  <div className="chat-stream-item" key={item.id}>
-                    <AgentStepCard
-                      isActive={item.turn.id === activeStepId}
-                      turn={item.turn}
+            {copy.showEarlierMessages(hiddenItemCount)}
+          </button>
+        ) : null}
+        {visibleItems.length > 0 ? (
+          <div className="chat-stream-list">
+            {visibleItems.map((item) => {
+              if (item.type === 'message') {
+                return <ChatMessageItem key={item.id} item={item} copy={copy} />
+              }
+              const isLatestRun =
+                latestRunItem?.id === item.id && (!isBusy || hasActiveRunTurns)
+              return (
+                <div className="chat-stream-item" key={item.id}>
+                  <Suspense fallback={<RunProgressFallback />}>
+                    <RunProgressBlock
+                      active={isBusy && isLatestRun}
+                      onOpenRunLog={onOpenRunLog}
+                      startedAt={isLatestRun ? sessionSummary?.runStartedAt : undefined}
+                      finishedAt={isLatestRun ? sessionSummary?.runFinishedAt : undefined}
+                      turns={item.turns}
                     />
-                  </div>
-                ) : (
-                  <ChatMessageItem key={item.id} item={item} copy={copy} />
-                ),
-              )}
-            </div>
+                  </Suspense>
+                </div>
+              )
+            })}
           </div>
         ) : null}
-        {isBusy ? (
-          <div className="chat-run-status" role="status">
-            <LoaderCircle className="chat-run-status-spinner" size={14} />
-            <span>{busyTask?.label ?? copy.runAgentTask}</span>
-          </div>
+        <span className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+          {[
+            busyTask?.label,
+            sessionSummary
+              ? `${formatSessionStatus(sessionSummary.status, copy)}${
+                  sessionSummary.stepNumber > 0 ? ` ${copy.sessionStep(sessionSummary.stepNumber)}` : ''
+                }`
+              : null,
+          ]
+            .filter(Boolean)
+            .join('. ')}
+        </span>
+        {isBusy && (!latestRunItem || !hasActiveRunTurns) ? (
+          <Suspense fallback={<RunProgressFallback />}>
+            <RunProgressPlaceholder startedAt={sessionSummary?.runStartedAt} />
+          </Suspense>
         ) : null}
         {pendingStep ? (
           <PendingActionCard
@@ -383,6 +443,20 @@ export function ChatPanel({
             onExecutePendingStep={onExecutePendingStep}
             pendingStep={pendingStep}
           />
+        ) : !isBusy && sessionSummary ? (
+          <Suspense fallback={null}>
+            <NeedsYouCard
+              failureClass={sessionSummary.latestFailureClass}
+              message={sessionSummary.latestStatusMessage}
+              onAnswer={() => chatInputRef.current?.focus()}
+              onContinue={onSubmitChatMessage}
+              onOpenRunLog={onOpenRunLog}
+              onResume={onResumeRun}
+              status={sessionSummary.status}
+              takeoverKind={sessionSummary.latestTakeoverKind}
+              reviewKind={sessionSummary.latestReviewKind}
+            />
+          </Suspense>
         ) : null}
       </div>
       {showScrollToBottom ? (
@@ -416,22 +490,40 @@ export function ChatPanel({
               onChange={handleChatInputChange}
               onKeyDown={handleComposerKeyDown}
               rows={chatInputRows}
-              placeholder={copy.chatPlaceholder}
+              placeholder={
+                !deviceConnected
+                  ? copy.chatPlaceholderNeedsDevice
+                  : !hasModelConfig
+                    ? copy.chatPlaceholderNeedsModel
+                    : copy.chatPlaceholder
+              }
             />
           </label>
           <div className="chat-input-actions">
             <span className="chat-input-action-spacer" aria-hidden="true" />
             {canStopRun ? (
-              <IconButton
-                size="md"
-                variant="danger"
-                onClick={onStopRun}
-                title={copy.stopRun}
-                aria-label={copy.stopRun}
-                className="chat-send chat-stop"
-              >
-                <IconStop size={14} />
-              </IconButton>
+              <>
+                <IconButton
+                  size="md"
+                  variant="secondary"
+                  onClick={onPauseRun}
+                  title={copy.pauseRun}
+                  aria-label={copy.pauseRun}
+                  className="chat-send chat-pause"
+                >
+                  <Pause size={14} />
+                </IconButton>
+                <IconButton
+                  size="md"
+                  variant="danger"
+                  onClick={onStopRun}
+                  title={copy.stopRun}
+                  aria-label={copy.stopRun}
+                  className="chat-send chat-stop"
+                >
+                  <IconStop size={14} />
+                </IconButton>
+              </>
             ) : (
               <IconButton
                 size="md"
@@ -500,18 +592,13 @@ function IconSidebarToggle({
   )
 }
 
-function findLatestOpenStepId(items: readonly InteractionStreamItem[]) {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index]
-    if (item.type === 'step' && !item.turn.completedAt) {
-      return item.turn.id
-    }
-  }
-  return null
-}
-
-function isAgentStepBusyTask(busyTask: BusyTask | null) {
-  return busyTask?.id === 'execute-action' || busyTask?.id === 'run-agent'
+function RunProgressFallback() {
+  return (
+    <div className="run-progress-block is-active run-progress-skeleton" aria-hidden="true">
+      <span />
+      <span />
+    </div>
+  )
 }
 
 function shouldShowSessionSummary(summary: AgentSessionSummary) {
@@ -533,6 +620,8 @@ function formatSessionStatus(status: AgentSessionSummary['status'], copy: AppCop
       return copy.sessionStatusAwaitingTakeover
     case 'done':
       return copy.sessionStatusDone
+    case 'paused':
+      return copy.sessionStatusPaused
     case 'stopped':
       return copy.sessionStatusStopped
     case 'error':
