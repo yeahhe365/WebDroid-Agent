@@ -11,7 +11,7 @@
   position: fixed;
   right: 0;
   top: 0;
-  z-index: 40;
+  z-index: var(--z-settings);
 }
 
 @keyframes settings-overlay-in {
@@ -91,7 +91,16 @@
   outline-offset: 2px;
 }
 
-.settings-sidebar-title,
+.settings-sidebar-title {
+  color: var(--text);
+  display: block;
+  flex: 1 1 auto;
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  margin-left: var(--space-2);
+  text-align: left;
+}
+
 .settings-sidebar-spacer {
   display: none;
 }
@@ -674,6 +683,7 @@
   font-size: var(--text-md);
   line-height: var(--leading-relaxed);
   margin: 0;
+  text-wrap: balance;
 }
 
 .settings-project-badges {
@@ -858,8 +868,11 @@
   .settings-sidebar-title {
     color: var(--text);
     display: block;
+    flex: 0 0 auto;
     font-size: var(--text-md);
     font-weight: var(--font-weight-semibold);
+    margin: 0 auto;
+    text-align: center;
   }
 
   .settings-sidebar-spacer {
@@ -868,17 +881,17 @@
   }
 
   .settings-nav {
+    display: grid;
     flex-direction: row;
     gap: var(--space-2);
-    overflow-x: auto;
-    overflow-y: hidden;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
     padding: 0 var(--space-4) var(--space-4);
     position: relative;
   }
 
   .settings-nav-group {
-    flex-direction: row;
-    gap: var(--space-2);
+    display: contents;
   }
 
   .settings-nav-group + .settings-nav-group {
@@ -890,11 +903,12 @@
   }
 
   .settings-tab-button {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     gap: 7px;
+    justify-content: flex-start;
     min-height: 38px;
-    padding: 0 9px;
-    width: auto;
+    padding: 0 10px;
+    width: 100%;
   }
 
   .settings-tab-button.is-active::before {
@@ -908,11 +922,11 @@
   }
 
   .settings-tab-full-label {
-    display: inline;
+    display: none;
   }
 
   .settings-tab-compact-label {
-    display: none;
+    display: inline;
   }
 
   .settings-tab-button.is-active {
@@ -980,5 +994,151 @@
 
   .repository-stats {
     grid-template-columns: 1fr;
+  }
+}
+
+.settings-help-field button {
+  justify-self: start;
+  min-height: 34px;
+  padding: 0 var(--space-3);
+}
+
+.settings-privacy-note {
+  align-items: flex-start;
+  color: var(--text-muted);
+  display: flex;
+  font-size: var(--text-sm);
+  gap: var(--space-2);
+  line-height: var(--leading-normal);
+  margin: var(--space-2) 0 0;
+  text-wrap: pretty;
+}
+
+.settings-privacy-note svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.settings-data-intro {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  margin: 0 0 var(--space-4);
+  max-width: 72ch;
+  text-wrap: pretty;
+}
+
+.repository-link > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-link > svg:last-child {
+  margin-left: auto;
+}
+
+.settings-sidebar-footer {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  gap: var(--space-2);
+  margin-top: auto;
+  padding: var(--space-4);
+}
+
+.settings-sidebar-footer-dot {
+  background: var(--primary);
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+  height: 6px;
+  width: 6px;
+}
+
+.settings-sidebar-footer code {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .settings-project-hero {
+    align-items: center;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-5);
+    text-align: center;
+  }
+
+  .settings-project-hero-text {
+    align-items: center;
+  }
+
+  .settings-project-logo {
+    height: 64px;
+    width: 64px;
+  }
+
+  .settings-project-name {
+    font-size: var(--text-xl);
+  }
+
+  .settings-project-badges {
+    justify-content: center;
+    margin-top: var(--space-1);
+  }
+
+  .settings-project-features {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .repository-stats {
+    gap: var(--space-2);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .repository-stats div {
+    min-height: 72px;
+    padding: var(--space-3);
+  }
+
+  .repository-stats strong {
+    font-size: var(--text-2xl);
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-resource-title {
+    flex-wrap: wrap;
+  }
+
+  .settings-resource-title button {
+    margin-left: auto;
+    width: auto;
+  }
+}
+
+.settings-data-group--history .settings-data-group-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 560px) {
+  .settings-data-group--history .settings-data-group-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 350px) {
+  .repository-link {
+    gap: var(--space-2);
+    padding: var(--space-3);
   }
 }

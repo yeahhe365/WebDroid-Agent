@@ -1,9 +1,12 @@
 import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { useRef } from 'react'
+import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap'
+import { useOverlayLayer } from '../hooks/useOverlayLayer'
 import { useAppCopy } from './AppContext'
 import { IconButton } from './primitives'
 import type { ActionProtocol } from '../lib/actionProtocol'
 import type { ModelConfig } from '../lib/openAiTypes'
+import type { ModelConnectionTestResult } from '../lib/modelConnectionTest'
 import { CONFIG_TARGET_IDS, type ConfigTarget } from './configTargets'
 import { DeviceHomeOptionsSection } from './DeviceHomeOptionsSection'
 import { DevicePanel } from './DevicePanel'
@@ -32,6 +35,7 @@ export type ConfigSidebarProps = {
   onScreenBlackoutDuringAutoControlChange: (value: boolean) => void
   onSelectTarget: (target: ConfigTarget) => void
   onStreamResponsesChange: (value: boolean) => void
+  onTestConnection?: () => Promise<ModelConnectionTestResult>
   onToggleOpen: () => void
   screenBlackoutDuringAutoControl: boolean
   streamResponses: boolean
@@ -51,26 +55,22 @@ export function ConfigSidebar({
   onScreenBlackoutDuringAutoControlChange,
   onSelectTarget: _onSelectTarget,
   onStreamResponsesChange,
+  onTestConnection,
   onToggleOpen,
   screenBlackoutDuringAutoControl,
   streamResponses,
 }: ConfigSidebarProps) {
   const copy = useAppCopy()
+  const panelRef = useRef<HTMLElement | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
   void _onSelectTarget
 
-  useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onToggleOpen()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isOpen, onToggleOpen])
+  useOverlayLayer(isOpen, onToggleOpen)
+  useDialogFocusTrap({
+    active: isOpen,
+    containerRef: panelRef,
+    initialFocusRef: closeButtonRef,
+  })
 
   if (!isOpen) {
     return null
@@ -81,14 +81,16 @@ export function ConfigSidebar({
       <button
         type="button"
         className="config-drawer-backdrop"
-        aria-label={copy.closeConfigurationPanel}
+        aria-hidden="true"
         onClick={onToggleOpen}
+        tabIndex={-1}
       />
       <aside
         aria-label={copy.configurationPanel}
         className="panel config-panel config-panel-expanded config-drawer"
         role="dialog"
         aria-modal="true"
+        ref={panelRef}
       >
         <div className="config-sidebar-header">
           <span className="config-sidebar-title">{copy.configurationPanel}</span>
@@ -98,6 +100,7 @@ export function ConfigSidebar({
             title={copy.closeConfigurationPanel}
             onClick={onToggleOpen}
             className="config-sidebar-toggle"
+            ref={closeButtonRef}
           >
             <X size={17} />
           </IconButton>
@@ -116,6 +119,7 @@ export function ConfigSidebar({
               onActionProtocolChange={onActionProtocolChange}
               onModelConfigChange={onModelConfigChange}
               onStreamResponsesChange={onStreamResponsesChange}
+              onTestConnection={onTestConnection}
               streamResponses={streamResponses}
             />
           </section>

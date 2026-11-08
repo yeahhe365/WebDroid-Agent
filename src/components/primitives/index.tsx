@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
 export type ButtonVariant = 'default' | 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ButtonSize = 'sm' | 'md' | 'lg'
@@ -10,15 +10,18 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   children: ReactNode
 }
 
-export function Button({
-  variant = 'default',
-  size = 'md',
-  block = false,
-  className = '',
-  children,
-  type = 'button',
-  ...rest
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    variant = 'default',
+    size = 'md',
+    block = false,
+    className = '',
+    children,
+    type = 'button',
+    ...rest
+  },
+  ref,
+) {
   const classes = [
     'button',
     `button--${variant}`,
@@ -30,34 +33,26 @@ export function Button({
     .join(' ')
 
   return (
-    <button type={type} className={classes} {...rest}>
+    <button type={type} className={classes} {...rest} ref={ref}>
       {children}
     </button>
   )
-}
+})
 
-export function IconButton({
-  size = 'md',
-  className = '',
-  children,
-  type = 'button',
-  ...rest
-}: Omit<ButtonProps, 'block'> & { size?: 'sm' | 'md' }) {
-  const classes = [
-    'button',
-    'icon-button',
-    `icon-button--${size}`,
-    className,
-  ]
+export const IconButton = forwardRef<
+  HTMLButtonElement,
+  Omit<ButtonProps, 'block'> & { size?: 'sm' | 'md' }
+>(function IconButton({ size = 'md', className = '', children, type = 'button', ...rest }, ref) {
+  const classes = ['button', 'icon-button', `icon-button--${size}`, className]
     .filter(Boolean)
     .join(' ')
 
   return (
-    <button type={type} className={classes} {...rest}>
+    <button type={type} className={classes} {...rest} ref={ref}>
       {children}
     </button>
   )
-}
+})
 
 export function Card({
   elevated = false,

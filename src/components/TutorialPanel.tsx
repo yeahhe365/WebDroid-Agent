@@ -5,7 +5,9 @@ import {
   Send,
   X,
 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import type { AppCopy } from '../lib/appCopy'
+import { useOverlayLayer } from '../hooks/useOverlayLayer'
 
 type TutorialPanelProps = {
   copy: AppCopy
@@ -15,8 +17,21 @@ type TutorialPanelProps = {
 const stepIcons = [Cable, BrainCircuit, Send, Hand] as const
 
 export function TutorialPanel({ copy, onClose }: TutorialPanelProps) {
+  const panelRef = useRef<HTMLElement | null>(null)
+  useOverlayLayer(true, onClose)
+
+  useEffect(() => {
+    panelRef.current?.focus({ preventScroll: true })
+  }, [])
+
   return (
-    <section id="tutorial-panel" className="tutorial-panel" aria-label={copy.tutorial}>
+    <section
+      id="tutorial-panel"
+      className="tutorial-panel"
+      aria-label={copy.tutorial}
+      ref={panelRef}
+      tabIndex={-1}
+    >
       <div className="tutorial-header">
         <div>
           <p className="eyebrow">{copy.tutorial}</p>

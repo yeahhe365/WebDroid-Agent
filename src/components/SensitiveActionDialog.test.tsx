@@ -74,13 +74,14 @@ describe('SensitiveActionDialog', () => {
 
     const cancelButton = screen.getByRole('button', { name: 'Cancel' })
     const executeButton = screen.getByRole('button', { name: 'Execute' })
-    expect(document.activeElement).toBe(executeButton)
-
-    fireEvent.keyDown(window, { key: 'Tab' })
+    // Dangerous confirmations start on the safe choice.
     expect(document.activeElement).toBe(cancelButton)
 
-    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    fireEvent.keyDown(window, { key: 'Tab' })
     expect(document.activeElement).toBe(executeButton)
+
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cancelButton)
   })
 
   it('keeps long sensitive confirmations scrollable with reachable actions', () => {

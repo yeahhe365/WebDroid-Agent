@@ -213,6 +213,19 @@ button.danger:hover:not(:disabled) {
   border-color: var(--danger-border);
 }
 
+button.confirm-danger {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger);
+  font-weight: var(--font-weight-semibold);
+}
+
+button.confirm-danger:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
+
 .icon-button {
   aspect-ratio: 1;
   border-radius: var(--radius-lg);

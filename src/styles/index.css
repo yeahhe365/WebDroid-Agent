@@ -19,8 +19,10 @@
 @import './chat-composer.css';
 @import './markdown-content.css';
 @import './agent-step-card.css';
+@import './run-progress.css';
 @import './tutorial-panel.css';
 @import './sensitive-action-dialog.css';
+@import './toast.css';
 @import './run-log.css';
 @import './screenshot-lightbox.css';
 @import './responsive.css';

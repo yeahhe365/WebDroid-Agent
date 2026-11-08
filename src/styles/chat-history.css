@@ -217,6 +217,15 @@
   scrollbar-width: thin;
 }
 
+.chat-history-list:has(> .chat-history-empty) {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-history-list:has(> .chat-history-empty) > .chat-history-empty {
+  margin-block: auto;
+}
+
 .chat-history-list h3 {
   color: var(--text-soft);
   font-size: var(--text-2xs);
@@ -402,4 +411,11 @@
   background: var(--accent-soft);
   border-color: var(--accent-soft-border);
   color: var(--accent-soft-text);
+}
+
+@media (max-width: 900px) {
+  .chat-history-sidebar {
+    max-width: calc(100% - 24px);
+    width: min(340px, calc(100% - 24px));
+  }
 }

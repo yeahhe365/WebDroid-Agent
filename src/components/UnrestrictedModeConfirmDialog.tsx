@@ -1,6 +1,9 @@
 import { AlertTriangle, Check, X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import type { AppCopy } from '../lib/appCopy'
+import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap'
+import { useOverlayLayer } from '../hooks/useOverlayLayer'
+import { useBodyOverflow } from '../hooks/useBodyOverflow'
 
 export type UnrestrictedModeConfirmDialogProps = {
   copy: AppCopy
@@ -13,19 +16,17 @@ export function UnrestrictedModeConfirmDialog({
   onCancel,
   onConfirm,
 }: UnrestrictedModeConfirmDialogProps) {
-  const confirmButtonRef = useRef<HTMLButtonElement>(null)
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onCancel()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    // Default focus to cancel for destructive confirmation.
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onCancel])
+  useBodyOverflow(true)
+  useOverlayLayer(true, onCancel)
+  useDialogFocusTrap({
+    active: true,
+    containerRef: panelRef,
+    // Default to the safe choice for a destructive confirmation.
+    initialFocusRef: cancelButtonRef,
+  })
 
   return (
     <div
@@ -38,6 +39,7 @@ export function UnrestrictedModeConfirmDialog({
       <section
         className="sensitive-action-dialog-panel"
         onClick={(event) => event.stopPropagation()}
+        ref={panelRef}
       >
         <header className="sensitive-action-dialog-header">
           <span className="sensitive-action-dialog-icon" aria-hidden="true">
@@ -45,18 +47,14 @@ export function UnrestrictedModeConfirmDialog({
           </span>
           <div>
             <p className="eyebrow">{copy.unrestrictedMode}</p>
-            <h2 id="unrestricted-mode-confirm-title">
-              {copy.unrestrictedModeEnableTitle}
-            </h2>
+            <h2 id="unrestricted-mode-confirm-title">{copy.unrestrictedModeEnableTitle}</h2>
           </div>
         </header>
 
-        <p className="sensitive-action-dialog-message">
-          {copy.unrestrictedModeEnablePrompt}
-        </p>
+        <p className="sensitive-action-dialog-message">{copy.unrestrictedModeEnablePrompt}</p>
 
         <div className="sensitive-action-dialog-actions">
-          <button type="button" className="primary" onClick={onCancel} ref={confirmButtonRef}>
+          <button type="button" className="primary" onClick={onCancel} ref={cancelButtonRef}>
             <X size={16} />
             {copy.unrestrictedModeCancel}
           </button>

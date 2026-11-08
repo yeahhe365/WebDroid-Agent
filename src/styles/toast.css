@@ -1,0 +1,103 @@
+.toast-viewport {
+  bottom: max(var(--space-4), env(safe-area-inset-bottom, 0px));
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+  max-width: min(420px, calc(100vw - var(--space-6)));
+  pointer-events: none;
+  position: fixed;
+  right: var(--space-4);
+  width: min(420px, calc(100vw - var(--space-6)));
+  z-index: var(--z-toast);
+}
+
+.toast {
+  align-items: flex-start;
+  animation: toast-in 220ms var(--ease-out-expo);
+  background: var(--panel-bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevated);
+  color: var(--text);
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  pointer-events: auto;
+  width: 100%;
+}
+
+.toast-ok { border-left-color: var(--primary); }
+.toast-warn { border-left-color: var(--warn); }
+.toast-error { border-left-color: var(--danger); }
+
+.toast-icon {
+  color: var(--accent);
+  display: flex;
+  flex: 0 0 auto;
+  padding-top: 1px;
+}
+
+.toast-ok .toast-icon { color: var(--primary); }
+.toast-warn .toast-icon { color: var(--warn); }
+.toast-error .toast-icon { color: var(--danger); }
+
+.toast-copy {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toast-copy strong {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
+}
+
+.toast-copy span {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  background: transparent;
+  border: 0;
+  color: var(--text-soft);
+  flex: 0 0 auto;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  width: 30px;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 620px) {
+  .toast-viewport {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 88px);
+    justify-items: stretch;
+    left: var(--space-3);
+    right: var(--space-3);
+    top: auto;
+    width: auto;
+  }
+
+  .toast-close {
+    height: 36px;
+    min-height: 36px;
+    width: 36px;
+  }
+}

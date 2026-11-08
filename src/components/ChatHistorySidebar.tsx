@@ -1,9 +1,14 @@
 import { Search, Trash2, X } from 'lucide-react'
 import { IconNewChat, IconSidebarToggle } from './icons'
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import type { AppCopy } from '../lib/appCopy'
 import type { BusyTask } from '../lib/busyTask'
 import type { AgentThreadSummary } from '../lib/threadStore'
+import { ConfirmDialog } from './ConfirmDialog'
+import { useAppLocale } from './AppContext'
+import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap'
+import { useOverlayLayer } from '../hooks/useOverlayLayer'
+import { useBodyOverflow } from '../hooks/useBodyOverflow'
 
 type ChatHistorySidebarProps = {
   activeThreadId: string
@@ -32,6 +37,18 @@ export function ChatHistorySidebar({
 }: ChatHistorySidebarProps) {
   const [queryInput, setQueryInput] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<AgentThreadSummary | null>(null)
+  const sidebarRef = useRef<HTMLElement | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const locale = useAppLocale()
+
+  useBodyOverflow(isOpen)
+  useOverlayLayer(isOpen, onClose)
+  useDialogFocusTrap({
+    active: isOpen,
+    containerRef: sidebarRef,
+    initialFocusRef: closeButtonRef,
+  })
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(queryInput), 300)
@@ -70,6 +87,7 @@ export function ChatHistorySidebar({
       aria-hidden={!isOpen}
       aria-label={copy.history}
       inert={isOpen ? undefined : true}
+      ref={sidebarRef}
       role="complementary"
     >
       <div className="chat-history-header">
@@ -79,6 +97,7 @@ export function ChatHistorySidebar({
           aria-label={copy.closeHistorySidebar}
           title={copy.closeHistorySidebar}
           onClick={onClose}
+          ref={closeButtonRef}
         >
           <IconSidebarToggle size={20} strokeWidth={2} />
         </button>
@@ -164,7 +183,7 @@ export function ChatHistorySidebar({
                           <span className="chat-history-item-text">
                             <span className="chat-history-item-title">{summary.title}</span>
                             <span className="chat-history-item-meta">
-                              {formatHistoryTimestamp(summary.updatedAt)}
+                              {formatHistoryTimestamp(summary.updatedAt, locale)}
                             </span>
                           </span>
                         </button>
@@ -178,11 +197,7 @@ export function ChatHistorySidebar({
                               ? copy.waitForCurrentRun
                               : copy.deleteHistoryThread(summary.title)
                           }
-                          onClick={() => {
-                            if (window.confirm(copy.deleteThreadConfirm(summary.title))) {
-                              onDeleteThread(summary.id)
-                            }
-                          }}
+                          onClick={() => setDeleteTarget(summary)}
                         >
                           <Trash2 size={15} />
                         </button>
@@ -195,17 +210,32 @@ export function ChatHistorySidebar({
           </div>
         </>
       ) : null}
+      <ConfirmDialog
+        cancelLabel={copy.cancel}
+        confirmLabel={copy.deleteThreadAction}
+        danger
+        message={deleteTarget ? copy.deleteThreadConfirm(deleteTarget.title) : ''}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) {
+            onDeleteThread(deleteTarget.id)
+          }
+          setDeleteTarget(null)
+        }}
+        open={deleteTarget !== null}
+        title={deleteTarget ? copy.deleteHistoryThread(deleteTarget.title) : ''}
+      />
     </aside>
   )
 }
 
-function formatHistoryTimestamp(timestamp: number) {
+function formatHistoryTimestamp(timestamp: number, locale: 'en-US' | 'zh-CN') {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) {
     return ''
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

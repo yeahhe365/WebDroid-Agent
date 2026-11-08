@@ -1,7 +1,9 @@
 import { Maximize2, Minus, Plus, RotateCcw, X } from 'lucide-react'
-import { useEffect, useState, type ReactNode, type WheelEvent } from 'react'
+import { useRef, useState, type ReactNode, type WheelEvent } from 'react'
 import { useBodyOverflow } from '../hooks/useBodyOverflow'
+import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap'
 import { useDisplayImageUrl } from '../hooks/useDisplayImageUrl'
+import { useOverlayLayer } from '../hooks/useOverlayLayer'
 
 export type ScreenshotSource = {
   dataUrl: string
@@ -54,25 +56,18 @@ export function ScreenshotLightbox({
 }: ScreenshotLightboxProps) {
   const [open, setOpen] = useState(false)
   const [zoom, setZoom] = useState(1)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
   const zoomPercent = Math.round(zoom * 100)
   const displayUrl = useDisplayImageUrl(screenshot.dataUrl) ?? screenshot.dataUrl
 
   useBodyOverflow(open)
-
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setOpen(false)
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open])
+  useOverlayLayer(open, () => setOpen(false))
+  useDialogFocusTrap({
+    active: open,
+    containerRef: panelRef,
+    initialFocusRef: closeButtonRef,
+  })
 
   function openLightbox() {
     setZoom(1)
@@ -115,7 +110,7 @@ export function ScreenshotLightbox({
           aria-label={dialogLabel ?? `Screenshot for ${title}`}
           onClick={() => setOpen(false)}
         >
-          <div className={panelClassName} onClick={(event) => event.stopPropagation()}>
+          <div className={panelClassName} onClick={(event) => event.stopPropagation()} ref={panelRef}>
             <div className={headerClassName}>
               <div>
                 <strong>{title}</strong>
@@ -159,6 +154,7 @@ export function ScreenshotLightbox({
                   className={closeClassName}
                   onClick={() => setOpen(false)}
                   aria-label={closeLabel}
+                  ref={closeButtonRef}
                 >
                   <X size={16} />
                 </button>

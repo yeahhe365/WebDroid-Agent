@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Search,
   ScrollText,
+  ShieldCheck,
   SlidersHorizontal,
   SquareTerminal,
   Star,
@@ -28,7 +29,9 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap'
+import { useOverlayLayer } from '../hooks/useOverlayLayer'
 import type { AppCopy } from '../lib/appCopy'
 import { REPOSITORY_URL, type RepositoryStats } from '../lib/repository'
 import {
@@ -63,6 +66,7 @@ export type SettingsDialogProps = {
   onImportChatHistory: () => void
   onImportSettings: () => void
   onMaxStepsChange: (value: number) => void
+  onReopenSetup?: () => void
   onResetAppCards: () => void
   onSecretRecordsJsonChange: (value: string) => void
   onTaskNotificationsEnabledChange: (value: boolean) => void
@@ -113,6 +117,7 @@ export function SettingsDialog({
   onImportChatHistory,
   onImportSettings,
   onMaxStepsChange,
+  onReopenSetup,
   onResetAppCards,
   onSecretRecordsJsonChange,
   onTaskNotificationsEnabledChange,
@@ -126,15 +131,15 @@ export function SettingsDialog({
   themeMode,
 }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<SettingsTabId>('preferences')
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  const panelRef = useRef<HTMLElement | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+
+  useOverlayLayer(true, onClose)
+  useDialogFocusTrap({
+    active: true,
+    containerRef: panelRef,
+    initialFocusRef: closeButtonRef,
+  })
   const settingsTabs: SettingsTab[] = [
     {
       id: 'preferences',
@@ -168,6 +173,31 @@ export function SettingsDialog({
   const activeTabLabel =
     settingsTabs.find((tab) => tab.id === activeTab)?.label ?? copy.settings
 
+  function handleTabKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ) {
+    let nextIndex: number | null = null
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = (currentIndex + 1) % settingsTabs.length
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = (currentIndex - 1 + settingsTabs.length) % settingsTabs.length
+    } else if (event.key === 'Home') {
+      nextIndex = 0
+    } else if (event.key === 'End') {
+      nextIndex = settingsTabs.length - 1
+    }
+
+    if (nextIndex === null) {
+      return
+    }
+
+    event.preventDefault()
+    const nextTab = settingsTabs[nextIndex]
+    setActiveTab(nextTab.id)
+    document.getElementById(`settings-tab-${nextTab.id}`)?.focus()
+  }
+
   return (
     <div
       className="settings-page"
@@ -176,7 +206,7 @@ export function SettingsDialog({
       aria-label={copy.settings}
       onClick={onClose}
     >
-      <section className="settings-panel" onClick={(event) => event.stopPropagation()}>
+      <section className="settings-panel" onClick={(event) => event.stopPropagation()} ref={panelRef}>
         <aside className="settings-sidebar">
           <div className="settings-sidebar-header">
             <button
@@ -185,6 +215,7 @@ export function SettingsDialog({
               onClick={onClose}
               aria-label={copy.closeSettings}
               title={copy.closeSettings}
+              ref={closeButtonRef}
             >
               <X size={20} />
             </button>
@@ -198,6 +229,7 @@ export function SettingsDialog({
                 {group.tabs.map((tab) => {
                   const Icon = tab.icon
                   const isActive = activeTab === tab.id
+                  const tabIndex = settingsTabs.findIndex((entry) => entry.id === tab.id)
 
                   return (
                     <button
@@ -206,10 +238,12 @@ export function SettingsDialog({
                       className={isActive ? 'settings-tab-button is-active' : 'settings-tab-button'}
                       id={`settings-tab-${tab.id}`}
                       onClick={() => setActiveTab(tab.id)}
+                      onKeyDown={(event) => handleTabKeyDown(event, tabIndex)}
                       role="tab"
                       aria-label={tab.label}
                       aria-controls={`settings-tabpanel-${tab.id}`}
                       aria-selected={isActive}
+                      tabIndex={isActive ? 0 : -1}
                       title={tab.label}
                     >
                       <Icon size={18} strokeWidth={isActive ? 2 : 1.5} aria-hidden="true" />
@@ -225,6 +259,11 @@ export function SettingsDialog({
               </div>
             ))}
           </nav>
+          <div className="settings-sidebar-footer">
+            <span className="settings-sidebar-footer-dot" aria-hidden="true" />
+            <span>{copy.localFirst}</span>
+            <code>v{__APP_VERSION__}</code>
+          </div>
         </aside>
 
         <main className="settings-main">
@@ -275,19 +314,12 @@ export function SettingsDialog({
                         <option value="dark">{copy.themeDark}</option>
                       </select>
                     </label>
-                    <label className="settings-field">
-                      <span>
-                        <ListChecks size={16} />
-                        {copy.maxSteps}
-                      </span>
-                      <input
-                        type="number"
-                        min={MIN_AGENT_STEPS}
-                        max={MAX_AGENT_STEPS}
-                        value={maxSteps}
-                        onChange={(event) => onMaxStepsChange(event.target.valueAsNumber)}
-                      />
-                    </label>
+                    <MaxStepsField
+                      key={maxSteps}
+                      copy={copy}
+                      maxSteps={maxSteps}
+                      onChange={onMaxStepsChange}
+                    />
                     <label className="settings-field settings-toggle-field">
                       <span>
                         <Bell size={16} />
@@ -308,6 +340,21 @@ export function SettingsDialog({
                       </span>
                     </label>
                   </div>
+                  <p className="settings-privacy-note">
+                    <ShieldCheck size={15} />
+                    <span>{copy.settingsPrivacyNote}</span>
+                  </p>
+                  {onReopenSetup ? (
+                    <div className="settings-field settings-help-field">
+                      <span>
+                        <PanelTop size={16} />
+                        {copy.setupWizard}
+                      </span>
+                      <button type="button" onClick={onReopenSetup}>
+                        {copy.reopenSetup}
+                      </button>
+                    </div>
+                  ) : null}
                 </section>
               ) : null}
 
@@ -332,13 +379,17 @@ export function SettingsDialog({
                       />
                     ) : null}
                   </section>
-                  <section className="settings-data-management" aria-label={copy.dataManagement}>
+                  <section
+                    className="settings-data-management"
+                    aria-label={copy.dataManagementSection}
+                  >
+                    <p className="settings-data-intro">{copy.dataManagementIntro}</p>
                     <div className="settings-data-management-title">
                       <Database size={16} />
-                      <span>{copy.dataManagement}</span>
+                      <span>{copy.dataManagementSection}</span>
                     </div>
                     <div className="settings-data-groups">
-                      <div className="settings-data-group">
+                      <div className="settings-data-group settings-data-group--history">
                         <span className="settings-data-group-label">
                           <MessageSquareX size={14} />
                           {copy.history}
@@ -478,9 +529,10 @@ export function SettingsDialog({
                         target="_blank"
                         rel="noreferrer"
                         aria-label={copy.githubRepository}
+                        title={REPOSITORY_URL}
                       >
                         <Code2 size={18} />
-                        <span>{REPOSITORY_URL}</span>
+                        <span>{REPOSITORY_URL.replace(/^https?:\/\/(www\.)?github\.com\//, '')}</span>
                         <ExternalLink size={15} />
                       </a>
                     </div>
@@ -665,6 +717,49 @@ type ResourceEditorProps = {
   onChange: (value: string) => void
   textareaLabel: string
   value: string
+}
+
+function MaxStepsField({
+  copy,
+  maxSteps,
+  onChange,
+}: {
+  copy: AppCopy
+  maxSteps: number
+  onChange: (value: number) => void
+}) {
+  const [draft, setDraft] = useState(String(maxSteps))
+
+  function commit() {
+    const parsed = Number(draft)
+    if (!draft.trim() || !Number.isFinite(parsed)) {
+      setDraft(String(maxSteps))
+      return
+    }
+    onChange(Math.min(Math.max(Math.round(parsed), MIN_AGENT_STEPS), MAX_AGENT_STEPS))
+  }
+
+  return (
+    <label className="settings-field">
+      <span>
+        <ListChecks size={16} />
+        {copy.maxSteps}
+      </span>
+      <input
+        type="number"
+        min={MIN_AGENT_STEPS}
+        max={MAX_AGENT_STEPS}
+        value={draft}
+        onBlur={commit}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.currentTarget.blur()
+          }
+        }}
+      />
+    </label>
+  )
 }
 
 function ResourceEditor({

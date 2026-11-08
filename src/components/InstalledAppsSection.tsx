@@ -1,11 +1,13 @@
 import { Play, Search, X } from 'lucide-react'
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 import {
   getInstalledAppDisplayName,
   getInstalledAppSearchValues,
 } from '../adapters/installedApps'
 import type { InstalledApp } from '../adapters/deviceTypes'
 import { useBodyOverflow } from '../hooks/useBodyOverflow'
+import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap'
+import { useOverlayLayer } from '../hooks/useOverlayLayer'
 import type { AppCopy } from '../lib/appCopy'
 import type { BusyTask } from '../lib/busyTask'
 import { LazyDetails } from './LazyDetails'
@@ -68,21 +70,15 @@ export function InstalledAppsDialog({
   onLaunchInstalledApp,
 }: InstalledAppsDialogProps) {
   const titleId = useId()
+  const panelRef = useRef<HTMLElement | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
   useBodyOverflow(true)
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [onClose])
+  useOverlayLayer(true, onClose)
+  useDialogFocusTrap({
+    active: true,
+    containerRef: panelRef,
+    initialFocusRef: closeButtonRef,
+  })
 
   return (
     <div
@@ -95,6 +91,7 @@ export function InstalledAppsDialog({
       <section
         className="installed-app-dialog-panel"
         onClick={(event) => event.stopPropagation()}
+        ref={panelRef}
       >
         <header className="installed-app-dialog-header">
           <h2 id={titleId}>{copy.installedApps}</h2>
@@ -104,6 +101,7 @@ export function InstalledAppsDialog({
             aria-label={copy.closeInstalledApps}
             title={copy.closeInstalledApps}
             onClick={onClose}
+            ref={closeButtonRef}
           >
             <X size={16} />
           </button>
