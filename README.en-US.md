@@ -464,11 +464,14 @@ npm run lint
 npm run build
 npm run build:server
 npm run css:audit   # reports CSS selectors no longer referenced (heuristic; confirm by hand)
+npm run build:budget  # check the budgets of an existing dist (build runs it too)
 ```
 
-Derive replay fixtures from an exported trajectory:
-
+> `npm run build` finishes with `scripts/bundle-budget.mjs`: 400 KiB for the entry chunk, 500 KiB for any single chunk, 1100 KiB for everything emitted. Exceeding one fails the build. Override a budget for a one-off look with e.g. `BUNDLE_BUDGET_ENTRY_KB=500`.
+>
 > React and `@yume-chan/adb` are split into their own chunks (see `vite.config.ts`), which leaves the entry chunk at roughly 318 kB / 99 kB gzip — about 180 kB of headroom under Vite's 500 kB warning. The Markdown stack is deliberately not chunked by hand: doing so makes Vite preload it from the entry and undoes the lazy import.
+
+Derive replay fixtures from an exported trajectory:
 
 ```bash
 npm run trajectory:fixture -- <trajectory.json>

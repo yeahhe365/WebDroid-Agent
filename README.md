@@ -504,8 +504,11 @@ npm run lint
 npm run build
 npm run build:server
 npm run css:audit   # 扫描不再被引用的 CSS 选择器（启发式，结果需人工确认）
+npm run build:budget  # 单独检查已有 dist 的包体预算（build 会自动跑）
 ```
 
+> `npm run build` 结束时会跑 `scripts/bundle-budget.mjs`：入口 chunk 上限 400 KiB、单个 chunk 上限 500 KiB、产物总量上限 1100 KiB，超了就让构建失败。临时排查可用 `BUNDLE_BUDGET_ENTRY_KB=500` 之类的环境变量放宽。
+>
 > 打包时 React 与 `@yume-chan/adb` 被拆成独立 chunk（见 `vite.config.ts`），入口 chunk 当前约 318 KB / gzip 99 KB，距 Vite 的 500 KB 警告线留有约 180 KB 余量。Markdown 渲染栈不参与手动分块，否则 Vite 会把它预加载回入口，反而丢掉懒加载。
 
 从一次导出的 trajectory 生成重放夹具：
