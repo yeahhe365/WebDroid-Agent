@@ -1,11 +1,12 @@
-import { lazy, memo, Suspense } from 'react'
+import { memo, Suspense } from 'react'
+import { lazyWithRetry } from '../lib/lazyWithRetry'
 
 export type LazyMarkdownContentProps = {
   className?: string
   content: string
 }
 
-const LazyLoadedMarkdownContent = lazy(() =>
+const LazyLoadedMarkdownContent = lazyWithRetry(() =>
   import('./MarkdownContent').then((module) => ({ default: module.MarkdownContent })),
 )
 
