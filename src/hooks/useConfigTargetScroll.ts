@@ -14,8 +14,12 @@ export function useConfigTargetScroll(
 
     const timeoutId = window.setTimeout(() => {
       const element = document.getElementById(CONFIG_TARGET_IDS[configTarget])
-      if (element instanceof HTMLDetailsElement) {
-        element.open = true
+      const details =
+        element instanceof HTMLDetailsElement
+          ? element
+          : element?.querySelector<HTMLDetailsElement>('details')
+      if (details) {
+        details.open = true
       }
       if (element && typeof element.scrollIntoView === 'function') {
         element.scrollIntoView({ block: 'nearest', behavior: 'smooth' })

@@ -86,6 +86,35 @@
     justify-self: center;
   }
 
+  /* Keep the quick controls in the first viewport on phones. The stage used to
+     grow with the 9:19.5 frame and pushed Back/Home/Enter below the fold. */
+  .phone-stage {
+    height: max(260px, min(520px, calc(100dvh - 367px)));
+  }
+
+  .phone-empty-state {
+    gap: var(--space-2);
+    max-width: 94%;
+    padding: var(--space-2);
+  }
+
+  .phone-empty-state svg {
+    height: 32px;
+    width: 32px;
+  }
+
+  .phone-empty-state span {
+    display: none;
+  }
+
+  .phone-empty-state strong {
+    font-size: var(--text-xs);
+  }
+
+  .phone-connect-cta {
+    white-space: nowrap;
+  }
+
   .config-drawer {
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     bottom: 0;
@@ -130,7 +159,7 @@
   }
 
   .topbar-brand {
-    flex: 0 1 128px;
+    flex: 0 1 150px;
     gap: var(--space-2);
     min-height: 36px;
     padding: 0 var(--space-2) 0 var(--space-0-5);
@@ -138,7 +167,7 @@
 
   .topbar-brand h1 {
     font-size: var(--text-base);
-    max-width: 90px;
+    max-width: 112px;
   }
 
   .topbar-product-tag {
@@ -156,7 +185,7 @@
 
   .status {
     flex: 0 0 auto;
-    max-width: 160px;
+    max-width: 220px;
     min-height: 32px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -212,6 +241,13 @@
     display: none;
   }
 
+  .topbar-tutorial {
+    background: var(--button-bg);
+    border-color: var(--border);
+    padding: 0;
+    width: 36px;
+  }
+
   .command-center {
     display: flex;
     flex-wrap: nowrap;
@@ -233,7 +269,8 @@
     max-width: 42vw;
   }
 
-  .run-strip-stop span {
+  .run-strip-stop span,
+  .run-strip-pause span {
     display: none;
   }
 
@@ -260,5 +297,64 @@
   .chat-empty-icon {
     border-radius: var(--radius-md);
     height: 42px;
+  }
+}
+
+
+
+
+/* Short stages get a compact version of the device dock. */
+@media (max-height: 650px) and (max-width: 899px) {
+  .phone-stage {
+    height: 210px;
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .device-dock {
+    gap: 5px;
+    padding: 0;
+  }
+
+  .device-dock-visual {
+    border-radius: 18px;
+    height: 52px;
+    width: 52px;
+  }
+
+  .device-dock-visual::before {
+    border-radius: 22px;
+    inset: -7px;
+  }
+
+  .device-dock-eyebrow,
+  .device-dock-points,
+  .device-dock-note {
+    display: none;
+  }
+
+  .device-dock-title {
+    font-size: var(--text-lg);
+  }
+
+  .device-dock-body {
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    max-width: 36ch;
+  }
+
+  .device-dock-cta {
+    min-height: 34px;
+    padding: 0 var(--space-3);
+  }
+
+  .phone-connect-cta {
+    white-space: nowrap;
+  }
+}
+
+@media (max-height: 720px) and (max-width: 899px) {
+  .device-dock-points,
+  .device-dock-note {
+    display: none;
   }
 }

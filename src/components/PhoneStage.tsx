@@ -1,11 +1,11 @@
-import { Check, Loader2, Maximize2, Minimize2, RotateCcw, Usb, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { Check, Loader2, Maximize2, Minimize2, RotateCcw, Smartphone, Usb, X, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   useEffect,
   useId,
   useRef,
   useState,
   type CSSProperties,
-  type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type WheelEvent,
 } from 'react'
 import { DEFAULT_SWIPE_DURATION_MS, POINTER_SWIPE_THRESHOLD_PX } from '../lib/actionDefaults'
@@ -19,6 +19,8 @@ import { ScreenshotLightbox, type ScreenshotSource } from './ScreenshotLightbox'
 import type { BusyTask } from '../lib/busyTask'
 import type { CursorPoint } from '../lib/cursorMotion'
 import { useBodyOverflow } from '../hooks/useBodyOverflow'
+import { useDialogFocusTrap } from '../hooks/useDialogFocusTrap'
+import { useOverlayLayer } from '../hooks/useOverlayLayer'
 
 export type PhoneStageProps = {
   copy: AppCopy
@@ -46,6 +48,8 @@ export function PhoneStage({
   const [zoom, setZoom] = useState(1)
   const [fullscreen, setFullscreen] = useState(false)
   const screenshotLayerRef = useRef<HTMLSpanElement | null>(null)
+  const stageRef = useRef<HTMLElement | null>(null)
+  const fullscreenButtonRef = useRef<HTMLButtonElement | null>(null)
   const [screenshotButtonSize, setScreenshotButtonSize] = useState<{
     width: number
     height: number
@@ -72,6 +76,7 @@ export function PhoneStage({
           : deviceConnected && !displayedScreenshot
             ? 'connected-waiting'
             : 'idle'
+  const showDeviceDock = !displayedScreenshot && !deviceConnected
   const placeholderLabel =
     placeholderState === 'connecting'
       ? copy.connectingDevice
@@ -126,22 +131,12 @@ export function PhoneStage({
     ? pendingStepOverlay(pendingStep, displayedScreenshot)
     : null
 
-  useEffect(() => {
-    if (!isFullscreenPreview) {
-      return
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setFullscreen(false)
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-    }
-  }, [isFullscreenPreview])
+  useOverlayLayer(isFullscreenPreview, () => setFullscreen(false))
+  useDialogFocusTrap({
+    active: isFullscreenPreview,
+    containerRef: stageRef,
+    initialFocusRef: fullscreenButtonRef,
+  })
 
   useEffect(() => {
     if (!displayedScreenshot) {
@@ -183,7 +178,7 @@ export function PhoneStage({
     return () => observer.disconnect()
   }, [displayedScreenshot])
 
-  function pointerToScreenPoint(event: MouseEvent<HTMLElement>) {
+  function pointerToScreenPoint(event: ReactPointerEvent<HTMLElement>) {
     if (!displayedScreenshot) {
       return { x: 0, y: 0 }
     }
@@ -197,15 +192,22 @@ export function PhoneStage({
     }
   }
 
-  function startInteraction(event: MouseEvent<HTMLElement>) {
+  function startInteraction(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === 'mouse' && event.button !== 0) {
+      return
+    }
     event.preventDefault()
     event.stopPropagation()
+    event.currentTarget.setPointerCapture?.(event.pointerId)
     setDragStart(pointerToScreenPoint(event))
   }
 
-  function finishInteraction(event: MouseEvent<HTMLElement>) {
+  function finishInteraction(event: ReactPointerEvent<HTMLElement>) {
     event.preventDefault()
     event.stopPropagation()
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
     if (!dragStart) {
       return
     }
@@ -231,6 +233,13 @@ export function PhoneStage({
     setDragStart(null)
   }
 
+  function cancelInteraction(event: ReactPointerEvent<HTMLElement>) {
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    setDragStart(null)
+  }
+
   function changeZoom(delta: number) {
     setZoom((current) => clamp(Math.round((current + delta) * 100) / 100, 1, 3))
   }
@@ -245,8 +254,16 @@ export function PhoneStage({
   }
 
   return (
-    <section className={stageClassName} aria-label={stageLabel}>
+    <section className={stageClassName} aria-label={stageLabel} ref={stageRef}>
       <>
+        {showDeviceDock ? (
+          <DeviceDock
+            copy={copy}
+            isBusy={isPlaceholderBusy}
+            label={placeholderLabel}
+            onConnectDevice={onConnectDevice}
+          />
+        ) : (
         <div
           className={isFullscreenPreview ? 'phone-frame phone-frame-fullscreen' : 'phone-frame'}
           role={isFullscreenPreview ? 'dialog' : undefined}
@@ -301,9 +318,9 @@ export function PhoneStage({
                           event.preventDefault()
                           event.stopPropagation()
                         }}
-                        onMouseDown={startInteraction}
-                        onMouseLeave={() => setDragStart(null)}
-                        onMouseUp={finishInteraction}
+                        onPointerCancel={cancelInteraction}
+                        onPointerDown={startInteraction}
+                        onPointerUp={finishInteraction}
                       />
                     ) : null}
                     {cursor && screenshotButtonSize ? (
@@ -335,6 +352,8 @@ export function PhoneStage({
                       <button
                         type="button"
                         className="phone-connect-cta"
+                        aria-label={`${copy.connect} ${copy.device}`}
+                        title={`${copy.connect} ${copy.device}`}
                         onClick={onConnectDevice}
                         disabled={Boolean(busyTask)}
                       >
@@ -369,6 +388,7 @@ export function PhoneStage({
             </div>
           ) : null}
         </div>
+        )}
         {hasScreenshot ? (
           <div className="phone-zoom-controls" aria-label={copy.screenshotZoomControls}>
             <button
@@ -411,6 +431,58 @@ export function PhoneStage({
         ) : null}
       </>
     </section>
+  )
+}
+
+function DeviceDock({
+  copy,
+  isBusy,
+  label,
+  onConnectDevice,
+}: {
+  copy: AppCopy
+  isBusy: boolean
+  label: string
+  onConnectDevice?: () => void
+}) {
+  return (
+    <div className="device-dock" aria-busy={isBusy || undefined}>
+      <div className="device-dock-visual" aria-hidden="true">
+        {isBusy ? (
+          <Loader2 className="spin" size={34} />
+        ) : (
+          <Smartphone size={36} strokeWidth={1.7} />
+        )}
+        <span className="device-dock-usb-badge">
+          <Usb size={14} />
+        </span>
+      </div>
+      <p className="device-dock-eyebrow">{copy.deviceDockEyebrow}</p>
+      <h3 className="device-dock-title">{isBusy ? label : copy.deviceDockTitle}</h3>
+      <p className="device-dock-body">
+        {isBusy ? copy.deviceDockConnectingBody : copy.deviceDockBody}
+      </p>
+      {!isBusy && onConnectDevice ? (
+        <button
+          type="button"
+          className="phone-connect-cta device-dock-cta"
+          aria-label={`${copy.connect} ${copy.device}`}
+          title={`${copy.connect} ${copy.device}`}
+          onClick={onConnectDevice}
+        >
+          <Usb size={15} aria-hidden="true" />
+          {copy.connect}
+        </button>
+      ) : null}
+      {!isBusy ? (
+        <ul className="device-dock-points">
+          <li><Check size={12} aria-hidden="true" />{copy.deviceDockPointScreenshot}</li>
+          <li><Check size={12} aria-hidden="true" />{copy.deviceDockPointControl}</li>
+          <li><Check size={12} aria-hidden="true" />{copy.deviceDockPointInput}</li>
+        </ul>
+      ) : null}
+      <p className="device-dock-note">{copy.deviceDockRequirement}</p>
+    </div>
   )
 }
 

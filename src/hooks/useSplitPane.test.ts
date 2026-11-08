@@ -170,4 +170,15 @@ describe('useSplitPane', () => {
 
     expect(result.current.splitPercent).toBe(25)
   })
+
+  it('supports a customizable aria-label for localization', () => {
+    const { result } = renderHook(() =>
+      useSplitPane({
+        defaultSplit: 52,
+        ariaLabel: '调整面板大小',
+      }),
+    )
+
+    expect(result.current.handleProps['aria-label']).toBe('调整面板大小')
+  })
 })

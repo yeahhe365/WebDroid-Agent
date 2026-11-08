@@ -44,18 +44,21 @@ function createPendingStep(overrides: Partial<AgentStep> = {}): AgentStep {
 }
 
 describe('PhoneStage', () => {
-  it('keeps a black phone preview visible before a screenshot exists', () => {
+  it('shows the device dock before a screenshot exists', () => {
     const { container } = render(
-      <PhoneStage copy={APP_COPY['en-US']} displayedScreenshot={null} pendingStep={null} />,
+      <PhoneStage
+        copy={APP_COPY['en-US']}
+        displayedScreenshot={null}
+        onConnectDevice={() => {}}
+        pendingStep={null}
+      />,
     )
 
-    const frame = container.querySelector('.phone-frame')
-    const placeholder = container.querySelector('.phone-screen-placeholder')
-
     expect(screen.getByLabelText('Connect Android device')).toBeTruthy()
-    expect(frame).toBeTruthy()
-    expect(placeholder).toBeTruthy()
-    expect(placeholder?.closest('.phone-frame')).toBe(frame)
+    expect(container.querySelector('.device-dock')).toBeTruthy()
+    expect(container.querySelector('.phone-frame')).toBeNull()
+    expect(screen.getByText('Bring your phone into the console')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^connect device$/i })).toBeTruthy()
     expect(screen.queryByLabelText('Screenshot zoom controls')).toBeNull()
   })
 
@@ -69,10 +72,10 @@ describe('PhoneStage', () => {
       />,
     )
 
-    const placeholder = document.querySelector('.phone-screen-placeholder') as HTMLElement
+    const dock = document.querySelector('.device-dock') as HTMLElement
     expect(screen.getByLabelText('Connecting…')).toBeTruthy()
-    expect(placeholder.getAttribute('aria-busy')).toBe('true')
-    expect(placeholder.querySelector('.spin')).toBeTruthy()
+    expect(dock.getAttribute('aria-busy')).toBe('true')
+    expect(dock.querySelector('.spin')).toBeTruthy()
     expect(screen.queryByText('Connect and capture to show the live screen here')).toBeNull()
   })
 
@@ -87,7 +90,7 @@ describe('PhoneStage', () => {
     )
 
     expect(screen.getByLabelText('Capturing screen…')).toBeTruthy()
-    expect(document.querySelector('.phone-screen-placeholder')?.getAttribute('aria-busy')).toBe('true')
+    expect(document.querySelector('.device-dock')?.getAttribute('aria-busy')).toBe('true')
   })
 
   it('shows a disconnecting state while the device is disconnecting', () => {
@@ -137,18 +140,16 @@ describe('PhoneStage', () => {
     ).toBe('true')
   })
 
-  it('shows the idle placeholder with a hint when no screenshot and no busy task', () => {
+  it('shows the idle dock requirement without a busy spinner', () => {
     render(
       <PhoneStage copy={APP_COPY['en-US']} displayedScreenshot={null} pendingStep={null} />,
     )
 
-    const placeholder = document.querySelector('.phone-screen-placeholder') as HTMLElement
+    const dock = document.querySelector('.device-dock') as HTMLElement
     expect(screen.getByLabelText('Connect Android device')).toBeTruthy()
-    expect(placeholder.getAttribute('aria-busy')).toBeNull()
-    expect(placeholder.querySelector('.spin')).toBeNull()
-    expect(
-      screen.getByText('USB debugging required — authorize on the phone when prompted'),
-    ).toBeTruthy()
+    expect(dock.getAttribute('aria-busy')).toBeNull()
+    expect(dock.querySelector('.spin')).toBeNull()
+    expect(screen.getByText('Requires Chrome / Edge with USB debugging enabled.')).toBeTruthy()
   })
 
   it('offers a connect CTA on the idle disconnected phone preview', () => {
@@ -162,7 +163,7 @@ describe('PhoneStage', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /^connect$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^connect device$/i }))
     expect(onConnectDevice).toHaveBeenCalledTimes(1)
   })
 
@@ -193,8 +194,8 @@ describe('PhoneStage', () => {
       toJSON: () => ({}),
     })
 
-    fireEvent.mouseDown(layer, { clientX: 145, clientY: 320 })
-    fireEvent.mouseUp(layer, { clientX: 145, clientY: 320 })
+    fireEvent.pointerDown(layer, { clientX: 145, clientY: 320, pointerId: 1 })
+    fireEvent.pointerUp(layer, { clientX: 145, clientY: 320, pointerId: 1 })
 
     expect(screen.getByText('tap (540, 1200)')).toBeTruthy()
 
@@ -230,8 +231,8 @@ describe('PhoneStage', () => {
       toJSON: () => ({}),
     })
 
-    fireEvent.mouseDown(layer, { clientX: 280, clientY: 620 })
-    fireEvent.mouseUp(layer, { clientX: 280, clientY: 620 })
+    fireEvent.pointerDown(layer, { clientX: 280, clientY: 620, pointerId: 1 })
+    fireEvent.pointerUp(layer, { clientX: 280, clientY: 620, pointerId: 1 })
 
     expect(screen.getByText('tap (1079, 2399)')).toBeTruthy()
 
@@ -306,8 +307,8 @@ describe('PhoneStage', () => {
       toJSON: () => ({}),
     })
 
-    fireEvent.mouseDown(layer, { clientX: 145, clientY: 520 })
-    fireEvent.mouseUp(layer, { clientX: 145, clientY: 220 })
+    fireEvent.pointerDown(layer, { clientX: 145, clientY: 520, pointerId: 1 })
+    fireEvent.pointerUp(layer, { clientX: 145, clientY: 220, pointerId: 1 })
 
     expect(screen.getByText('swipe (540, 2000) -> (540, 800)')).toBeTruthy()
 
@@ -498,7 +499,7 @@ describe('PhoneStage', () => {
     expect(layoutCss).toMatch(
       /\.phone-column\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto/,
     )
-    expect(responsiveCss).not.toMatch(/\.phone-stage\s*\{[\s\S]*min-height/)
+    expect(responsiveCss).not.toMatch(/\.phone-stage\s*\{[^}]*min-height/)
 
     // No mode may reintroduce a floor. Running mode used to raise one to
     // min(780px, calc(100dvh - 180px)) - about 90px more than the rows below

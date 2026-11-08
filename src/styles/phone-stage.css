@@ -36,7 +36,7 @@
   position: fixed;
   right: 0;
   top: 0;
-  z-index: 39;
+  z-index: calc(var(--z-fullscreen) - 1);
 }
 
 .phone-frame {
@@ -115,7 +115,7 @@
   position: fixed;
   transform: none;
   width: 100vw;
-  z-index: 40;
+  z-index: var(--z-fullscreen);
 }
 
 .phone-frame.phone-frame-fullscreen::before {
@@ -215,27 +215,29 @@
   color: rgba(255, 255, 255, 0.45);
   font-size: var(--text-xs);
   line-height: 1.4;
+  text-wrap: balance;
 }
 
 .phone-connect-cta {
   align-items: center;
-  background: var(--accent);
+  background: var(--primary);
   border: 0;
   border-radius: var(--radius-full);
-  color: #fff;
+  color: var(--on-primary);
   cursor: pointer;
   display: inline-flex;
   font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);
   gap: var(--space-1);
   margin-top: var(--space-1);
+  max-width: 100%;
   min-height: 32px;
   padding: var(--space-1) var(--space-3);
   transition: background var(--duration-normal) var(--ease-productive);
 }
 
 .phone-connect-cta:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--primary-hover);
 }
 
 .phone-connect-cta:disabled {
@@ -415,6 +417,8 @@
   position: absolute;
   right: 0;
   top: 0;
+  touch-action: none;
+  user-select: none;
   z-index: 4;
 }
 
@@ -473,3 +477,130 @@
     drop-shadow(0 0 15px rgba(51, 156, 255, 0.48));
 }
 
+
+
+/* ── Device dock (disconnected state) ─────────────────────────────
+   The phone frame is reserved for real screenshots. Before a device is
+   connected the stage becomes a focused connection surface instead of an
+   empty handset silhouette. */
+.device-dock {
+  align-content: center;
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  max-width: 460px;
+  padding: var(--space-4);
+  text-align: center;
+  width: 100%;
+}
+
+.device-dock-visual {
+  align-items: center;
+  background:
+    radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 65%),
+    var(--surface);
+  border: 1px solid var(--accent-soft-border);
+  border-radius: 26px;
+  box-shadow:
+    var(--shadow-sm),
+    0 10px 30px color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-soft-text);
+  display: grid;
+  height: 84px;
+  place-items: center;
+  position: relative;
+  width: 84px;
+}
+
+.device-dock-visual::before {
+  border: 1px dashed var(--accent-soft-border);
+  border-radius: 32px;
+  content: "";
+  inset: -12px;
+  position: absolute;
+}
+
+.device-dock-usb-badge {
+  align-items: center;
+  background: var(--primary);
+  border: 3px solid var(--panel-bg);
+  border-radius: var(--radius-full);
+  bottom: -7px;
+  box-shadow: var(--shadow-sm);
+  color: var(--on-primary);
+  display: grid;
+  height: 30px;
+  place-items: center;
+  position: absolute;
+  right: -7px;
+  width: 30px;
+}
+
+.device-dock-eyebrow {
+  color: var(--accent-soft-text);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.14em;
+  margin: var(--space-1) 0 0;
+  text-transform: uppercase;
+}
+
+.device-dock-title {
+  color: var(--text);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--leading-tight);
+  margin: 0;
+  max-width: 22ch;
+  text-wrap: balance;
+}
+
+.device-dock-body {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  margin: 0;
+  max-width: 40ch;
+  text-wrap: pretty;
+}
+
+.device-dock-cta {
+  font-size: var(--text-sm);
+  gap: var(--space-2);
+  min-height: 42px;
+  padding: 0 var(--space-5);
+}
+
+.device-dock-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+}
+
+.device-dock-points li {
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: var(--text-xs);
+  gap: var(--space-1);
+  padding: 4px var(--space-2);
+}
+
+.device-dock-points svg {
+  color: var(--primary);
+}
+
+.device-dock-note {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  margin: 0;
+  max-width: 42ch;
+}

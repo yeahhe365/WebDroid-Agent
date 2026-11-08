@@ -8,6 +8,7 @@ export type RunLogLabels = {
   clear: string
   closeScreenshotPreview: string
   empty: string
+  emptyHint: string
   executionResult: string
   expandedScreenshotFor: (title: string) => string
   failureClass: string
@@ -47,6 +48,7 @@ export function RunLog({
     clear: 'Clear',
     closeScreenshotPreview: 'Close screenshot preview',
     empty: 'No events yet',
+    emptyHint: 'Run the Agent to see steps, model output, and screenshots here.',
     executionResult: 'Execution result',
     expandedScreenshotFor: (title: string) => `Expanded screenshot for ${title}`,
     failureClass: 'Failure class',
@@ -78,8 +80,9 @@ export function RunLog({
       <div className="log-list">
         {logs.length === 0 ? (
           <div className="log-empty-state">
-            <Logs size={20} strokeWidth={2} aria-hidden="true" />
+            <Logs size={22} strokeWidth={2} aria-hidden="true" />
             <p>{labels.empty}</p>
+            <small>{labels.emptyHint}</small>
           </div>
         ) : null}
         {logs.map((entry) => (

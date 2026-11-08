@@ -17,6 +17,8 @@ export type SplitPaneOptions = {
   storage?: SplitPaneStorage | null
   /** Storage key; null disables persistence. */
   storageKey?: string | null
+  /** Accessibility label for the resize handle separator. */
+  ariaLabel?: string
 }
 
 export type SplitPaneHandleProps = {
@@ -88,6 +90,7 @@ function readStoredSplit(
  * per-state defaults until then.
  */
 export function useSplitPane({
+  ariaLabel = 'Resize panes',
   defaultSplit,
   maxSplit = 75,
   minSplit = 25,
@@ -175,7 +178,7 @@ export function useSplitPane({
   )
 
   const handleProps: SplitPaneHandleProps = {
-    'aria-label': 'Resize panes',
+    'aria-label': ariaLabel,
     'aria-orientation': 'vertical',
     'aria-valuemax': maxSplit,
     'aria-valuemin': minSplit,
