@@ -371,6 +371,14 @@ function projectAction(action: AgentAction): AgentAction {
         risk: action.risk,
         reason: action.reason,
       })
+    case 'tap_ref':
+      return presentFields({
+        action: 'tap_ref' as const,
+        ref: action.ref,
+        message: action.message,
+        risk: action.risk,
+        reason: action.reason,
+      })
     case 'swipe':
       return presentFields({
         action: 'swipe' as const,

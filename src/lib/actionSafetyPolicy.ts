@@ -108,6 +108,7 @@ const SAFETY_MESSAGES: Record<SafetyCategory, string> = {
 
 const MUTATING_ACTIONS = new Set<AgentAction['action']>([
   'tap',
+  'tap_ref',
   'long_press',
   'double_tap',
   'input_text',
@@ -233,7 +234,7 @@ function classify(
 function collectPolicyEvidence(action: AgentAction, context: ActionSafetyContext) {
   const actionFields = [
     'reason' in action ? action.reason : undefined,
-    action.action === 'tap' ? action.message : undefined,
+    action.action === 'tap' || action.action === 'tap_ref' ? action.message : undefined,
     action.action === 'input_text' ? action.text : undefined,
     action.action === 'type_secret' ? action.secretId : undefined,
     action.action === 'set_clipboard' ? action.text : undefined,

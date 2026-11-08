@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DeviceBackendError, type DeviceBackend } from '../adapters/deviceTypes'
 import { createAgentThread, recordThreadScreenshot } from './agentThread'
+import { ElementRefStabilizer } from './elementRefs'
 import { createDefaultActionToolRegistry } from './toolRegistry'
 
 function fakeDevice(execute?: DeviceBackend['execute']): DeviceBackend & { executed: string[] } {
@@ -520,5 +521,49 @@ describe('ActionToolResult.failureKind', () => {
     expect(result.success).toBe(false)
     expect(result.failureKind).toBe('device_io')
     expect(result.safetyDecision).toBeUndefined()
+  })
+
+  it('taps the element a stable ref names', async () => {
+    const registry = createDefaultActionToolRegistry()
+    const device = fakeDevice()
+    const elementRefs = new ElementRefStabilizer()
+    const tree = {
+      nodes: [
+        {
+          index: 0,
+          text: 'Wi-Fi',
+          clickable: true,
+          bounds: { left: 100, top: 200, right: 300, bottom: 400 },
+        },
+      ],
+    }
+    elementRefs.next(tree)
+
+    const result = await registry.execute(
+      { action: 'tap_ref', ref: 'e1' },
+      { device, elementRefs },
+    )
+
+    expect(result.success).toBe(true)
+    expect(device.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'tap', x: 200, y: 300 }),
+      expect.anything(),
+    )
+    expect(result.summary).toContain('resolved to (200, 300)')
+  })
+
+  it('reports a stale ref as recoverable instead of tapping the wrong place', async () => {
+    const registry = createDefaultActionToolRegistry()
+    const device = fakeDevice()
+    const elementRefs = new ElementRefStabilizer()
+
+    const result = await registry.execute(
+      { action: 'tap_ref', ref: 'e9' },
+      { device, elementRefs },
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.failureKind).toBe('action_stale')
+    expect(device.execute).not.toHaveBeenCalled()
   })
 })

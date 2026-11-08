@@ -1,5 +1,19 @@
 import type { DeviceScreenTree, DeviceState, InstalledApp } from '../adapters/deviceTypes'
 import { formatScreenTreeForPrompt } from '../adapters/uiAutomator'
+import {
+  formatActionEffectForPrompt,
+  type ActionEffect,
+} from './actionEffect'
+import {
+  formatScreenStateForPrompt,
+  type ScreenCheck,
+} from './screenDiagnosis'
+import {
+  assessTreeQuality,
+  promptNodeLimit,
+  treeQualityPromptNote,
+} from './treeQuality'
+import { UNTRUSTED_PROMPT_RULE } from './untrusted'
 import type { ScreenSize } from './actionTypes'
 import type { ActionProtocol } from './actionProtocol'
 import {
@@ -60,6 +74,14 @@ export type BuildAgentPromptContextInput = {
   screenTree?: DeviceScreenTree
   secrets?: readonly SecretDescriptor[]
   recalledScreenshot?: AgentRecalledScreenshot
+  /** Outcome of the previous step's action, when the two screens could be compared. */
+  previousActionEffect?: { effect: ActionEffect; action: string }
+  /** Diagnosis of the screen the model is about to see. */
+  screenCheck?: ScreenCheck
+  /** Stable refs assigned to this dump's nodes, so the model can name elements. */
+  refs?: ReadonlyMap<number, string>
+  /** Recipes drafted from earlier runs of a similar task. */
+  skillPrompt?: string
 }
 
 export type BuiltAgentPromptContext = {
@@ -89,6 +111,10 @@ export function buildAgentPromptContext({
   screenTree,
   secrets,
   recalledScreenshot,
+  previousActionEffect,
+  screenCheck,
+  refs,
+  skillPrompt,
 }: BuildAgentPromptContextInput): BuiltAgentPromptContext {
   const history = thread
     ? historyFromRecentTurns(thread, maxRecentTurns)
@@ -101,7 +127,9 @@ export function buildAgentPromptContext({
     screen,
   })
 
+  const treeQuality = assessTreeQuality(screenTree)
   const lines = [
+    UNTRUSTED_PROMPT_RULE,
     `Task: ${truncatePromptContextText(task, TASK_CONTEXT_MAX_LENGTH)}`,
     latestUserMessage
       ? `Latest user message: ${truncatePromptContextText(
@@ -128,7 +156,17 @@ export function buildAgentPromptContext({
     thread?.contextSummary ? `<context_summary>\n${thread.contextSummary}\n</context_summary>` : null,
     thread ? formatRecentActionErrors(thread) : null,
     `Screen Info: ${screenInfo}`,
-    formatScreenTreeForPrompt(screenTree),
+    screenCheck ? formatScreenStateForPrompt(screenCheck) : null,
+    previousActionEffect
+      ? formatActionEffectForPrompt(previousActionEffect.effect, previousActionEffect.action)
+      : null,
+    formatScreenTreeForPrompt(screenTree, {
+      maxNodes: promptNodeLimit(treeQuality),
+      quality: treeQuality.quality,
+      ...(refs ? { refs } : {}),
+    }),
+    treeQualityPromptNote(treeQuality),
+    skillPrompt ?? null,
     appCard
       ? `<app_card>\n${truncatePromptContextText(appCard, APP_CARD_PROMPT_MAX_LENGTH)}\n</app_card>`
       : null,

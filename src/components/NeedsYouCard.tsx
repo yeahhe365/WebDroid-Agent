@@ -132,6 +132,13 @@ function needsYouView(kind: NeedsYouKind, copy: AppCopy, message?: string) {
         body: fallback || copy.needsYouMaxStepsBody,
         icon: Flag,
       }
+    case 'limit':
+      return {
+        eyebrow: copy.sessionStatusAwaitingReview,
+        title: copy.needsYouLimitTitle,
+        body: fallback || copy.needsYouLimitBody,
+        icon: AlertTriangle,
+      }
     case 'blocked':
       return {
         eyebrow: copy.sessionStatusAwaitingReview,
@@ -182,7 +189,13 @@ function needsYouPrimaryLabel(kind: NeedsYouKind, copy: AppCopy) {
   if (kind === 'takeover' || kind === 'login' || kind === 'captcha' || kind === 'payment') {
     return copy.needsYouResume
   }
-  if (kind === 'review' || kind === 'answer' || kind === 'paused' || kind === 'max_steps') {
+  if (
+    kind === 'review' ||
+    kind === 'answer' ||
+    kind === 'paused' ||
+    kind === 'max_steps' ||
+    kind === 'limit'
+  ) {
     return copy.needsYouContinue
   }
   return copy.needsYouRetry
@@ -192,7 +205,7 @@ function needsYouActionMessage(kind: NeedsYouKind, copy: AppCopy) {
   if (kind === 'takeover' || kind === 'login' || kind === 'captcha' || kind === 'payment') {
     return copy.resumeAfterTakeoverMessage
   }
-  if (kind === 'review' || kind === 'answer' || kind === 'max_steps') {
+  if (kind === 'review' || kind === 'answer' || kind === 'max_steps' || kind === 'limit') {
     return copy.resumeAfterReviewMessage
   }
   if (kind === 'paused') {

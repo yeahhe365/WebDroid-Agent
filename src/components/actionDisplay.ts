@@ -44,6 +44,7 @@ const ACTION_ICONS = {
   swipe: Move,
   take_over: Hand,
   tap: MousePointerClick,
+  tap_ref: MousePointerClick,
   type_secret: KeyRound,
   view_screenshot: Image,
   wait: Clock,

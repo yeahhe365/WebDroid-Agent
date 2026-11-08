@@ -15,6 +15,8 @@ import type { AgentAction, TakeOverKind } from './actionTypes'
 import { recallThreadScreenshot, type AgentThread, type ReviewKind } from './agentThread'
 import { delayWithAbort, isAbortError, throwIfAborted, withAbort } from './abortSignal'
 import { classifyThrownFailure, type FailureClass } from './failureTaxonomy'
+import type { ElementRefStabilizer } from './elementRefs'
+import type { TapRefAction } from './actionTypes'
 
 export type ActionToolParameter = {
   type: 'string' | 'number' | 'boolean' | 'object' | 'list'
@@ -52,6 +54,8 @@ export type ActionToolContext = {
    */
   onDeviceCommand?: (argv: readonly string[]) => void
   unrestrictedMode?: boolean
+  /** Stable element refs for this run, used to resolve tap_ref actions. */
+  elementRefs?: ElementRefStabilizer
   /**
    * Invoked when an irreversible action (factory reset, account deletion, payment)
    * is blocked even in unrestricted mode. Lets the caller log the event to the
@@ -79,6 +83,13 @@ export const DEFAULT_ACTION_TOOL_SIGNATURES = {
       y: { type: 'number', required: true, description: 'Vertical screen coordinate.' },
       message: { type: 'string', required: false, description: 'Optional confirmation message.' },
       risk: { type: 'string', required: false, description: 'Set to sensitive for risky taps.' },
+    },
+  },
+  tap_ref: {
+    description:
+      'Tap the element with a stable ref (e12) from the latest screen_tree. Prefer this over computing coordinates when the ref is present.',
+    parameters: {
+      ref: { type: 'string', required: true, description: 'Element ref such as e12.' },
     },
   },
   swipe: {
@@ -438,7 +449,10 @@ export class ActionToolRegistry {
         toolName,
         success: false,
         summary: caught instanceof Error ? caught.message : String(caught),
-        failureKind: classifyThrownFailure(caught),
+        failureKind:
+          caught instanceof StaleElementRefError
+            ? 'action_stale'
+            : classifyThrownFailure(caught),
       }
     }
   }
@@ -495,11 +509,59 @@ export function createDefaultActionToolRegistry(disabledTools: readonly ActionTo
   for (const [name, signature] of Object.entries(DEFAULT_ACTION_TOOL_SIGNATURES)) {
     registry.register(name as ActionToolName, {
       ...signature,
-      execute: (action, context) => executeDefaultAction(action, context),
+      execute: (action, context) =>
+        action.action === 'tap_ref'
+          ? executeTapRefAction(action, context)
+          : executeDefaultAction(action, context),
     })
   }
 
   return registry
+}
+
+/**
+ * A ref that no longer names anything is a normal turn of events, not a device
+ * failure: the screen moved on. The run keeps going so the model can pick the
+ * element again from the new dump.
+ */
+class StaleElementRefError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'StaleElementRefError'
+  }
+}
+
+async function executeTapRefAction(action: TapRefAction, context: ActionToolContext) {
+  const refs = context.elementRefs
+  if (!refs) {
+    throw new StaleElementRefError(
+      'Element refs are unavailable in this execution context; use tap with coordinates.',
+    )
+  }
+  const resolved = refs.resolve(action.ref)
+  if (resolved.status === 'stale') {
+    throw new StaleElementRefError(
+      `Ref ${action.ref} is stale (${resolved.cause}). Read the current screen_tree and use a ref that is in it, or tap coordinates.`,
+    )
+  }
+  const x = Math.round(resolved.center.x)
+  const y = Math.round(resolved.center.y)
+  const summary = await context.device.execute(
+    {
+      action: 'tap',
+      x,
+      y,
+      ...(action.message ? { message: action.message } : {}),
+      ...(action.risk ? { risk: action.risk } : {}),
+      ...(action.reason ? { reason: action.reason } : {}),
+    },
+    {
+      confirmSensitiveAction: context.confirmSensitiveAction,
+      onDeviceCommand: context.onDeviceCommand,
+      signal: context.signal,
+    },
+  )
+  return [summary, `tap_ref ${action.ref} resolved to (${x}, ${y})`].filter(Boolean).join('\n')
 }
 
 async function executeDefaultAction(action: AgentAction, context: ActionToolContext) {

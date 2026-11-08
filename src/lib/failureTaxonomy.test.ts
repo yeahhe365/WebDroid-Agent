@@ -41,8 +41,12 @@ describe('classifyThrownFailure', () => {
 })
 
 describe('auto-recoverable whitelist', () => {
-  it('contains exactly the two transient device classes', () => {
-    expect([...AUTO_RECOVERABLE_FAILURES].sort()).toEqual(['device_io', 'device_timeout'])
+  it('contains exactly the transient device classes and a stale ref', () => {
+    expect([...AUTO_RECOVERABLE_FAILURES].sort()).toEqual([
+      'action_stale',
+      'device_io',
+      'device_timeout',
+    ])
   })
 
   it('retries device failures but not unsupported or unknown ones', () => {

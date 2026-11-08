@@ -104,6 +104,10 @@ export function buildInputCommandSequence(
       throw new DeviceBackendError(`Unsupported call_api action: ${action.instruction}`)
     case 'type_secret':
       throw new DeviceBackendError('type_secret must be resolved by the action tool registry.')
+    case 'tap_ref':
+      // A ref only means something against one dump, so it is resolved into a
+      // coordinate tap by the registry before any device command is built.
+      throw new DeviceBackendError('tap_ref must be resolved by the action tool registry.')
     case 'custom_tool':
       throw new DeviceBackendError('custom_tool does not execute on the Android device.')
     case 'view_screenshot':

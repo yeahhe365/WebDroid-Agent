@@ -16,6 +16,7 @@ export const FAILURE_CLASSES = [
   'model_transport',
   'model_output',
   'action_invalid',
+  'action_stale',
   'unsupported_action',
   'device_io',
   'device_timeout',
@@ -62,6 +63,9 @@ export function classifyThrownFailure(
 
 /** Transient device hiccups are worth one more attempt; nothing else is. */
 export const AUTO_RECOVERABLE_FAILURES: ReadonlySet<FailureClass> = new Set([
+  // A stale ref is an ordinary situation: the screen moved on, so the model
+  // reads the new dump and picks again. It must not end the run.
+  'action_stale',
   'device_io',
   'device_timeout',
 ])

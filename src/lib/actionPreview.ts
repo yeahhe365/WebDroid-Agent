@@ -8,6 +8,8 @@ export function buildActionPreview(action: AgentAction): string {
       return `launch ${action.app}${action.packageName ? ` (${action.packageName})` : ''}${suffix}`
     case 'tap':
       return `tap (${action.x}, ${action.y})${suffix}`
+    case 'tap_ref':
+      return `tap_ref ${action.ref}${suffix}`
     case 'swipe':
       return `swipe (${action.fromX}, ${action.fromY}) -> (${action.toX}, ${action.toY}), ${
         action.durationMs ?? 400

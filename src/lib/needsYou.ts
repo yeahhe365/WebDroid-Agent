@@ -11,6 +11,7 @@ export type NeedsYouKind =
   | 'answer'
   | 'blocked'
   | 'max_steps'
+  | 'limit'
   | 'paused'
   | 'stopped'
   | 'error'
@@ -36,7 +37,7 @@ export function needsYouKind(
     if (reviewKind === 'answer') {
       return 'answer'
     }
-    if (reviewKind === 'blocked' || reviewKind === 'max_steps') {
+    if (reviewKind === 'blocked' || reviewKind === 'max_steps' || reviewKind === 'limit') {
       return reviewKind
     }
     if (reviewKind) {

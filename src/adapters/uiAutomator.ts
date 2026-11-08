@@ -1,3 +1,5 @@
+import { wrapUntrusted } from '../lib/untrusted'
+
 export const UI_AUTOMATOR_DUMP_PATH = '/sdcard/webdroid-window-dump.xml'
 
 export type ScreenTreeBounds = {
@@ -19,6 +21,8 @@ export type ScreenTreeNode = {
   focused?: boolean
   enabled?: boolean
   selected?: boolean
+  /** The node masks its text (a password field): the tree says so, the screen shows dots. */
+  password?: boolean
   bounds?: ScreenTreeBounds
 }
 
@@ -58,6 +62,7 @@ export function parseUiAutomatorDumpXml(xml: string): DeviceScreenTree {
       ...optionalBoolean('focused', attributes.focused),
       ...optionalBoolean('enabled', attributes.enabled),
       ...optionalBoolean('selected', attributes.selected),
+      ...optionalBoolean('password', attributes.password),
       ...(bounds ? { bounds } : {}),
     })
   }
@@ -65,30 +70,56 @@ export function parseUiAutomatorDumpXml(xml: string): DeviceScreenTree {
   return { nodes }
 }
 
+export type ScreenTreePromptOptions = {
+  maxNodes?: number
+  /** Stable ref per node index, from the run's ElementRefStabilizer. */
+  refs?: ReadonlyMap<number, string>
+  /** How much of the screen the tree describes; shown so the model can weigh it. */
+  quality?: 'adequate' | 'partial' | 'unusable'
+}
+
+/**
+ * The tree is device data, so the block is wrapped in `<untrusted>`: a screen
+ * that prints "</untrusted>" or "ignore your rules" must stay data. The
+ * advisory sentence after the block is ours and stays outside the wrapper.
+ */
 export function formatScreenTreeForPrompt(
   tree?: DeviceScreenTree,
-  options: { maxNodes?: number } = {},
+  options: ScreenTreePromptOptions = {},
 ) {
   const maxNodes = options.maxNodes ?? 80
-  const nodes = (tree?.nodes ?? []).filter(isPromptUsefulNode).slice(0, maxNodes)
+  const usefulNodes = (tree?.nodes ?? []).filter(isPromptUsefulNode)
+  const nodes = usefulNodes.slice(0, maxNodes)
   if (nodes.length === 0) {
     return null
   }
 
-  return [
-    '<screen_tree>',
-    ...nodes.map(formatScreenTreeNode),
-    tree && tree.nodes.filter(isPromptUsefulNode).length > nodes.length
-      ? `... truncated ${tree.nodes.filter(isPromptUsefulNode).length - nodes.length} more nodes`
+  const openTag = options.quality
+    ? `<screen_tree quality="${options.quality}">`
+    : '<screen_tree>'
+  const block = [
+    openTag,
+    ...nodes.map((node) => formatScreenTreeNode(node, options.refs?.get(node.index))),
+    usefulNodes.length > nodes.length
+      ? `... truncated ${usefulNodes.length - nodes.length} more nodes`
       : null,
     '</screen_tree>',
-    [
-      'Use screen_tree text, content descriptions, resource ids, bounds, and centers to choose',
-      'more accurate tap/input targets; verify visually with the screenshot when a node may be stale.',
-    ].join(' '),
   ]
     .filter(Boolean)
     .join('\n')
+
+  const advisory = options.refs
+    ? [
+        'Use screen_tree text, content descriptions, resource ids, bounds, and centers to choose',
+        'more accurate tap/input targets; verify visually with the screenshot when a node may be stale.',
+        'A ref (e12) names the same element across steps; if a ref is reported stale, re-read instead of retrying it.',
+      ].join(' ')
+    : [
+        'Use screen_tree text, content descriptions, resource ids, bounds, and centers to choose',
+        'more accurate tap/input targets; verify visually with the screenshot when a node may be stale.',
+      ].join(' ')
+
+  return [wrapUntrusted(block), advisory].join('\n')
 }
 
 function parseXmlAttributes(raw: string) {
@@ -135,9 +166,9 @@ function isPromptUsefulNode(node: ScreenTreeNode) {
   )
 }
 
-function formatScreenTreeNode(node: ScreenTreeNode) {
+function formatScreenTreeNode(node: ScreenTreeNode, ref?: string) {
   const parts = [
-    `#${node.index}`,
+    ref ? `${ref} #${node.index}` : `#${node.index}`,
     node.bounds ? `bounds=${formatBounds(node.bounds)}` : null,
     node.bounds ? `center=${formatCenter(node.bounds)}` : null,
     node.className ? `class=${node.className}` : null,
@@ -151,6 +182,7 @@ function formatScreenTreeNode(node: ScreenTreeNode) {
     node.focused ? 'focused=true' : null,
     node.enabled === false ? 'enabled=false' : null,
     node.selected ? 'selected=true' : null,
+    node.password ? 'password=true' : null,
   ].filter(Boolean)
   return parts.join(' ')
 }

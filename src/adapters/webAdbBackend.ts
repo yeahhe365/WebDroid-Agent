@@ -4,6 +4,7 @@ import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb'
 import { ReadableStream } from '@yume-chan/stream-extra'
 import type { AgentAction } from '../lib/actionTypes'
 import { delayWithAbort, isAbortError, throwIfAborted, withAbort } from '../lib/abortSignal'
+import { waitForSettle } from '../lib/screenSettle'
 import {
   ADB_KEYBOARD_REMOTE_APK_PATH,
   assertAdbKeyboardApk,
@@ -108,12 +109,20 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     this.#clipboardText = null
     const manager = AdbDaemonWebUsbDeviceManager.BROWSER
     if (!manager) {
-      throw new DeviceBackendError('WebUSB is not available in this browser.')
+      throw new DeviceBackendError(
+        'WebUSB is not available in this browser.',
+        'io',
+        'webusb-unavailable',
+      )
     }
 
     const device = await manager.requestDevice()
     if (!device) {
-      throw new DeviceBackendError('No Android ADB device was selected.')
+      throw new DeviceBackendError(
+        'No Android ADB device was selected.',
+        'io',
+        'no-device-selected',
+      )
     }
 
     const connection = await device.connect()
@@ -569,13 +578,35 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     }
   }
 
+  /**
+   * Waits for the screen to stop changing instead of always sleeping for the
+   * configured delay: a static list settles in one poll, a slow page keeps the
+   * budget. The screenshot itself is the signal, so this needs no extra tree
+   * dump. When capture fails the old fixed delay is still paid.
+   */
   async #withActionSettle(result: string, signal?: AbortSignal) {
-    if (this.#timing.actionSettleMs <= 0) {
+    const floor = this.#timing.actionSettleMs
+    if (floor <= 0) {
       return result
     }
 
-    await delayWithAbort(this.#timing.actionSettleMs, signal)
-    return [result, `wait ${this.#timing.actionSettleMs}ms`].filter(Boolean).join('\n')
+    const outcome = await waitForSettle({
+      capture: async () => {
+        try {
+          const shot = await this.screenshot()
+          return shot.modelDataUrl ?? shot.dataUrl
+        } catch {
+          return null
+        }
+      },
+      minDelayMs: floor,
+      maxWaitMs: floor * 3,
+      sleep: (ms) => delayWithAbort(ms, signal),
+    })
+    const note = outcome.settled
+      ? `wait ${outcome.waitedMs}ms (screen settled)`
+      : `wait ${outcome.waitedMs}ms`
+    return [result, note].filter(Boolean).join('\n')
   }
 
   async #inputTextWithAdbKeyboard(
@@ -701,7 +732,7 @@ export class WebAdbDeviceBackend implements DeviceBackend {
 
   #requireAdb() {
     if (!this.#adb) {
-      throw new DeviceBackendError('Connect an Android device first.')
+      throw new DeviceBackendError('Connect an Android device first.', 'io', 'device-not-connected')
     }
 
     return this.#adb

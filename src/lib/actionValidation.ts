@@ -101,6 +101,26 @@ function validateActionAtDepth(
       assertPointWithinScreen(x, y, screen)
       return withTapMetadata({ action, x, y }, candidate)
     }
+    case 'tap_ref': {
+      const ref = readFirstString(candidate, ['ref'])
+      if (!/^e\d{1,6}$/.test(ref)) {
+        throw new ActionValidationError('ref must be an element ref such as e12 from the latest screen_tree.')
+      }
+      const message = optionalString(candidate, 'message')
+      const risk = optionalString(candidate, 'risk')
+      if (risk && risk !== 'sensitive') {
+        throw new ActionValidationError(`Unsupported tap risk "${risk}".`)
+      }
+      return withReason(
+        {
+          action,
+          ref,
+          ...(message ? { message } : {}),
+          ...(risk === 'sensitive' ? { risk } : {}),
+        },
+        candidate,
+      )
+    }
     case 'swipe': {
       const { fromX, fromY, toX, toY } = readSwipePoints(candidate, screen, coordinateMode)
       assertPointWithinScreen(fromX, fromY, screen)

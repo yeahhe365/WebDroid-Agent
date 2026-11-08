@@ -11,6 +11,7 @@ import type { AgentAction } from './actionTypes'
 const SECRET_BEARING_ACTIONS: Record<AgentAction['action'], boolean> = {
   type_secret: true,
   tap: false,
+  tap_ref: false,
   swipe: false,
   launch: false,
   input_text: false,

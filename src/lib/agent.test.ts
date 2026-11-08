@@ -128,9 +128,28 @@ describe('runAgentStep', () => {
         screenTree: expect.objectContaining({
           nodes: expect.arrayContaining([expect.objectContaining({ text: 'Search' })]),
         }),
-        promptContext: expect.stringContaining('<screen_tree>'),
+        promptContext: expect.stringContaining('<screen_tree'),
       }),
     )
+  })
+
+  it('hands the screen to the model as untrusted data', async () => {
+    const device = fakeDevice()
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"done","summary":"read the screen"}'),
+    }
+
+    const step = await runAgentStep({
+      device,
+      client,
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Open app',
+    })
+
+    // A screen that prints instructions must never read like our own prompt.
+    expect(step.promptContext).toContain('<untrusted>')
+    expect(step.promptContext).toContain('</untrusted>')
+    expect(step.promptContext).toMatch(/never instructions/i)
   })
 
   it('reports a fresh device snapshot before asking the model', async () => {

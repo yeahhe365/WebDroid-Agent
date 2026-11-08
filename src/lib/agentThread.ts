@@ -4,6 +4,7 @@ import type { ActionProtocol } from './actionProtocol'
 import type { ActionSafetyDecision } from './actionSafetyPolicy'
 import { createUnknownDeviceState, UNKNOWN_APP_NAME } from './deviceState'
 import type { FailureClass } from './failureTaxonomy'
+import type { ActionEffect } from './actionEffect'
 import type {
   AgentConversationMessage,
   AgentHistoryItem,
@@ -29,7 +30,7 @@ export type AgentThreadStatus =
   | 'error'
 
 /** Why a run is waiting for review. Presentation metadata, not a safety gate. */
-export type ReviewKind = 'answer' | 'blocked' | 'confirm' | 'max_steps' | 'other'
+export type ReviewKind = 'answer' | 'blocked' | 'confirm' | 'limit' | 'max_steps' | 'other'
 
 export type AgentTurnStatus =
   | 'planned'
@@ -106,6 +107,8 @@ export type AgentTurn = {
   takeoverKind?: TakeOverKind
   reviewKind?: ReviewKind
   deviceCommands?: string[][]
+  /** What this turn's action did to the next screen, once the next step could compare. */
+  actionEffect?: ActionEffect
   createdAt: number
   completedAt?: number
   compacted?: boolean
@@ -355,6 +358,22 @@ export function startThreadTurn(thread: AgentThread, input: StartThreadTurnInput
     { now },
   )
   return turn
+}
+
+/**
+ * Records what a turn's action did to the following screen. Kept separate from
+ * `recordThreadTurnExecution` because the answer only exists one step later: the
+ * next dump is what shows whether the tap landed.
+ */
+export function recordThreadTurnEffect(
+  thread: AgentThread,
+  turnId: string,
+  effect: ActionEffect,
+) {
+  const turn = thread.turns.find((candidate) => candidate.id === turnId)
+  if (turn) {
+    turn.actionEffect = effect
+  }
 }
 
 export function recordThreadTurnExecution(

@@ -201,6 +201,20 @@
   color: var(--danger);
 }
 
+/* The tone is the verdict from the next screen, not the action's own report:
+   "no change" is a warning, "done" is a quiet confirmation. */
+.agent-step-chip.effect-no-effect {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn);
+}
+
+.agent-step-chip.effect-done {
+  background: var(--status-ok-bg);
+  border-color: var(--status-ok-border);
+  color: var(--status-ok-text);
+}
+
 .agent-step-card.review .agent-step-chip,
 .agent-step-card.takeover .agent-step-chip {
   background: var(--warn-bg);

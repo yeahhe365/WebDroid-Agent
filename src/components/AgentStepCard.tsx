@@ -7,6 +7,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { memo } from 'react'
+import type { ActionEffect } from '../lib/actionEffect'
 import type { AgentTurn } from '../lib/agentThread'
 import type { AppCopy } from '../lib/appCopy'
 import { getActionDisplay } from './actionDisplay'
@@ -68,6 +69,16 @@ export const AgentStepCard = memo(function AgentStepCard({ isActive, turn }: Age
         <span className="agent-step-chip" title={copy.stepTiming(turn.timing.totalMs)}>
           {formatStepTimingShort(turn.timing.totalMs, copy)}
         </span>
+        {/*
+          The effect of this turn's action, measured on the following screen.
+          A tap that changed nothing is the single most common wasted step, so
+          it is worth showing without opening the details.
+        */}
+        {turn.actionEffect ? (
+          <span className={`agent-step-chip effect-${turn.actionEffect.kind}`}>
+            {formatStepEffect(turn.actionEffect, copy)}
+          </span>
+        ) : null}
       </div>
 
       <LazyDetails className="agent-step-details" summary={copy.stepDetails}>
@@ -193,4 +204,18 @@ function stripPreviewPrefix(preview: string) {
     return preview.slice(separatorIndex + 3).trim()
   }
   return preview.trim()
+}
+
+function formatStepEffect(effect: ActionEffect, copy: AppCopy) {
+  switch (effect.kind) {
+    case 'done':
+      return copy.stepEffectDone
+    case 'small_change':
+      return copy.stepEffectSmallChange
+    case 'place_changed':
+      return copy.stepEffectPlaceChanged
+    case 'no_effect':
+    default:
+      return copy.stepEffectNoEffect
+  }
 }

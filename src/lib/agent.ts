@@ -41,6 +41,7 @@ import {
   createConversationMessage,
   rememberThreadInformation,
   recordThreadScreenshot,
+  recordThreadTurnEffect,
   recordThreadFinalResponse,
   recordThreadTurnExecution,
   recordThreadUserMessage,
@@ -64,6 +65,20 @@ import {
   type FailureClass,
 } from './failureTaxonomy'
 import type { ActionSafetyDecision } from './actionSafetyPolicy'
+import { classifyActionEffect, type ActionEffect } from './actionEffect'
+import { ElementRefStabilizer } from './elementRefs'
+import { findLimitNotice } from './limitNotice'
+import {
+  classifyScreen,
+  screenFactsFrom,
+  screenTexts,
+  treeSignature,
+  type ScreenCheck,
+} from './screenDiagnosis'
+import { looksBlankScreenshot } from './screenshotBlank'
+import { EvidenceLedger } from './evidenceLedger'
+import { checkGrounding, type GroundingResult } from './grounding'
+import type { DeviceScreenTree } from '../adapters/deviceTypes'
 
 const MAX_AUTO_RECOVERABLE_EXECUTION_FAILURES = 2
 const RUN_RESULT_MODEL_OUTPUT_MAX_LENGTH = 4000
@@ -100,6 +115,14 @@ export type AgentStep = {
   takeoverKind?: TakeOverKind
   reviewKind?: ReviewKind
   deviceCommands?: string[][]
+  /** What the previous step's action did to this screen, when it could be judged. */
+  actionEffect?: ActionEffect
+  /** Why this screen is not workable, when it is not. */
+  screenCheck?: ScreenCheck
+  /** A quota notice that appeared on this screen after the previous action. */
+  limitNotice?: string
+  /** The dump the model was shown; kept for the next step's comparison, never persisted. */
+  screenTree?: DeviceScreenTree
 }
 
 export type AgentDeviceSnapshot = {
@@ -127,6 +150,19 @@ export type RunAgentStepInput = {
   runId?: string
   onSnapshot?: (snapshot: AgentDeviceSnapshot) => void | Promise<void>
   signal?: AbortSignal
+  /** Stable element refs for this run, so refs survive re-dumps. */
+  elementRefs?: ElementRefStabilizer
+  /** How the last few screens behaved: repeated identical dumps, blank captures. */
+  observation?: { unchangedRuns: number; blackFrames: number }
+  /** Matched skill recipes, already formatted for the prompt. */
+  skillPrompt?: string
+  /** The step whose action led to this screen. */
+  previousStep?: {
+    action: string
+    app?: string
+    packageName?: string
+    screenTree?: DeviceScreenTree
+  }
 }
 
 export type AgentRunStatus =
@@ -144,6 +180,9 @@ export type AgentRunResult = {
   reason?: string
   finalResponse?: string
   reviewKind?: ReviewKind
+  takeoverKind?: TakeOverKind
+  /** Code-checked grounding of the final answer against what was actually read. */
+  grounding?: GroundingResult
 }
 
 export type AgentRunnerInput = {
@@ -170,6 +209,8 @@ export type AgentRunnerInput = {
   safetyStrictness?: SafetyStrictness
   /** Cooperative pause between steps; the current step is allowed to finish. */
   shouldPause?: () => boolean
+  /** Matched skill recipes, already formatted for the prompt. */
+  skillPrompt?: string
 }
 
 export type CreateAgentRunnerInput = {
@@ -391,6 +432,10 @@ export async function runAgentStep({
   secrets,
   signal,
   unrestrictedMode,
+  elementRefs,
+  observation,
+  previousStep,
+  skillPrompt,
 }: RunAgentStepInput): Promise<AgentStep> {
   throwIfAborted(signal)
   const coordinateMode = coordinateModeForActionProtocol(actionProtocol)
@@ -417,6 +462,31 @@ export async function runAgentStep({
   )
   const installedApps = await getInstalledAppsOrEmpty(device, signal)
   const screenTree = await getScreenTreeOrUndefined(device, signal)
+  const refs = screenTree ? elementRefs?.next(screenTree) : undefined
+  const screenCheck = classifyScreen(
+    screenFactsFrom({
+      tree: screenTree,
+      unchangedRuns: observation?.unchangedRuns,
+      blackFrames: observation?.blackFrames,
+    }),
+  )
+  const actionEffect = previousStep
+    ? classifyActionEffect({
+        action: previousStep.action,
+        before: previousStep.screenTree,
+        after: screenTree,
+        beforeApp: previousStep.app,
+        beforePackage: previousStep.packageName,
+        afterApp: currentApp,
+        afterPackage: deviceState.packageName,
+      })
+    : null
+  // A quota notice only counts when it appeared after the action, so the
+  // comparison is against the screen the model acted from.
+  const limitNotice = findLimitNotice(
+    previousStep?.screenTree ? screenTexts(previousStep.screenTree) : null,
+    screenTexts(screenTree),
+  )
   throwIfAborted(signal)
   const modelStartedAt = now()
   if (session) {
@@ -451,6 +521,10 @@ export async function runAgentStep({
     actionTools,
     secrets: promptSecrets,
     recalledScreenshot,
+    ...(actionEffect ? { previousActionEffect: { effect: actionEffect, action: previousStep!.action } } : {}),
+    ...(screenCheck.state === 'normal' ? {} : { screenCheck }),
+    ...(refs ? { refs } : {}),
+    ...(skillPrompt ? { skillPrompt } : {}),
   })
   const promptContext = builtContext.text
   let modelUsage: ModelTokenUsage | undefined
@@ -615,6 +689,10 @@ export async function runAgentStep({
     timing,
     usage: modelUsage,
     ...(action.action === 'take_over' && action.kind ? { takeoverKind: action.kind } : {}),
+    ...(actionEffect ? { actionEffect } : {}),
+    ...(screenCheck.state === 'normal' ? {} : { screenCheck }),
+    ...(limitNotice ? { limitNotice } : {}),
+    ...(screenTree ? { screenTree } : {}),
   }
 }
 
@@ -775,6 +853,24 @@ export function createAgentRunner({
       const runId = createRunId()
       let recoverableExecutionFailures = 0
       let consecutiveModelErrors = 0
+      // One stabilizer per run: refs must survive re-dumps, but must not leak
+      // into the next run and resolve against a screen that is long gone.
+      const elementRefs = new ElementRefStabilizer()
+      // Everything the run actually read, so the final answer can be checked
+      // against it instead of against the model's confidence.
+      const ledger = new EvidenceLedger()
+      let unchangedRuns = 0
+      let blackFrames = 0
+      let previousSignature = ''
+      let previousStep:
+        | {
+            action: string
+            app?: string
+            packageName?: string
+            screenTree?: DeviceScreenTree
+            turnId?: string
+          }
+        | undefined
 
       for (let offset = 0; offset < input.maxSteps; offset += 1) {
         const index = startIndex + offset
@@ -805,6 +901,10 @@ export function createAgentRunner({
             secrets: input.secrets,
             signal: input.signal,
             unrestrictedMode: input.unrestrictedMode,
+            elementRefs,
+            observation: { unchangedRuns, blackFrames },
+            previousStep,
+            ...(input.skillPrompt ? { skillPrompt: input.skillPrompt } : {}),
           })
         } catch (caught) {
           if (input.signal?.aborted || isAbortError(caught)) {
@@ -847,6 +947,47 @@ export function createAgentRunner({
         if (input.signal?.aborted) {
           return { status: 'stopped', steps }
         }
+        const signature = treeSignature(step.screenTree)
+        unchangedRuns = signature !== '' && signature === previousSignature ? unchangedRuns + 1 : 0
+        previousSignature = signature
+        const blank = await looksBlankScreenshot(
+          step.screenshot.modelDataUrl ?? step.screenshot.dataUrl,
+        )
+        blackFrames = blank === true ? blackFrames + 1 : 0
+        if (step.actionEffect && previousStep?.turnId) {
+          recordThreadTurnEffect(session, previousStep.turnId, step.actionEffect)
+        }
+        previousStep = {
+          action: step.action.action,
+          app: step.currentApp,
+          ...(step.deviceState.packageName ? { packageName: step.deviceState.packageName } : {}),
+          ...(step.screenTree ? { screenTree: step.screenTree } : {}),
+          ...(step.turnId ? { turnId: step.turnId } : {}),
+        }
+        const stepTexts = screenTexts(step.screenTree)
+        if (stepTexts.length > 0) {
+          ledger.add({
+            kind: 'screen',
+            text: stepTexts.join('\n'),
+            app: step.currentApp,
+            step: step.index,
+          })
+        }
+        if (step.limitNotice && step.action.action !== 'done') {
+          // The account hit a quota: every further step would repeat the same
+          // refusal, so stop and let the user decide.
+          recordAgentStep(session, step, undefined, undefined, {
+            memoryEnabled: input.memoryEnabled,
+            onMemoryItem: input.onMemoryItem,
+          })
+          steps.push(retainStepForRunResult(step))
+          return {
+            status: 'awaiting_review',
+            steps,
+            reason: step.limitNotice,
+            reviewKind: 'limit',
+          }
+        }
         try {
           await withAbort(Promise.resolve(input.onStep?.(step)), input.signal)
         } catch (caught) {
@@ -877,7 +1018,12 @@ export function createAgentRunner({
               task: input.task,
             })
             await withAbort(Promise.resolve(input.onFinalResponse?.(finalResponse)), input.signal)
-            return { status: 'done', steps, finalResponse }
+            return {
+              status: 'done',
+              steps,
+              finalResponse,
+              grounding: checkGrounding(finalResponse, answerEvidence(ledger, finalResponse)),
+            }
           } catch (caught) {
             if (input.signal?.aborted || isAbortError(caught)) {
               return { status: 'stopped', steps }
@@ -891,7 +1037,15 @@ export function createAgentRunner({
             memoryEnabled: input.memoryEnabled,
             onMemoryItem: input.onMemoryItem,
           })
-          return { status: 'awaiting_takeover', steps, reason: step.action.message }
+          // What the screen says beats what the model wrote: a password field
+          // makes this a login card even when the message does not say so.
+          const takeoverKind = step.action.kind ?? step.screenCheck?.takeoverKind
+          return {
+            status: 'awaiting_takeover',
+            steps,
+            reason: step.action.message,
+            ...(takeoverKind ? { takeoverKind } : {}),
+          }
         }
 
         const loopSignal = detectLoopGuard(session, step)
@@ -929,6 +1083,7 @@ export function createAgentRunner({
             customTools: input.customTools,
             secrets: input.secrets,
             screenshotRecallThread: session,
+            elementRefs,
             onDeviceCommand: (argv) => deviceCommands.push([...argv]),
             signal: input.signal,
           })
@@ -954,6 +1109,7 @@ export function createAgentRunner({
         if (result.reviewKind) {
           step.reviewKind = result.reviewKind
         }
+        ledger.add({ kind: 'tool_result', text: result.summary, step: step.index })
         recordAgentStepExecutionDuration(step, elapsed(executionStartedAt))
         // The device action has already been applied, so the step must be
         // recorded BEFORE honouring an abort. Otherwise the side effect stays
@@ -1027,10 +1183,20 @@ export function createAgentRunner({
   }
 }
 
+/**
+ * The evidence the checker is allowed to look at: the entries that share a value
+ * with the answer, plus the most recent reads. Selection only decides what to
+ * look at — it never makes an unread claim grounded.
+ */
+function answerEvidence(ledger: EvidenceLedger, answer: string) {
+  return ledger.selectForAnswer(answer).map((entry) => entry.text)
+}
+
 function retainStepForRunResult(step: AgentStep): AgentStep {
   return {
     ...step,
     promptContext: undefined,
+    screenTree: undefined,
     modelOutput: truncateRetainedText(step.modelOutput, RUN_RESULT_MODEL_OUTPUT_MAX_LENGTH),
     screenshot: stripScreenshotImageData(step.screenshot),
   }

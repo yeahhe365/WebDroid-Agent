@@ -12,6 +12,15 @@ export type TapAction = {
   reason?: string
 }
 
+export type TapRefAction = {
+  action: 'tap_ref'
+  /** Stable element ref from the latest screen_tree, such as e12. */
+  ref: string
+  message?: string
+  risk?: 'sensitive'
+  reason?: string
+}
+
 export type SwipeAction = {
   action: 'swipe'
   fromX: number
@@ -152,6 +161,7 @@ export type ViewScreenshotAction = {
 
 export type ExecutableAtomicAction =
   | TapAction
+  | TapRefAction
   | SwipeAction
   | LaunchAction
   | InputTextAction
@@ -190,6 +200,7 @@ export type DoneAction = {
 
 export type AgentAction =
   | TapAction
+  | TapRefAction
   | SwipeAction
   | LaunchAction
   | InputTextAction
