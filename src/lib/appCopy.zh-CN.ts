@@ -210,7 +210,6 @@ export const ZH_CN_COPY = {
   setupStepTaskLocked: '完成前两步后即可发送任务',
   setupSkipToWorkspace: '直接进入工作台',
   setupRequirementBrowser: 'Chrome / Edge 等 Chromium 浏览器',
-  setupRequirementUsb: '已开启 USB 调试的 Android 设备',
   setupRequirementModel: '支持截图输入的视觉模型',
   setupWebUsbMissing: '当前浏览器不支持 WebUSB，请改用 Chrome 或 Edge。',
   model: '模型',

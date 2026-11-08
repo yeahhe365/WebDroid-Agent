@@ -215,7 +215,6 @@ export const EN_US_COPY = {
   setupStepTaskLocked: 'Finish the first two steps to send tasks',
   setupSkipToWorkspace: 'Skip to workspace',
   setupRequirementBrowser: 'Chrome / Edge or another Chromium browser',
-  setupRequirementUsb: 'Android device with USB debugging enabled',
   setupRequirementModel: 'Vision model that accepts screenshot input',
   setupWebUsbMissing: 'This browser does not support WebUSB. Please use Chrome or Edge.',
   model: 'Model',

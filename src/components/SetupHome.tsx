@@ -1,4 +1,4 @@
-import { Bot, Check, Loader2, MessageSquare, Smartphone, Usb } from 'lucide-react'
+import { ArrowRight, Check, Loader2, Lock, Usb } from 'lucide-react'
 import type { BusyTask } from '../lib/busyTask'
 import { useAppCopy } from './AppContext'
 import { Button } from './primitives'
@@ -32,57 +32,61 @@ export function SetupHome({
     {
       id: 'device',
       done: deviceConnected,
-      icon: Smartphone,
+      current: !deviceConnected,
       title: copy.setupStepDeviceTitle,
       body: copy.setupStepDeviceBody,
+      hint: copy.setupRequirementBrowser,
       actionLabel: deviceConnected ? copy.setupStepDeviceDone : copy.setupStepDeviceAction,
       onAction: onConnectDevice,
       disabled: deviceConnected || connecting || !webUsbSupported,
       loading: connecting,
-      primary: !deviceConnected,
     },
     {
       id: 'model',
       done: hasModelConfig,
-      icon: Bot,
+      current: deviceConnected && !hasModelConfig,
       title: copy.setupStepModelTitle,
       body: copy.setupStepModelBody,
+      hint: copy.setupRequirementModel,
       actionLabel: hasModelConfig ? copy.setupStepModelDone : copy.setupStepModelAction,
       onAction: onConfigureModel,
       disabled: hasModelConfig,
       loading: false,
-      primary: deviceConnected && !hasModelConfig,
     },
     {
       id: 'task',
       done: agentReady,
-      icon: MessageSquare,
+      current: agentReady,
       title: copy.setupStepTaskTitle,
       body: copy.setupStepTaskBody,
+      hint: '',
       actionLabel: agentReady ? copy.setupStepTaskAction : copy.setupStepTaskLocked,
       onAction: onEnterWorkspace,
       disabled: !agentReady,
       loading: false,
-      primary: agentReady,
     },
   ] as const
 
   return (
     <section className="setup-home" aria-label={copy.setupHomeAria}>
-      <div className="setup-home-hero">
-        <img
-          alt=""
-          className="setup-home-logo"
-          src="/webdroid-agent-logo-128.png"
-          width={56}
-          height={56}
-        />
-        <div className="setup-home-copy">
-          <p className="eyebrow">{copy.setupHomeAria}</p>
+      <header className="setup-home-head">
+        <div className="setup-home-heading">
           <h2>{copy.setupHomeTitle}</h2>
           <p className="setup-home-intro">{copy.setupHomeIntro}</p>
-          <p className="setup-home-tagline">{copy.appTagline}</p>
         </div>
+        <Button variant="ghost" size="sm" className="setup-home-skip" onClick={onSkipToWorkspace}>
+          {copy.setupSkipToWorkspace}
+          <ArrowRight size={14} aria-hidden="true" />
+        </Button>
+      </header>
+
+      <div className="setup-home-progress" aria-hidden="true">
+        {steps.map((step) => (
+          <span
+            key={step.id}
+            className={step.done ? 'is-done' : step.current ? 'is-current' : undefined}
+          />
+        ))}
       </div>
 
       {!webUsbSupported ? (
@@ -93,61 +97,58 @@ export function SetupHome({
       ) : null}
 
       <ol className="setup-home-steps">
-        {steps.map((step, index) => {
-          const Icon = step.icon
-          return (
-            <li
-              key={step.id}
+        {steps.map((step, index) => (
+          <li key={step.id}>
+            <button
+              type="button"
               className={[
                 'setup-home-step',
                 step.done ? 'is-done' : '',
-                step.primary ? 'is-primary' : '',
+                step.current ? 'is-current' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
+              disabled={step.disabled}
+              aria-current={step.current ? 'step' : undefined}
+              onClick={step.onAction}
             >
-              <div className="setup-home-step-index" aria-hidden="true">
-                {step.done ? <Check size={16} /> : <span>{index + 1}</span>}
-              </div>
-              <div className="setup-home-step-icon" aria-hidden="true">
-                <Icon size={18} />
-              </div>
-              <div className="setup-home-step-body">
-                <h3>{step.title}</h3>
-                <p>{step.body}</p>
-              </div>
-              <div className="setup-home-step-action">
-                <Button
-                  variant={step.primary ? 'primary' : step.done ? 'secondary' : 'secondary'}
-                  size="sm"
-                  disabled={step.disabled}
-                  onClick={step.onAction}
-                  aria-label={step.actionLabel}
-                >
-                  {step.loading ? (
-                    <Loader2 size={16} className="spin" aria-hidden="true" />
-                  ) : step.done ? (
-                    <Check size={16} aria-hidden="true" />
-                  ) : null}
-                  {step.actionLabel}
-                </Button>
-              </div>
-            </li>
-          )
-        })}
+              <span className="setup-home-step-index" aria-hidden="true">
+                {step.done ? <Check size={16} /> : index + 1}
+              </span>
+              <span className="setup-home-step-body">
+                <span className="setup-home-step-title">{step.title}</span>
+                <span className="setup-home-step-text">{step.body}</span>
+                {step.hint ? <span className="setup-home-step-hint">{step.hint}</span> : null}
+              </span>
+              <span className="setup-home-step-tail">
+                {step.loading ? (
+                  <Loader2 size={16} className="spin" aria-hidden="true" />
+                ) : step.done ? (
+                  <>
+                    <Check size={15} aria-hidden="true" />
+                    <span>{step.actionLabel}</span>
+                  </>
+                ) : step.current ? (
+                  <span className="setup-home-cta is-solid">
+                    {step.actionLabel}
+                    <ArrowRight size={14} aria-hidden="true" />
+                  </span>
+                ) : step.disabled ? (
+                  <>
+                    <Lock size={14} aria-hidden="true" />
+                    <span>{step.actionLabel}</span>
+                  </>
+                ) : (
+                  <span className="setup-home-cta is-quiet">
+                    {step.actionLabel}
+                    <ArrowRight size={14} aria-hidden="true" />
+                  </span>
+                )}
+              </span>
+            </button>
+          </li>
+        ))}
       </ol>
-
-      <ul className="setup-home-requirements">
-        <li>{copy.setupRequirementBrowser}</li>
-        <li>{copy.setupRequirementUsb}</li>
-        <li>{copy.setupRequirementModel}</li>
-      </ul>
-
-      <div className="setup-home-footer">
-        <Button variant="ghost" size="sm" onClick={onSkipToWorkspace}>
-          {copy.setupSkipToWorkspace}
-        </Button>
-      </div>
     </section>
   )
 }

@@ -651,8 +651,8 @@ describe('App', () => {
 
     const setup = screen.getByRole('region', { name: /getting started/i })
     expect(setup).toBeTruthy()
-    expect(within(setup).getByRole('button', { name: /^connect device$/i })).toBeTruthy()
-    expect(within(setup).getByRole('button', { name: /^configure model$/i })).toBeTruthy()
+    expect(within(setup).getAllByRole('button', { name: /connect an android device/i })).toHaveLength(1)
+    expect(within(setup).getAllByRole('button', { name: /configure a vision model/i })).toHaveLength(1)
     expect(document.querySelector('.workspace')).toBeNull()
 
     fireEvent.click(within(setup).getByRole('button', { name: /skip to workspace/i }))
@@ -665,7 +665,7 @@ describe('App', () => {
     localStorage.clear()
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: /^configure model$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /configure a vision model/i }))
 
     await waitFor(() => expect(document.querySelector('.config-panel')).toBeTruthy())
     await waitFor(() => {
