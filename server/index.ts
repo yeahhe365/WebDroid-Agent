@@ -4,7 +4,12 @@ import { stat } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { createOpenAiProxyHandler, isOpenAiProxyRequest } from './openAiProxy.js'
+import {
+  OPENAI_PROXY_TOKEN_PATH,
+  createOpenAiProxyHandler,
+  isOpenAiProxyRequest,
+  isSameOriginRequest,
+} from './openAiProxy.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const defaultDistDir = path.resolve(__dirname, '../dist')
@@ -22,19 +27,30 @@ export interface WebDroidServerOptions {
    * CSP_CONNECT_SRC environment variable are used by default.
    */
   extraConnectOrigins?: string[]
+  /** Shared secret required by the proxy. Defaults to the PROXY_TOKEN env var. */
+  proxyToken?: string
 }
 
 const DEFAULT_EXTRA_CONNECT_ORIGINS = parseConnectOrigins(process.env.CSP_CONNECT_SRC)
+const DEFAULT_PROXY_TOKEN = process.env.PROXY_TOKEN ?? ''
 
 export function createWebDroidServer({
   distDir = defaultDistDir,
-  openAiProxyHandler = createOpenAiProxyHandler(),
+  openAiProxyHandler,
   extraConnectOrigins = DEFAULT_EXTRA_CONNECT_ORIGINS,
+  proxyToken = DEFAULT_PROXY_TOKEN,
 }: WebDroidServerOptions = {}): Server {
+  const proxyHandler = openAiProxyHandler ?? createOpenAiProxyHandler(fetch, { proxyToken })
+
   return createServer((request, response) => {
     const handler = async () => {
       if (isOpenAiProxyRequest(request.url)) {
-        await openAiProxyHandler(request, response)
+        await proxyHandler(request, response)
+        return
+      }
+
+      if (requestPathname(request.url) === OPENAI_PROXY_TOKEN_PATH) {
+        handleProxyTokenRequest(request, response, proxyToken)
         return
       }
 
@@ -61,6 +77,42 @@ export function createWebDroidServer({
       console.error('Unhandled server error:', error)
     })
   })
+}
+
+/**
+ * The browser cannot see the server's PROXY_TOKEN. Serving it from this
+ * same-origin, no-store endpoint lets the UI send the required header without
+ * baking the token into the public bundle. Cross-site requests are rejected;
+ * a local process could spoof Origin, but it can already read the environment.
+ */
+function handleProxyTokenRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  proxyToken: string,
+) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    response.writeHead(405, { Allow: 'GET, HEAD' })
+    response.end()
+    return
+  }
+
+  if (!proxyToken) {
+    response.writeHead(404, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify({ error: { message: 'Proxy token is not configured.' } }))
+    return
+  }
+
+  if (!isSameOriginRequest(request)) {
+    response.writeHead(403, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify({ error: { message: 'Cross-origin requests are not allowed.' } }))
+    return
+  }
+
+  response.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+  })
+  response.end(JSON.stringify({ token: proxyToken }))
 }
 
 if (isMainModule()) {
@@ -234,6 +286,11 @@ function contentSecurityPolicy(extraConnectOrigins: readonly string[]): string {
     'https://generativelanguage.googleapis.com',
     'https://api.openai.com',
     'https://dashscope.aliyuncs.com',
+    // Direct fetches used by the UI: repository stats and the pinned
+    // ADB Keyboard APK download. Without these the settings counter and the
+    // "enable ADB text input" flow fail silently under CSP.
+    'https://api.github.com',
+    'https://raw.githubusercontent.com',
     ...extraConnectOrigins,
   ].join(' ')
   return [

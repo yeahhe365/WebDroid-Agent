@@ -84,7 +84,9 @@ describe('createWebDroidServer', () => {
     expect(response.status).toBe(200)
     await response.text()
     const csp = response.headers.get('content-security-policy') ?? ''
-    expect(csp).toContain("connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://dashscope.aliyuncs.com https://api.moonshot.cn")
+    expect(csp).toContain(
+      "connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://dashscope.aliyuncs.com https://api.github.com https://raw.githubusercontent.com https://api.moonshot.cn",
+    )
   })
 
   it('keeps the default CSP connect-src list when no extra origins are provided', async () => {
@@ -96,7 +98,7 @@ describe('createWebDroidServer', () => {
     await response.text()
     const csp = response.headers.get('content-security-policy') ?? ''
     expect(csp).toContain(
-      "connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://dashscope.aliyuncs.com",
+      "connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://dashscope.aliyuncs.com https://api.github.com https://raw.githubusercontent.com",
     )
     expect(csp).toContain("default-src 'self'")
     expect(csp).toContain("frame-ancestors 'none'")
@@ -117,6 +119,34 @@ describe('createWebDroidServer', () => {
     const response = await fetch(`${serverUrl}/%E0%A4%A`)
 
     expect(response.status).toBe(400)
+  })
+
+  it('serves the configured proxy token to same-origin callers only', async () => {
+    const serverUrl = await listen(
+      createWebDroidServer({ distDir: distDir!, proxyToken: 'letmein' }),
+    )
+
+    const sameOrigin = await fetch(`${serverUrl}/api/proxy-token`, {
+      headers: { 'Sec-Fetch-Site': 'same-origin' },
+    })
+    expect(sameOrigin.status).toBe(200)
+    expect(sameOrigin.headers.get('cache-control')).toBe('no-store')
+    expect(await sameOrigin.json()).toEqual({ token: 'letmein' })
+
+    const crossSite = await fetch(`${serverUrl}/api/proxy-token`, {
+      headers: { 'Sec-Fetch-Site': 'cross-site' },
+    })
+    expect(crossSite.status).toBe(403)
+  })
+
+  it('does not expose a proxy token endpoint when no token is configured', async () => {
+    const serverUrl = await listen(
+      createWebDroidServer({ distDir: distDir!, proxyToken: '' }),
+    )
+
+    const response = await fetch(`${serverUrl}/api/proxy-token`)
+
+    expect(response.status).toBe(404)
   })
 
   it('returns 404 for client-side routes when the SPA entry is missing', async () => {

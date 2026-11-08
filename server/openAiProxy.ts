@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 export const OPENAI_PROXY_PATH = '/api/openai/chat/completions'
+export const OPENAI_PROXY_TOKEN_PATH = '/api/proxy-token'
 export const MAX_PROXY_BODY_BYTES = 10 * 1024 * 1024 // 10 MiB — room for multi-message conversations with image data URLs
 
 /**
@@ -55,6 +56,25 @@ export function createOpenAiProxyHandler(
         'Content-Type': 'application/json',
       })
       response.end(JSON.stringify({ error: { message: 'Method not allowed.' } }))
+      return
+    }
+
+    // Browsers always attach Origin/Sec-Fetch-Site to cross-origin POSTs.
+    // Rejecting them prevents a malicious page from using a loopback proxy as
+    // a blind SSRF / open relay even when no PROXY_TOKEN is configured.
+    if (!isSameOriginRequest(request)) {
+      sendJson(response, 403, {
+        error: { message: 'Cross-origin proxy requests are not allowed.' },
+      })
+      return
+    }
+
+    // Requiring JSON also blocks the `text/plain` "simple request" shape that
+    // a cross-origin attacker could otherwise send without a CORS preflight.
+    if (!isJsonContentType(request.headers['content-type'])) {
+      sendJson(response, 415, {
+        error: { message: 'Content-Type must be application/json.' },
+      })
       return
     }
 
@@ -204,6 +224,43 @@ function parseAllowedHosts(raw: string | undefined): string[] {
 
 function normalizeAllowedHosts(hosts: readonly string[]): string[] {
   return Array.from(new Set(hosts.map((host) => host.trim().toLowerCase()).filter(Boolean)))
+}
+
+/**
+ * True for same-origin browser requests and for non-browser clients that send
+ * no Origin. Cross-site / same-site browser requests are rejected.
+ */
+export function isSameOriginRequest(request: IncomingMessage): boolean {
+  const secFetchSite = headerValue(request, 'sec-fetch-site')
+  if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+    return false
+  }
+
+  const origin = headerValue(request, 'origin')
+  if (!origin) {
+    return true
+  }
+
+  const host = headerValue(request, 'host')
+  if (!host) {
+    return false
+  }
+
+  try {
+    return new URL(origin).host === host
+  } catch {
+    return false
+  }
+}
+
+function isJsonContentType(value: string | string[] | undefined): boolean {
+  const raw = Array.isArray(value) ? value[0] : value
+  return typeof raw === 'string' && /^application\/json\s*(;|$)/i.test(raw.trim())
+}
+
+function headerValue(request: IncomingMessage, name: string): string | undefined {
+  const value = request.headers[name]
+  return Array.isArray(value) ? value[0] : value
 }
 
 function isAuthorizedProxyRequest(request: IncomingMessage, proxyToken: string): boolean {

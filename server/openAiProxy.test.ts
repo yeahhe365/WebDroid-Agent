@@ -356,6 +356,51 @@ describe('createOpenAiProxyHandler', () => {
     await upstreamAborted.promise
     await expect(request).resolves.toEqual(expect.objectContaining({ name: 'AbortError' }))
   })
+
+  it('rejects cross-site browser requests and non-JSON bodies', async () => {
+    const fetcher = vi.fn(async () => new Response('{"ok":true}', { status: 200 }))
+    const proxyUrl = await listen(createOpenAiProxyHandler(fetcher as unknown as typeof fetch))
+    const payload = JSON.stringify({
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'secret',
+      payload: { model: 'agent-model' },
+    })
+
+    const crossSiteOrigin = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' },
+      body: payload,
+    })
+    expect(crossSiteOrigin.status).toBe(403)
+    expect(await crossSiteOrigin.json()).toEqual({
+      error: { message: 'Cross-origin proxy requests are not allowed.' },
+    })
+
+    const crossSiteMetadata = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'cross-site' },
+      body: payload,
+    })
+    expect(crossSiteMetadata.status).toBe(403)
+
+    const textPlain = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: payload,
+    })
+    expect(textPlain.status).toBe(415)
+    expect(await textPlain.json()).toEqual({
+      error: { message: 'Content-Type must be application/json.' },
+    })
+
+    const sameOrigin = await fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: proxyUrl },
+      body: payload,
+    })
+    expect(sameOrigin.status).toBe(200)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
 })
 
 function listen(handler: (request: IncomingMessage, response: ServerResponse) => void): Promise<string> {

@@ -14,7 +14,9 @@ services:
       PORT: 8080
       # Required inside the container so the published port works.
       HOST: 0.0.0.0
-      # Optional proxy hardening (see README "Docker 部署 / Proxy hardening"):
+      # Optional proxy hardening (see README "Docker 部署 / Proxy hardening").
+      # The UI fetches PROXY_TOKEN from same-origin /api/proxy-token at runtime,
+      # so no frontend rebuild is needed when this value changes.
       # PROXY_TOKEN: change-me
       # PROXY_ALLOW_HOSTS: api.openai.com,dashscope.aliyuncs.com
       # CSP_CONNECT_SRC: https://api.moonshot.cn
