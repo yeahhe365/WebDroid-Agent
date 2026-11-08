@@ -41,7 +41,10 @@ textarea {
   resize: vertical;
 }
 
-input:focus,
+/* Text fields take the accent ring on any focus. Checkboxes and radios are
+   excluded: a switch already shows its own state, and the accent ring turned
+   an off switch indigo the moment it was clicked. */
+input:not([type="checkbox"]):not([type="radio"]):focus,
 select:focus,
 textarea:focus {
   background: var(--panel-bg-elevated);
@@ -78,7 +81,9 @@ textarea:focus {
 }
 
 .toggle input[type="checkbox"]::before {
-  background: var(--panel-bg-solid);
+  /* The thumb has to stay visible against the off-state track, which shares its
+     surface with the panel behind it. Text colour reads in both themes. */
+  background: var(--text-soft);
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   content: "";

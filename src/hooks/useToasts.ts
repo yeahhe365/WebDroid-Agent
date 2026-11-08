@@ -43,7 +43,14 @@ export function useToasts() {
         input.durationMs ?? (input.tone === 'error' ? ERROR_DURATION_MS : DEFAULT_DURATION_MS),
     }
 
-    setToasts((current) => [...current, toast].slice(-MAX_VISIBLE_TOASTS))
+    setToasts((current) => {
+      // Repeating the same message replaces the previous one instead of stacking
+      // duplicates, which used to fill the whole viewport with identical warnings.
+      const withoutDuplicate = current.filter(
+        (entry) => entry.title !== toast.title || entry.detail !== toast.detail,
+      )
+      return [...withoutDuplicate, toast].slice(-MAX_VISIBLE_TOASTS)
+    })
 
     const timer = setTimeout(() => {
       timersRef.current.delete(id)

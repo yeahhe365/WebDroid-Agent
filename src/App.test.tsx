@@ -967,6 +967,22 @@ describe('App', () => {
     expect(primitivesCss).toMatch(/transform:\s*translateX\(20px\)/)
   })
 
+  it('keeps the field focus ring off checkboxes and defines the off-state thumb', () => {
+    // The accent field ring used to match a switch the moment it was clicked,
+    // which painted an off switch in the accent colour.
+    expect(primitivesCss).toMatch(
+      /input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\):focus,/,
+    )
+    expect(primitivesCss).not.toMatch(/^input:focus,\s*$/m)
+
+    // The thumb must differ from the off-state track or the switch reads as empty.
+    const thumbBlock = primitivesCss.match(
+      /\.toggle input\[type="checkbox"\]::before\s*\{([^}]*)\}/,
+    )
+    expect(thumbBlock).toBeTruthy()
+    expect(thumbBlock![1]).toMatch(/background:\s*var\(--text-soft\)/)
+  })
+
   it('keeps installed-app search and launch rows usable on narrow screens', () => {
     const narrowInstalledAppsCss = readMediaBlock(installedAppsCss, 'max-width: 520px')
 
