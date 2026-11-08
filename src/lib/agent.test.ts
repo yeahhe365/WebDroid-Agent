@@ -885,6 +885,54 @@ describe('createAgentRunner', () => {
     expect(session.turns[0]?.takeoverKind).toBe('captcha')
   })
 
+  it('ends a blocked action on a blocked review instead of a retry', async () => {
+    const device = fakeDevice()
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"tap","x":100,"y":200}'),
+    }
+    const session = createAgentSession('Delete account permanently')
+    const runner = createAgentRunner({ device, client })
+
+    const result = await runner.run({
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Delete account permanently',
+      autoExecute: true,
+      maxSteps: 5,
+      session,
+    })
+
+    expect(result.status).toBe('awaiting_review')
+    // A policy block must never surface as a plain "continue" review.
+    expect(result.reviewKind).toBe('blocked')
+    expect(session.turns[0]?.safetyDecision).toBe('block')
+    expect(device.executed).toEqual([])
+  })
+
+  it('honours a relaxed strictness for a login step', async () => {
+    const device = fakeDevice()
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"input_text","text":"hunter2"}'),
+      completeFinalResponse: vi.fn(async () => 'Stopped.'),
+    }
+    const session = createAgentSession('Sign in with the account password')
+    const runner = createAgentRunner({ device, client })
+
+    const result = await runner.run({
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Sign in with the account password',
+      autoExecute: true,
+      maxSteps: 5,
+      session,
+      safetyStrictness: 'relaxed',
+      confirmSensitiveAction: async () => false,
+    })
+
+    // Relaxed turns the take-over into a confirmation the user can still refuse.
+    expect(result.status).toBe('awaiting_review')
+    expect(result.reviewKind).toBe('confirm')
+    expect(device.executed).toEqual([])
+  })
+
   it('bypasses local safety takeover decisions in unrestricted mode', async () => {
     const device = fakeDevice()
     const client: OpenAiClient = {

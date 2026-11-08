@@ -24,6 +24,7 @@ function createDevicePanelProps(
       onPreferAdbKeyboardChange: vi.fn(),
       onRunDirectAction: vi.fn(),
       onRunDoctor: vi.fn(),
+  onSafetyStrictnessChange: vi.fn(),
       onUnrestrictedModeChange: vi.fn(),
     },
     copy: APP_COPY['zh-CN'],

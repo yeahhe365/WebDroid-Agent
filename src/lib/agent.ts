@@ -6,6 +6,7 @@ import type {
   InstalledApp,
 } from '../adapters/deviceTypes'
 import { buildActionPreview } from './actionPreview'
+import type { SafetyStrictness } from './actionRisk'
 import { ActionValidationError, type AgentAction, type TakeOverKind } from './actionTypes'
 import { parseModelAction } from './actionParser'
 import { createDefaultAppCards, resolveAppCard, type AppCardMap } from './appCards'
@@ -165,6 +166,8 @@ export type AgentRunnerInput = {
   onFinalResponse?: (response: string) => void | Promise<void>
   confirmSensitiveAction?: ExecuteActionOptions['confirmSensitiveAction']
   unrestrictedMode?: boolean
+  /** User-facing safety strictness; omitted means the documented default. */
+  safetyStrictness?: SafetyStrictness
   /** Cooperative pause between steps; the current step is allowed to finish. */
   shouldPause?: () => boolean
 }
@@ -921,6 +924,7 @@ export function createAgentRunner({
               currentApp: step.currentApp,
               deviceState: step.deviceState,
               modelOutput: step.modelOutput,
+              strictness: input.safetyStrictness,
             },
             customTools: input.customTools,
             secrets: input.secrets,
@@ -976,6 +980,17 @@ export function createAgentRunner({
         if (!result.success) {
           if (result.safetyDecision === 'take_over') {
             return { status: 'awaiting_takeover', steps, reason: result.summary }
+          }
+          // A blocked action is not a failure the agent may retry: the policy
+          // said this must not run at all. Stop the turn with its own review
+          // kind so the UI can show a blocked card instead of a "continue" one.
+          if (result.safetyDecision === 'block') {
+            return {
+              status: 'awaiting_review',
+              steps,
+              reason: result.summary,
+              reviewKind: 'blocked',
+            }
           }
           if (!isAutoRecoverableExecutionFailure(result)) {
             return {

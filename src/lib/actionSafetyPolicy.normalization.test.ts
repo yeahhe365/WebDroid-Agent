@@ -10,7 +10,7 @@ describe('evaluateActionSafety NFKC normalization', () => {
       ),
     ).toEqual(
       expect.objectContaining({
-        decision: 'block',
+        decision: 'take_over',
         category: 'payment',
       }),
     )
@@ -24,7 +24,7 @@ describe('evaluateActionSafety NFKC normalization', () => {
       ),
     ).toEqual(
       expect.objectContaining({
-        decision: 'block',
+        decision: 'take_over',
         category: 'payment',
       }),
     )
@@ -36,7 +36,7 @@ describe('evaluateActionSafety NFKC normalization', () => {
         { action: 'type_secret', secretId: 'password' },
         { task: 'Enter the password' },
       ),
-    ).toEqual({ decision: 'allow' })
+    ).toEqual({ decision: 'allow', risk: 'none' })
 
     expect(
       evaluateActionSafety(

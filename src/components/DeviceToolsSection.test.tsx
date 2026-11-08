@@ -20,6 +20,7 @@ function createDeviceActions(): DeviceControlActions {
     onPreferAdbKeyboardChange: vi.fn(),
     onRunDirectAction: vi.fn(),
     onRunDoctor: vi.fn(),
+  onSafetyStrictnessChange: vi.fn(),
     onUnrestrictedModeChange: vi.fn(),
   }
 }

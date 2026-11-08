@@ -1,11 +1,13 @@
 import {
   AlertTriangle,
   CreditCard,
+  Flag,
   Hand,
   LogIn,
   MessageSquare,
   Pause,
   ShieldAlert,
+  ShieldX,
   XCircle,
 } from 'lucide-react'
 import type { TakeOverKind } from '../lib/actionTypes'
@@ -53,12 +55,18 @@ export function NeedsYouCard({
     ? copy.needsYouResumeRun
     : kind === 'answer'
       ? copy.needsYouAnswerAction
-      : needsYouPrimaryLabel(kind, copy)
+      : kind === 'blocked'
+        ? copy.needsYouBlockedAction
+        : kind === 'max_steps'
+          ? copy.needsYouMaxStepsAction
+          : needsYouPrimaryLabel(kind, copy)
   const primaryAction = canResume
     ? onResume
     : kind === 'answer' && onAnswer
       ? onAnswer
-      : () => onContinue(actionMessage)
+      : kind === 'blocked'
+        ? onOpenRunLog
+        : () => onContinue(actionMessage)
 
   return (
     <article className={`needs-you-card ${kind}`} aria-label={view.title}>
@@ -76,9 +84,11 @@ export function NeedsYouCard({
         <Button variant="primary" size="sm" onClick={primaryAction}>
           {primaryLabel}
         </Button>
-        <button type="button" className="needs-you-link" onClick={onOpenRunLog}>
-          {copy.needsYouViewProcess}
-        </button>
+        {kind === 'blocked' ? null : (
+          <button type="button" className="needs-you-link" onClick={onOpenRunLog}>
+            {copy.needsYouViewProcess}
+          </button>
+        )}
       </div>
     </article>
   )
@@ -114,6 +124,20 @@ function needsYouView(kind: NeedsYouKind, copy: AppCopy, message?: string) {
         title: copy.needsYouTakeoverTitle,
         body: fallback || copy.needsYouTakeoverBody,
         icon: Hand,
+      }
+    case 'max_steps':
+      return {
+        eyebrow: copy.sessionStatusAwaitingReview,
+        title: copy.needsYouMaxStepsTitle,
+        body: fallback || copy.needsYouMaxStepsBody,
+        icon: Flag,
+      }
+    case 'blocked':
+      return {
+        eyebrow: copy.sessionStatusAwaitingReview,
+        title: copy.needsYouBlockedTitle,
+        body: fallback || copy.needsYouBlockedBody,
+        icon: ShieldX,
       }
     case 'answer':
       return {
@@ -158,7 +182,7 @@ function needsYouPrimaryLabel(kind: NeedsYouKind, copy: AppCopy) {
   if (kind === 'takeover' || kind === 'login' || kind === 'captcha' || kind === 'payment') {
     return copy.needsYouResume
   }
-  if (kind === 'review' || kind === 'answer' || kind === 'paused') {
+  if (kind === 'review' || kind === 'answer' || kind === 'paused' || kind === 'max_steps') {
     return copy.needsYouContinue
   }
   return copy.needsYouRetry
@@ -168,7 +192,7 @@ function needsYouActionMessage(kind: NeedsYouKind, copy: AppCopy) {
   if (kind === 'takeover' || kind === 'login' || kind === 'captcha' || kind === 'payment') {
     return copy.resumeAfterTakeoverMessage
   }
-  if (kind === 'review' || kind === 'answer') {
+  if (kind === 'review' || kind === 'answer' || kind === 'max_steps') {
     return copy.resumeAfterReviewMessage
   }
   if (kind === 'paused') {

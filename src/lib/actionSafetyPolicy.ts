@@ -1,16 +1,27 @@
 import type { DeviceState } from '../adapters/deviceTypes'
+import {
+  DEFAULT_SAFETY_STRICTNESS,
+  resolveSafetyDecision,
+  riskLevelForCategory,
+  type ActionRiskLevel,
+  type SafetyCategory,
+  type SafetyDecision,
+  type SafetyStrictness,
+} from './actionRisk'
 import type { AgentAction, TakeOverKind } from './actionTypes'
 
 function normalizeNFKC(value: string): string {
   return value.normalize('NFKC')
 }
 
-export type ActionSafetyDecision = 'allow' | 'confirm' | 'block' | 'take_over'
+export type ActionSafetyDecision = SafetyDecision
 
 export type ActionSafetyPolicyResult = {
   decision: ActionSafetyDecision
-  category?: string
+  category?: SafetyCategory
   message?: string
+  /** How bad the category is, independent of the strictness setting. */
+  risk?: ActionRiskLevel
   /** Structured reason for a take_over decision, for stable UI cards. */
   takeoverKind?: TakeOverKind
 }
@@ -20,9 +31,11 @@ export type ActionSafetyContext = {
   currentApp?: string
   deviceState?: DeviceState
   modelOutput?: string
+  /** User-facing strictness; omitted means the documented default. */
+  strictness?: SafetyStrictness
 }
 
-const ALLOW: ActionSafetyPolicyResult = { decision: 'allow' }
+const ALLOW: ActionSafetyPolicyResult = { decision: 'allow', risk: 'none' }
 
 const PAYMENT_CRITICAL_PATTERNS = [
   /确认付款|立即支付|去支付|付款|转账|提现|充值|提交订单|下单|结算/,
@@ -74,6 +87,25 @@ const PAYMENT_PACKAGE_PATTERNS = [
   /com\.eg\.android\.AlipayGphone/i,
 ]
 
+/**
+ * Why each category stops the agent. Kept next to the categories rather than in
+ * the rules so a stricter or looser verdict reads the same sentence: the reason
+ * the agent stopped does not change just because the user changed the dial.
+ */
+const SAFETY_MESSAGES: Record<SafetyCategory, string> = {
+  secret_or_login:
+    'Safety policy requires manual takeover for login, password, captcha, or verification-code steps.',
+  critical_destructive:
+    'Safety policy blocked a potentially irreversible account or device destructive action.',
+  payment:
+    'Payments, transfers and checkouts are completed by you, never by the agent. Finish it on the phone, then continue.',
+  destructive: 'Safety policy requires confirmation before a destructive action.',
+  authorization:
+    'Safety policy requires confirmation before authorization, permission, or account-setting changes.',
+  payment_context:
+    'Safety policy requires confirmation inside payment, billing, wallet, or order flows.',
+}
+
 const MUTATING_ACTIONS = new Set<AgentAction['action']>([
   'tap',
   'long_press',
@@ -96,6 +128,7 @@ export function evaluateActionSafety(
 
   const evidence = collectPolicyEvidence(action, context)
   const isPaymentApp = matchesAny(evidence.device, PAYMENT_PACKAGE_PATTERNS)
+  const strictness = context.strictness ?? DEFAULT_SAFETY_STRICTNESS
 
   // `type_secret` is the sanctioned way to enter a password: the value never
   // reaches the model or the logs. Treating its own reason ("enter the
@@ -103,54 +136,29 @@ export function evaluateActionSafety(
   // secret/login takeover rule does not apply to it. Irreversible-action
   // checks below still do.
   if (action.action !== 'type_secret' && matchesAny(evidence.all, SECRET_OR_LOGIN_PATTERNS)) {
-    return {
-      decision: 'take_over',
-      category: 'secret_or_login',
+    return classify('secret_or_login', strictness, {
       takeoverKind: secretOrLoginTakeoverKind(evidence.all),
-      message:
-        'Safety policy requires manual takeover for login, password, captcha, or verification-code steps.',
-    }
+    })
   }
 
   if (matchesAny(evidence.all, DESTRUCTIVE_CRITICAL_PATTERNS)) {
-    return {
-      decision: 'block',
-      category: 'critical_destructive',
-      message:
-        'Safety policy blocked a potentially irreversible account or device destructive action.',
-    }
+    return classify('critical_destructive', strictness)
   }
 
   if (matchesAny(evidence.all, PAYMENT_CRITICAL_PATTERNS)) {
-    return {
-      decision: 'block',
-      category: 'payment',
-      message: 'Safety policy blocked a payment, checkout, order, or money-transfer action.',
-    }
+    return classify('payment', strictness, { takeoverKind: 'payment' })
   }
 
   if (matchesAny(evidence.all, DESTRUCTIVE_CONFIRM_PATTERNS)) {
-    return {
-      decision: 'confirm',
-      category: 'destructive',
-      message: 'Safety policy requires confirmation before a destructive action.',
-    }
+    return classify('destructive', strictness)
   }
 
   if (matchesAny(evidence.all, AUTHORIZATION_CONFIRM_PATTERNS)) {
-    return {
-      decision: 'confirm',
-      category: 'authorization',
-      message: 'Safety policy requires confirmation before authorization, permission, or account-setting changes.',
-    }
+    return classify('authorization', strictness)
   }
 
   if (isPaymentApp || matchesAny(evidence.actionOrDevice, PAYMENT_CONTEXT_PATTERNS)) {
-    return {
-      decision: 'confirm',
-      category: 'payment_context',
-      message: 'Safety policy requires confirmation inside payment, billing, wallet, or order flows.',
-    }
+    return classify('payment_context', strictness)
   }
 
   return ALLOW
@@ -160,6 +168,9 @@ export function evaluateActionSafety(
  * Irreversible actions are always blocked (require manual takeover) regardless of
  * `unrestrictedMode`. These are operations like factory reset, account deletion, and
  * payment/wire transfer that cannot be undone once executed.
+ *
+ * Strictness deliberately does not reach this function: a setting may change how
+ * much prompting the user wants, never whether an irreversible action may run.
  */
 export function evaluateIrreversibleSafety(
   action: AgentAction,
@@ -175,6 +186,7 @@ export function evaluateIrreversibleSafety(
     return {
       decision: 'block',
       category: 'critical_destructive',
+      risk: riskLevelForCategory('critical_destructive'),
       message:
         'Irreversible action blocked by safety policy. Factory reset, account deletion, and similar operations always require manual takeover — even in unrestricted mode.',
     }
@@ -182,14 +194,40 @@ export function evaluateIrreversibleSafety(
 
   if (matchesAny(evidence.all, PAYMENT_CRITICAL_PATTERNS)) {
     return {
-      decision: 'block',
+      decision: 'take_over',
       category: 'payment',
+      risk: riskLevelForCategory('payment'),
+      takeoverKind: 'payment',
       message:
         'Payment action blocked by safety policy. Payments, transfers, and checkouts always require manual takeover — even in unrestricted mode.',
     }
   }
 
   return null
+}
+
+/**
+ * Turns a category into a verdict through the risk ladder.
+ *
+ * `takeoverKind` is attached only when the resolved verdict is actually a
+ * take-over: a relaxed policy that downgrades a login step to a plain
+ * confirmation must not leave a take-over card on screen.
+ */
+function classify(
+  category: SafetyCategory,
+  strictness: SafetyStrictness,
+  extra: { takeoverKind?: TakeOverKind } = {},
+): ActionSafetyPolicyResult {
+  const decision = resolveSafetyDecision(category, strictness)
+  return {
+    decision,
+    category,
+    risk: riskLevelForCategory(category),
+    message: SAFETY_MESSAGES[category],
+    ...(decision === 'take_over' && extra.takeoverKind
+      ? { takeoverKind: extra.takeoverKind }
+      : {}),
+  }
 }
 
 function collectPolicyEvidence(action: AgentAction, context: ActionSafetyContext) {

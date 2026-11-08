@@ -17,6 +17,11 @@ import {
   isModelProviderPreset,
   migrateProvider,
 } from './modelProviders'
+import {
+  DEFAULT_SAFETY_STRICTNESS,
+  isSafetyStrictness,
+  type SafetyStrictness,
+} from './actionRisk'
 import type { ExportEnvelope } from './fileExport'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
@@ -31,6 +36,7 @@ export type AppSettings = {
   preferAdbKeyboard: boolean
   confirmSensitiveActions: boolean
   unrestrictedMode: boolean
+  safetyStrictness: SafetyStrictness
   screenBlackoutDuringAutoControl: boolean
   streamResponses: boolean
   disabledActionTools: ActionToolName[]
@@ -66,6 +72,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   preferAdbKeyboard: false,
   confirmSensitiveActions: true,
   unrestrictedMode: false,
+  safetyStrictness: DEFAULT_SAFETY_STRICTNESS,
   screenBlackoutDuringAutoControl: false,
   streamResponses: false,
   disabledActionTools: [],
@@ -160,7 +167,8 @@ export function createSettingsExportData(settings: AppSettings): AppSettings {
  * local security posture:
  * - an empty imported API key never clears the key configured locally;
  * - an import can never enable `unrestrictedMode`;
- * - an import can never turn `confirmSensitiveActions` off.
+ * - an import can never turn `confirmSensitiveActions` off;
+ * - an import can never relax `safetyStrictness` below the local setting.
  */
 export function mergeImportedSettings(
   current: AppSettings,
@@ -174,7 +182,18 @@ export function mergeImportedSettings(
     },
     unrestrictedMode: imported.unrestrictedMode && current.unrestrictedMode,
     confirmSensitiveActions: imported.confirmSensitiveActions || current.confirmSensitiveActions,
+    safetyStrictness: stricterStrictness(current.safetyStrictness, imported.safetyStrictness),
   }
+}
+
+const STRICTNESS_ORDER: Record<SafetyStrictness, number> = {
+  relaxed: 0,
+  balanced: 1,
+  strict: 2,
+}
+
+function stricterStrictness(left: SafetyStrictness, right: SafetyStrictness): SafetyStrictness {
+  return STRICTNESS_ORDER[left] >= STRICTNESS_ORDER[right] ? left : right
 }
 
 export function normalizeSettings(candidate: unknown): AppSettings {
@@ -229,6 +248,9 @@ export function normalizeSettings(candidate: unknown): AppSettings {
       DEFAULT_SETTINGS.confirmSensitiveActions,
     ),
     unrestrictedMode: readBoolean(candidate.unrestrictedMode, DEFAULT_SETTINGS.unrestrictedMode),
+    safetyStrictness: isSafetyStrictness(candidate.safetyStrictness)
+      ? candidate.safetyStrictness
+      : DEFAULT_SETTINGS.safetyStrictness,
     screenBlackoutDuringAutoControl: readBoolean(
       candidate.screenBlackoutDuringAutoControl,
       DEFAULT_SETTINGS.screenBlackoutDuringAutoControl,

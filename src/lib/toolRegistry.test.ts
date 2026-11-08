@@ -163,10 +163,11 @@ describe('ActionToolRegistry', () => {
 
     expect(result).toEqual({
       success: false,
-      safetyDecision: 'block',
+      safetyDecision: 'take_over',
+      takeoverKind: 'payment',
       summary: [
         'sequence stopped at action 1/2.',
-        'action 1/2 tap: Safety policy blocked a payment, checkout, order, or money-transfer action.',
+        'action 1/2 tap: Payments, transfers and checkouts are completed by you, never by the agent. Finish it on the phone, then continue.',
       ].join('\n'),
       toolName: 'sequence',
     })
@@ -184,9 +185,11 @@ describe('ActionToolRegistry', () => {
 
     expect(result).toEqual({
       success: false,
-      summary: 'Safety policy blocked a payment, checkout, order, or money-transfer action.',
+      summary:
+        'Payments, transfers and checkouts are completed by you, never by the agent. Finish it on the phone, then continue.',
       toolName: 'tap',
-      safetyDecision: 'block',
+      safetyDecision: 'take_over',
+      takeoverKind: 'payment',
     })
     expect(device.executed).toEqual([])
   })
@@ -255,7 +258,8 @@ describe('ActionToolRegistry', () => {
       summary:
         'Payment action blocked by safety policy. Payments, transfers, and checkouts always require manual takeover — even in unrestricted mode.',
       toolName: 'tap',
-      safetyDecision: 'block',
+      safetyDecision: 'take_over',
+      takeoverKind: 'payment',
     })
     expect(confirmSensitiveAction).not.toHaveBeenCalled()
     expect(device.executed).toEqual([])

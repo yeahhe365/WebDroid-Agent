@@ -268,6 +268,7 @@ function App() {
     doubleTapIntervalMs,
     keyboardStepMs,
     preferAdbKeyboard,
+    safetyStrictness,
     unrestrictedMode,
   } = device.options
 
@@ -375,6 +376,7 @@ function App() {
       preferAdbKeyboard,
       confirmSensitiveActions,
       unrestrictedMode,
+      safetyStrictness,
       screenBlackoutDuringAutoControl,
       streamResponses,
       disabledActionTools,
@@ -396,6 +398,7 @@ function App() {
       memoryEnabled,
       modelConfig,
       preferAdbKeyboard,
+      safetyStrictness,
       screenBlackoutDuringAutoControl,
       streamResponses,
       taskNotificationsEnabled,
@@ -508,6 +511,7 @@ function App() {
     setError,
     setPendingStep,
     secrets: secretRecords,
+    safetyStrictness,
     screenBlackoutDuringAutoControl,
     streamResponses,
     syncConversation,
@@ -608,6 +612,7 @@ function App() {
     device.actions.onPreferAdbKeyboardChange(next.preferAdbKeyboard)
     device.actions.onConfirmSensitiveActionsChange(next.confirmSensitiveActions)
     device.actions.onUnrestrictedModeChange(next.unrestrictedMode)
+    device.actions.onSafetyStrictnessChange(next.safetyStrictness)
     device.actions.onActionSettleMsChange(next.actionSettleMs)
     device.actions.onDoubleTapIntervalMsChange(next.doubleTapIntervalMs)
     device.actions.onKeyboardStepMsChange(next.keyboardStepMs)

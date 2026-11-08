@@ -29,7 +29,7 @@ export type AgentThreadStatus =
   | 'error'
 
 /** Why a run is waiting for review. Presentation metadata, not a safety gate. */
-export type ReviewKind = 'answer' | 'confirm' | 'max_steps' | 'other'
+export type ReviewKind = 'answer' | 'blocked' | 'confirm' | 'max_steps' | 'other'
 
 export type AgentTurnStatus =
   | 'planned'

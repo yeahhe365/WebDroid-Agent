@@ -40,7 +40,10 @@ describe('needsYouKind', () => {
     ).toBe('review')
     expect(
       needsYouKind('awaiting_review', undefined, 'Max steps reached', undefined, 'max_steps'),
-    ).toBe('review')
+    ).toBe('max_steps')
+    expect(
+      needsYouKind('awaiting_review', undefined, 'Blocked by policy', undefined, 'blocked'),
+    ).toBe('blocked')
   })
 
   it('separates questions, reviews, pauses and errors', () => {

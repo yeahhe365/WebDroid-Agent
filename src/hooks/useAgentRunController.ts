@@ -14,6 +14,7 @@ import {
 import { recordThreadStatus } from '../lib/agentThread'
 import { classifyThrownFailure } from '../lib/failureTaxonomy'
 import type { AgentAction } from '../lib/actionTypes'
+import { DEFAULT_SAFETY_STRICTNESS, type SafetyStrictness } from '../lib/actionRisk'
 import type { AppCopy } from '../lib/appCopy'
 import type { ActionProtocol } from '../lib/actionProtocol'
 import type { AppCardMap } from '../lib/appCards'
@@ -72,6 +73,7 @@ type UseAgentRunControllerInput = {
   setPendingStep: (step: AgentStep | null) => void
   secrets: readonly SecretRecord[]
   screenBlackoutDuringAutoControl: boolean
+  safetyStrictness?: SafetyStrictness
   streamResponses: boolean
   syncConversation: () => void
   unrestrictedMode: boolean
@@ -103,6 +105,7 @@ export function useAgentRunController({
   setPendingStep,
   secrets,
   screenBlackoutDuringAutoControl,
+  safetyStrictness = DEFAULT_SAFETY_STRICTNESS,
   streamResponses,
   syncConversation,
   unrestrictedMode,
@@ -165,6 +168,7 @@ export function useAgentRunController({
           currentApp: pendingStep.currentApp,
           deviceState: pendingStep.deviceState,
           modelOutput: pendingStep.modelOutput,
+          strictness: safetyStrictness,
         },
         customTools,
         secrets,
@@ -246,6 +250,7 @@ export function useAgentRunController({
     setError,
     setPendingStep,
     secrets,
+    safetyStrictness,
     streamResponses,
     syncConversation,
     unrestrictedMode,
@@ -285,6 +290,7 @@ export function useAgentRunController({
           onMemoryItem,
           confirmSensitiveAction: device.confirmSensitiveAction,
           unrestrictedMode,
+          safetyStrictness,
           shouldPause: () => pauseRequestedRef.current,
           onSnapshot: device.applyDeviceSnapshot,
           onStep: async (step) => {
@@ -397,6 +403,7 @@ export function useAgentRunController({
     runTask,
     screenBlackoutDuringAutoControl,
     secrets,
+    safetyStrictness,
     setPendingStep,
     streamResponses,
     syncConversation,

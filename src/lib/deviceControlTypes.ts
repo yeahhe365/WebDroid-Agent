@@ -1,4 +1,5 @@
 import type { DeviceInfo, DeviceState, InstalledApp } from '../adapters/deviceTypes'
+import type { SafetyStrictness } from './actionRisk'
 import type { AgentAction } from './actionTypes'
 import type { BusyTask } from './busyTask'
 import type { DoctorCheckResult } from './deviceDoctor'
@@ -19,6 +20,7 @@ export type DeviceControlOptions = {
   doubleTapIntervalMs: number
   keyboardStepMs: number
   preferAdbKeyboard: boolean
+  safetyStrictness: SafetyStrictness
   unrestrictedMode: boolean
 }
 
@@ -35,5 +37,6 @@ export type DeviceControlActions = {
   onPreferAdbKeyboardChange: (value: boolean) => void
   onRunDirectAction: (action: AgentAction) => void
   onRunDoctor: () => void
+  onSafetyStrictnessChange: (value: SafetyStrictness) => void
   onUnrestrictedModeChange: (value: boolean) => void
 }

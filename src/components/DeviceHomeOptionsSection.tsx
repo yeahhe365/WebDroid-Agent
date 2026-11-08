@@ -1,18 +1,25 @@
 import { Settings2 } from 'lucide-react'
 import { useId } from 'react'
+import type { SafetyStrictness } from '../lib/actionRisk'
 import type { AppCopy } from '../lib/appCopy'
 import type { DeviceControlActions, DeviceControlOptions } from '../lib/deviceControlTypes'
 
 export type DeviceHomeOptionsSectionProps = {
   actions: Pick<
     DeviceControlActions,
-    'onConfirmSensitiveActionsChange' | 'onPreferAdbKeyboardChange' | 'onUnrestrictedModeChange'
+    | 'onConfirmSensitiveActionsChange'
+    | 'onPreferAdbKeyboardChange'
+    | 'onSafetyStrictnessChange'
+    | 'onUnrestrictedModeChange'
   >
   copy: AppCopy
   memoryEnabled: boolean
   onMemoryEnabledChange: (value: boolean) => void
   onScreenBlackoutDuringAutoControlChange: (value: boolean) => void
-  options: Pick<DeviceControlOptions, 'confirmSensitiveActions' | 'preferAdbKeyboard' | 'unrestrictedMode'>
+  options: Pick<
+    DeviceControlOptions,
+    'confirmSensitiveActions' | 'preferAdbKeyboard' | 'safetyStrictness' | 'unrestrictedMode'
+  >
   sectionId?: string
   screenBlackoutDuringAutoControl: boolean
 }
@@ -32,10 +39,12 @@ export function DeviceHomeOptionsSection({
   const unrestrictedModeInputId = useId()
   const memoryInputId = useId()
   const screenBlackoutInputId = useId()
+  const safetyStrictnessInputId = useId()
   const enabledOptionCount = [
     options.preferAdbKeyboard,
     options.confirmSensitiveActions,
     options.unrestrictedMode,
+    options.safetyStrictness !== 'balanced',
     memoryEnabled,
     screenBlackoutDuringAutoControl,
   ].filter(Boolean).length
@@ -48,7 +57,7 @@ export function DeviceHomeOptionsSection({
           <h2>{copy.deviceOptions}</h2>
         </div>
         <span className="config-section-badge count">
-          {copy.actionToolsSummary(enabledOptionCount, 5)}
+          {copy.actionToolsSummary(enabledOptionCount, 6)}
         </span>
       </div>
       <div className="home-device-options-panel">
@@ -90,6 +99,21 @@ export function DeviceHomeOptionsSection({
           />
           <span>{copy.unrestrictedMode}</span>
         </label>
+        <div className="config-inline-field" title={copy.safetyStrictnessHelp}>
+          <label htmlFor={safetyStrictnessInputId}>{copy.safetyStrictness}</label>
+          <select
+            id={safetyStrictnessInputId}
+            name="safetyStrictness"
+            value={options.safetyStrictness}
+            onChange={(event) =>
+              actions.onSafetyStrictnessChange(event.target.value as SafetyStrictness)
+            }
+          >
+            <option value="relaxed">{copy.safetyStrictnessRelaxed}</option>
+            <option value="balanced">{copy.safetyStrictnessBalanced}</option>
+            <option value="strict">{copy.safetyStrictnessStrict}</option>
+          </select>
+        </div>
         <label className="toggle" htmlFor={memoryInputId} title={copy.memoryHelp}>
           <input
             id={memoryInputId}

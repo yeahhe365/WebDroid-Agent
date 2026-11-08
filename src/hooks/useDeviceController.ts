@@ -75,6 +75,7 @@ export function useDeviceController({
     initialSettings.confirmSensitiveActions,
   )
   const [unrestrictedMode, setUnrestrictedMode] = useState(initialSettings.unrestrictedMode)
+  const [safetyStrictness, setSafetyStrictness] = useState(initialSettings.safetyStrictness)
   const [actionSettleMs, setActionSettleMs] = useState(initialSettings.actionSettleMs)
   const [doubleTapIntervalMs, setDoubleTapIntervalMs] = useState(
     initialSettings.doubleTapIntervalMs,
@@ -374,6 +375,7 @@ export function useDeviceController({
       onPreferAdbKeyboardChange: toggleAdbKeyboard,
       onRunDirectAction: runDirectAction,
       onRunDoctor: runDoctor,
+      onSafetyStrictnessChange: setSafetyStrictness,
       onUnrestrictedModeChange: setUnrestrictedMode,
     },
     applyDeviceSnapshot,
@@ -388,6 +390,7 @@ export function useDeviceController({
       doubleTapIntervalMs,
       keyboardStepMs,
       preferAdbKeyboard,
+      safetyStrictness,
       unrestrictedMode,
     },
     refreshDisplayedSnapshot,

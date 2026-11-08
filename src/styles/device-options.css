@@ -55,6 +55,31 @@
   overflow-wrap: anywhere;
 }
 
+.home-device-options-panel .config-inline-field {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.home-device-options-panel .config-inline-field label {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  min-width: 0;
+}
+
+.home-device-options-panel .config-inline-field select {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  flex: 0 0 auto;
+  font: inherit;
+  min-width: 6.5rem;
+  padding: 0.15rem 0.4rem;
+}
+
 .home-device-options-panel .toggle svg {
   color: var(--accent);
   flex: 0 0 auto;

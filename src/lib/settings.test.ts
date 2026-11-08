@@ -48,6 +48,7 @@ describe('settings persistence', () => {
       preferAdbKeyboard: true,
       confirmSensitiveActions: false,
       unrestrictedMode: true,
+      safetyStrictness: 'strict',
       screenBlackoutDuringAutoControl: true,
       streamResponses: true,
       disabledActionTools: ['tap', 'open_url'],
@@ -390,6 +391,22 @@ describe('settings export and import safety', () => {
     const current = { ...DEFAULT_SETTINGS, confirmSensitiveActions: true }
     const imported = { ...DEFAULT_SETTINGS, confirmSensitiveActions: false }
     expect(mergeImportedSettings(current, imported).confirmSensitiveActions).toBe(true)
+  })
+
+  it('can never relax the safety strictness through an import', () => {
+    const current = { ...DEFAULT_SETTINGS, safetyStrictness: 'strict' as const }
+    const imported = { ...DEFAULT_SETTINGS, safetyStrictness: 'relaxed' as const }
+    expect(mergeImportedSettings(current, imported).safetyStrictness).toBe('strict')
+
+    // Tightening through an import is allowed: it only adds friction.
+    const relaxedCurrent = { ...DEFAULT_SETTINGS, safetyStrictness: 'balanced' as const }
+    const strictImported = { ...DEFAULT_SETTINGS, safetyStrictness: 'strict' as const }
+    expect(mergeImportedSettings(relaxedCurrent, strictImported).safetyStrictness).toBe('strict')
+  })
+
+  it('falls back to the default strictness for an unknown value', () => {
+    const settings = normalizeSettings({ safetyStrictness: 'paranoid' })
+    expect(settings.safetyStrictness).toBe(DEFAULT_SETTINGS.safetyStrictness)
   })
 
   it('still applies ordinary fields from the imported file', () => {

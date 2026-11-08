@@ -94,4 +94,40 @@ describe('NeedsYouCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expect(onContinue).toHaveBeenCalledWith(APP_COPY['en-US'].continueAfterStopMessage)
   })
+
+  it('gives a blocked action its own card with nothing to resume', () => {
+    const { onContinue, onOpenRunLog } = renderCard({
+      message: 'Safety policy blocked a potentially irreversible action.',
+      reviewKind: 'blocked',
+      status: 'awaiting_review',
+    })
+
+    expect(screen.getByRole('heading', { name: 'Blocked by safety policy' })).toBeTruthy()
+    // A blocked action must not offer a "continue" that would just re-block.
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Open run log' }))
+    expect(onOpenRunLog).toHaveBeenCalledTimes(1)
+    expect(onContinue).not.toHaveBeenCalled()
+  })
+
+  it('explains a step-limit stop instead of showing the generic review card', () => {
+    const { onContinue } = renderCard({
+      message: 'Reached the step limit.',
+      reviewKind: 'max_steps',
+      status: 'awaiting_review',
+    })
+
+    expect(screen.getByRole('heading', { name: 'Step limit reached' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Needs your confirmation' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(onContinue).toHaveBeenCalledWith(APP_COPY['en-US'].resumeAfterReviewMessage)
+  })
+
+  it('shows the payment card for a payment stop', () => {
+    const { onContinue } = renderCard({ takeoverKind: 'payment' })
+
+    expect(screen.getByRole('heading', { name: 'Payment needs you' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Handled — continue' }))
+    expect(onContinue).toHaveBeenCalledWith(APP_COPY['en-US'].resumeAfterTakeoverMessage)
+  })
 })

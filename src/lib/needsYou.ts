@@ -9,6 +9,8 @@ export type NeedsYouKind =
   | 'payment'
   | 'review'
   | 'answer'
+  | 'blocked'
+  | 'max_steps'
   | 'paused'
   | 'stopped'
   | 'error'
@@ -33,6 +35,9 @@ export function needsYouKind(
   if (status === 'awaiting_review') {
     if (reviewKind === 'answer') {
       return 'answer'
+    }
+    if (reviewKind === 'blocked' || reviewKind === 'max_steps') {
+      return reviewKind
     }
     if (reviewKind) {
       return 'review'
