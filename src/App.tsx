@@ -12,7 +12,7 @@ import { LazyWebAdbDeviceBackend } from './adapters/lazyWebAdbBackend'
 import type { AgentStep } from './lib/agent'
 import type { AgentAction } from './lib/actionTypes'
 import type { ActionProtocol } from './lib/actionProtocol'
-import { createOpenAiClient } from './lib/openAiClient'
+import { createOpenAiClient, type ModelClientNotice } from './lib/openAiClient'
 import { createOpenAiResponsesClient } from './lib/openAiResponsesClient'
 import { createGeminiClient } from './lib/geminiClient'
 import { isGeminiProvider } from './lib/geminiTypes'
@@ -72,7 +72,10 @@ import { formatCurrentAppLabel } from './components/deviceDisplay'
 import { UNKNOWN_APP_NAME } from './lib/deviceState'
 import { lazyWithRetry } from './lib/lazyWithRetry'
 
-function createModelClient(modelConfig: ModelConfig) {
+function createModelClient(
+  modelConfig: ModelConfig,
+  onNotice?: (notice: ModelClientNotice) => void,
+) {
   const proxyTokenUrl = OPENAI_PROXY_URL ? OPENAI_PROXY_TOKEN_URL : undefined
   const proxyTokenProvider = proxyTokenUrl
     ? () => fetchProxyToken(proxyTokenUrl)
@@ -90,6 +93,7 @@ function createModelClient(modelConfig: ModelConfig) {
   return createOpenAiClient(globalThis.fetch, {
     proxyUrl: OPENAI_PROXY_URL,
     proxyTokenProvider,
+    onNotice,
   })
 }
 
@@ -123,12 +127,6 @@ function App() {
   const settings = useMemo(() => loadSettings(), [])
   const [backend] = useState(() => new LazyWebAdbDeviceBackend())
   const [modelConfig, setModelConfig] = useState<ModelConfig>(settings.modelConfig)
-  const client = useMemo(
-    () => createModelClient(modelConfig),
-    // Client type only depends on the provider; baseUrl/apiKey/model are read per-request.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [modelConfig.provider],
-  )
   const [actionProtocol, setActionProtocol] = useState<ActionProtocol>(settings.actionProtocol)
   const [disabledActionTools, setDisabledActionTools] = useState<ActionToolName[]>(
     settings.disabledActionTools,
@@ -208,6 +206,17 @@ function App() {
   }, [])
   const [pendingStep, setPendingStep] = useState<AgentStep | null>(null)
   const { logs, addLog, clearLogs } = useRunLog()
+  // Built here rather than next to the model state so a degraded request can
+  // reach the run log. The memo only tracks the provider: baseUrl, key and model
+  // are read per request.
+  const client = useMemo(
+    () =>
+      createModelClient(modelConfig, (notice: ModelClientNotice) => {
+        addLog({ tone: 'warn', title: copy.streamUsageUnavailable, detail: notice.message })
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modelConfig.provider, addLog, copy.streamUsageUnavailable],
+  )
   const { dismissToast, pushToast, toasts } = useToasts()
   const { busyTask, error, runTask, setError } = useBusyTask(({ label, message }) => {
     // Keep task failures in the persistent banner; toasts are for short-lived

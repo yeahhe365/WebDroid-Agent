@@ -147,7 +147,7 @@ npm run preview
 - `Confirm sensitive actions`：敏感点击是否需要人工确认，默认开启。
 - `安全策略强度`（`Safety strictness`）：`宽松` / `标准`（默认）/ `严格`。只在本地区间内调整判定：登录、验证码、支付、不可逆操作各有上下限，宽松不会让支付或删除账号直接执行，严格也不会把需要人工处理的步骤变成无法继续的死结。
 - `完全无限制模式`：绕过本地安全策略和敏感确认，模型也会被提示不要请求人工接管。
-- `Stream responses`：是否启用流式响应，默认关闭。
+- `Stream responses`：是否启用流式响应，默认关闭。开启后按 OpenAI 标准附带 `stream_options.include_usage` 统计流式 Token；兼容网关拒绝该字段时会自动去掉并重试一次，运行继续，只在日志里提示 Token 统计不完整。
 - `Use ADB Keyboard for text`：是否优先使用 ADB Keyboard 输入文本，默认关闭。
 - `Action settle`、`Double tap interval`、`Keyboard step`：动作执行后的等待和输入节奏参数。
 - `App Cards`：按包名编辑的应用上下文卡片，默认内置 Chrome、Gmail、Settings。

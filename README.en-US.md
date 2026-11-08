@@ -106,7 +106,7 @@ The app stores these values in the current browser's `localStorage`:
 - `Confirm sensitive actions`: whether sensitive taps require human confirmation, default on.
 - `Safety strictness`: `Relaxed` / `Standard` (default) / `Strict`. It only moves verdicts inside each category's own floor and ceiling: relaxing never runs a payment or an account deletion, and tightening never turns a human step into a dead end.
 - `Unrestricted mode`: bypass local safety policy and sensitive confirmations, and prompt the model not to request human takeover.
-- `Stream responses`: whether to use streaming responses, default off.
+- `Stream responses`: whether to use streaming responses, default off. Streaming sends `stream_options.include_usage` so usage can be counted while the run is in flight; if a compatible gateway rejects that field the request is retried once without it, the run continues, and the log notes that the token count will be incomplete.
 - `Use ADB Keyboard for text`: whether to prefer ADB Keyboard input, default off.
 - `Action settle`, `Double tap interval`, `Keyboard step`: timing controls for action execution and text input.
 - `App Cards`: package-name keyed editable app context cards; Chrome, Gmail, and Settings are built in by default.

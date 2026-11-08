@@ -527,6 +527,7 @@ export const EN_US_COPY = {
   maxStepsReached: 'Max steps reached',
   send: 'Send',
   pauseRun: 'Pause run',
+  streamUsageUnavailable: 'Streamed token usage is unavailable',
   pauseRunPending: 'Pausing…',
   pauseRunPendingHint:
     'The step that is already running finishes first, then the run pauses right after it.',

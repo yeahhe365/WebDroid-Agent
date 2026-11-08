@@ -519,6 +519,7 @@ export const ZH_CN_COPY = {
   maxStepsReached: '已达到最大步数',
   send: '发送',
   pauseRun: '暂停运行',
+  streamUsageUnavailable: '流式 Token 统计不可用',
   pauseRunPending: '正在暂停…',
   pauseRunPendingHint: '眼下正在执行的这一步会先做完，做完后立刻暂停。',
   stopRun: '停止运行',

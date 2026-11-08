@@ -53,7 +53,7 @@ that is mid-flight, and the matrix must not assume it can.
 | K1 | Enable streaming for a provider that supports `stream_options.include_usage` (OpenAI) and run a task | The token counter is non-zero *while* the run is going, not only at the end | The counter stays at 0 until the run ends |
 | K2 | Same as K1, plus a final response | The final response's usage is added to the last turn, and the total matches the provider's dashboard within rounding | The totals only reflect the last request |
 | K3 | Gemini native endpoint | The counter reflects `usageMetadata` | The counter stays empty |
-| K4 | A provider that rejects `stream_options` | The request fails with a readable error naming the option, and the run does not silently lose tokens | The app hangs, or the failure is reported as a device error |
+| K4 | A provider that rejects `stream_options` | The request is retried once without the field, the run still answers, the counter stays empty, and the run log carries one warning naming the option | The run fails outright, retries forever, or the fallback goes unlogged |
 
 ## 5. Safety strictness
 

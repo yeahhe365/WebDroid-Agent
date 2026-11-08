@@ -175,6 +175,80 @@ describe('createOpenAiClient', () => {
     })
   })
 
+  it('retries without stream_options when the provider rejects the field', async () => {
+    const encoder = new TextEncoder()
+    const streamResponse = () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                'data: {"choices":[{"delta":{"content":"{\\"action\\":\\"done\\"}"}}]}\n\ndata: [DONE]\n\n',
+              ),
+            )
+            controller.close()
+          },
+        }),
+      )
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { error: { message: 'Unrecognized request argument supplied: stream_options' } },
+          { status: 400 },
+        ),
+      )
+      .mockResolvedValueOnce(streamResponse())
+    const onNotice = vi.fn()
+    const onUsage = vi.fn()
+    const client = createOpenAiClient(fetcher, { onNotice })
+
+    const text = await client.completeAction({
+      baseUrl: 'https://api.example.com/v1/',
+      apiKey: 'secret',
+      model: 'agent-model',
+      stream: true,
+      task: 'Finish',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 10, height: 20 },
+      onUsage,
+    })
+
+    expect(text).toBe('{"action":"done"}')
+    const first = JSON.parse(String(vi.mocked(fetcher).mock.calls[0][1]?.body))
+    expect(first.stream_options).toEqual({ include_usage: true })
+    const retried = JSON.parse(String(vi.mocked(fetcher).mock.calls[1][1]?.body))
+    expect(retried.stream_options).toBeUndefined()
+    expect(retried.stream).toBe(true)
+    expect(onNotice).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'stream_usage_unavailable' }),
+    )
+    // The retry carries no usage block, so the counter simply stays empty.
+    expect(onUsage).not.toHaveBeenCalled()
+  })
+
+  it('does not retry a streaming failure that is unrelated to stream_options', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ error: { message: 'Invalid API key' } }, { status: 401 }))
+    const onNotice = vi.fn()
+    const client = createOpenAiClient(fetcher, { onNotice })
+
+    await expect(
+      client.completeAction({
+        baseUrl: 'https://api.example.com/v1/',
+        apiKey: 'secret',
+        model: 'agent-model',
+        stream: true,
+        task: 'Finish',
+        screenshotDataUrl: 'data:image/png;base64,abc123',
+        screen: { width: 10, height: 20 },
+      }),
+    ).rejects.toThrow(/Invalid API key/)
+    expect(vi.mocked(fetcher).mock.calls).toHaveLength(1)
+    expect(onNotice).not.toHaveBeenCalled()
+  })
+
   it('sends invalid action output and validation errors when repairing an action', async () => {
     const fetcher = vi.fn<typeof fetch>(async () =>
       completionResponse('{"action":"tap","x":100,"y":200}'),
