@@ -309,13 +309,15 @@ function contentSecurityPolicy(extraConnectOrigins: readonly string[]): string {
 
 function cacheControl(filePath: string, distDir: string): string {
   const relativePath = path.relative(distDir, filePath).replaceAll(path.sep, '/')
-  if (relativePath === 'index.html' || path.extname(filePath) === '.html') {
-    return 'no-cache'
-  }
   if (relativePath.startsWith('assets/')) {
+    // Content-hashed by Vite: the bytes behind a name can never change.
     return 'public, max-age=31536000, immutable'
   }
-  return 'public, max-age=3600'
+  // Everything else keeps a stable name (index.html, public/ icons, the
+  // manifest). A max-age here would keep a swapped logo or a rewritten shell
+  // invisible for the whole freshness window, so always revalidate instead:
+  // the ETag still turns this into a cheap 304.
+  return 'no-cache'
 }
 
 function isMainModule(): boolean {

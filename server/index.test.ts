@@ -74,6 +74,16 @@ describe('createWebDroidServer', () => {
     expect(htmlResponse.headers.get('cache-control')).toBe('no-cache')
   })
 
+  it('revalidates unhashed public files instead of caching them for an hour', async () => {
+    const serverUrl = await listen(createWebDroidServer({ distDir: distDir! }))
+
+    // `app.js` stands in for anything copied verbatim out of public/: same
+    // filename across deploys, so a max-age would serve yesterday's bytes.
+    const response = await fetch(`${serverUrl}/app.js`, { method: 'HEAD' })
+
+    expect(response.headers.get('cache-control')).toBe('no-cache')
+  })
+
   it('appends extra CSP connect-src origins from server options', async () => {
     const serverUrl = await listen(
       createWebDroidServer({ distDir: distDir!, extraConnectOrigins: ['https://api.moonshot.cn'] }),
