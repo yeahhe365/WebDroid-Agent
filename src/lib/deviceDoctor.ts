@@ -2,6 +2,7 @@ import { isAdbKeyboardInstalled } from '../adapters/adbKeyboard'
 import type { DeviceBackend, DeviceInfo, DeviceScreenshot, DeviceState } from '../adapters/deviceTypes'
 import { normalizeBaseUrl } from './openAiClient'
 import type { ModelConfig } from './openAiTypes'
+import type { ModelConnectionTestResult } from './modelConnectionTest'
 
 export type DoctorCheckStatus = 'ok' | 'warn' | 'error' | 'skipped'
 
@@ -31,6 +32,8 @@ export type DeviceDoctorInput = {
   fetcher?: typeof fetch
   isWebUsbSupported: () => boolean
   modelConfig: ModelConfig
+  /** When provided, the model check uses the same proxy-aware path as a real run. */
+  probeModel?: (config: ModelConfig) => Promise<ModelConnectionTestResult>
 }
 
 export async function runDeviceDoctor({
@@ -40,6 +43,7 @@ export async function runDeviceDoctor({
   fetcher = fetch,
   isWebUsbSupported,
   modelConfig,
+  probeModel,
 }: DeviceDoctorInput): Promise<DoctorCheckResult[]> {
   const results: DoctorCheckResult[] = []
   const webUsbOk = isWebUsbSupported()
@@ -187,21 +191,35 @@ export async function runDeviceDoctor({
 
   if (modelConfigReady) {
     try {
-      const response = await fetcher(`${normalizeBaseUrl(modelConfig.baseUrl)}/models`, {
-        headers: {
-          Authorization: `Bearer ${modelConfig.apiKey}`,
-        },
-      })
-      results.push(
-        response.ok
-          ? ok('model_api', 'Model API', `/models responded with ${response.status}.`)
-          : error(
-              'model_api',
-              'Model API',
-              `/models responded with ${response.status}.`,
-              'Check the Base URL, API key, provider CORS policy, and model access.',
-            ),
-      )
+      if (probeModel) {
+        const probe = await probeModel(modelConfig)
+        results.push(
+          probe.ok
+            ? ok('model_api', 'Model API', `Connection succeeded for ${probe.message}.`)
+            : error(
+                'model_api',
+                'Model API',
+                probe.message,
+                'Check the Base URL, API key, model name, and proxy configuration.',
+              ),
+        )
+      } else {
+        const response = await fetcher(`${normalizeBaseUrl(modelConfig.baseUrl)}/models`, {
+          headers: {
+            Authorization: `Bearer ${modelConfig.apiKey}`,
+          },
+        })
+        results.push(
+          response.ok
+            ? ok('model_api', 'Model API', `/models responded with ${response.status}.`)
+            : error(
+                'model_api',
+                'Model API',
+                `/models responded with ${response.status}.`,
+                'Check the Base URL, API key, provider CORS policy, and model access.',
+              ),
+        )
+      }
     } catch (caught) {
       results.push(
         error(

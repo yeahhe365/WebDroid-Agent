@@ -4,6 +4,7 @@ import {
   createOpenAiResponsesClient,
   extractResponsesText,
   mapToOpenAiOfficialEffort,
+  readStreamingResponsesText,
 } from './openAiResponsesClient'
 import type { ChatCompletionPayload } from './openAiTypes'
 
@@ -168,6 +169,7 @@ describe('createOpenAiResponsesClient', () => {
     )
     const client = createOpenAiResponsesClient(fetcher, {
       proxyUrl: '/api/openai/chat/completions',
+      proxyTokenProvider: async () => 'letmein',
     })
 
     await client.completeFinalResponse?.({
@@ -181,9 +183,40 @@ describe('createOpenAiResponsesClient', () => {
 
     const [url, init] = fetcher.mock.calls[0]
     expect(url).toBe('/api/openai/chat/completions')
+    expect(init?.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      'x-proxy-token': 'letmein',
+    })
     const body = JSON.parse(String(init?.body))
     expect(body.path).toBe('/responses')
     expect(body.payload.reasoning).toEqual({ effort: 'low' })
     expect(body.payload.response_format).toBeUndefined()
+  })
+
+  it('reads usage from the completed Responses stream event', async () => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"type":"response.output_text.delta","delta":"ok"}\n\n',
+              'data: {"type":"response.completed","response":{"usage":{"input_tokens":7,"output_tokens":3,"total_tokens":10}}}\n\n',
+            ].join(''),
+          ),
+        )
+        controller.close()
+      },
+    })
+    const onUsage = vi.fn()
+
+    const text = await readStreamingResponsesText(new Response(stream), onUsage)
+
+    expect(text).toBe('ok')
+    expect(onUsage).toHaveBeenCalledWith({
+      inputTokens: 7,
+      outputTokens: 3,
+      totalTokens: 10,
+    })
   })
 })

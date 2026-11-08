@@ -84,6 +84,13 @@ export type ModelConfig = {
   stream?: boolean
 }
 
+/** Token counts reported by the model provider. */
+export type ModelTokenUsage = {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
 export type CompletionRequest = ModelConfig & {
   actionProtocol?: ActionProtocol
   task: string
@@ -106,6 +113,8 @@ export type CompletionRequest = ModelConfig & {
   secrets?: readonly SecretDescriptor[]
   unrestrictedMode?: boolean
   signal?: AbortSignal
+  /** Called once when the provider reports usage for this request. */
+  onUsage?: (usage: ModelTokenUsage) => void
 }
 
 export type PromptScreenshotAttachment = {
@@ -124,6 +133,7 @@ export type FinalResponseRequest = ModelConfig & {
   deviceState?: DeviceState
   progressSummary?: string
   signal?: AbortSignal
+  onUsage?: (usage: ModelTokenUsage) => void
 }
 
 export type RepairActionRequest = CompletionRequest & {
@@ -181,6 +191,9 @@ export type ChatCompletionPayload = {
   enable_thinking?: boolean
   thinking_budget?: number
   stream?: boolean
+  stream_options?: {
+    include_usage?: boolean
+  }
   response_format?: {
     type: 'json_object'
   }

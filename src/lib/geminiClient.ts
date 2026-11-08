@@ -3,17 +3,20 @@ import { OpenAiClientError } from './openAiErrors'
 import {
   extractAssistantText,
   formatApiError,
+  normalizeTokenUsage,
   readJsonOrUndefined,
 } from './openAiResponse'
 import {
   buildRepairTask,
   fetchWithRetry,
 } from './httpRetry'
+import { withModelRequestTimeout } from './modelRequestTimeout'
 import type {
   ChatCompletionPayload,
   ChatMessage,
   CompletionRequest,
   FinalResponseRequest,
+  ModelTokenUsage,
   OpenAiClient,
   RepairActionRequest,
   UserContent,
@@ -31,6 +34,8 @@ export const DEFAULT_GEMINI_RETRY_DELAYS_MS = [500, 1000] as const
 
 export type GeminiClientOptions = {
   retryDelaysMs?: readonly number[]
+  /** Overall request timeout; 0 disables it. Defaults to 180s. */
+  timeoutMs?: number
 }
 
 export function createGeminiClient(
@@ -38,7 +43,10 @@ export function createGeminiClient(
   options: GeminiClientOptions = {},
 ): OpenAiClient {
   async function postGemini(
-    request: Pick<CompletionRequest, 'baseUrl' | 'apiKey' | 'model' | 'stream' | 'signal'>,
+    request: Pick<
+      CompletionRequest,
+      'baseUrl' | 'apiKey' | 'model' | 'stream' | 'signal' | 'onUsage'
+    >,
     payload: ChatCompletionPayload,
   ) {
     const baseUrl = (request.baseUrl || GEMINI_BASE_URL).trim().replace(/\/+$/, '')
@@ -49,37 +57,49 @@ export function createGeminiClient(
     const url = `${baseUrl}/models/${model}:${action}${query}key=${encodeURIComponent(request.apiKey)}`
     const geminiPayload = convertChatPayloadToGemini(payload)
 
-    const response = await fetchWithRetry(
-      fetcher,
-      url,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: request.signal,
-        body: JSON.stringify(geminiPayload),
+    return withModelRequestTimeout(
+      async (signal) => {
+        const response = await fetchWithRetry(
+          fetcher,
+          url,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal,
+            body: JSON.stringify(geminiPayload),
+          },
+          {
+            retryDelaysMs: options.retryDelaysMs ?? DEFAULT_GEMINI_RETRY_DELAYS_MS,
+            signal,
+            label: 'Gemini request',
+          },
+        )
+
+        if (useStream) {
+          if (!response.ok) {
+            const body = await readJsonOrUndefined(response)
+            throw new OpenAiClientError(formatApiError(response.status, body))
+          }
+          return readStreamingGeminiText(response, request.onUsage)
+        }
+
+        const body = (await readJsonOrUndefined(response)) as
+          | GeminiGenerateContentResponse
+          | undefined
+
+        if (!response.ok) {
+          throw new OpenAiClientError(formatApiError(response.status, body))
+        }
+
+        const text = extractGeminiText(body)
+        const usage = normalizeTokenUsage(body?.usageMetadata)
+        if (usage) {
+          request.onUsage?.(usage)
+        }
+        return text
       },
-      {
-        retryDelaysMs: options.retryDelaysMs ?? DEFAULT_GEMINI_RETRY_DELAYS_MS,
-        signal: request.signal,
-        label: 'Gemini request',
-      },
+      { signal: request.signal, timeoutMs: options.timeoutMs, label: 'Gemini request' },
     )
-
-    if (useStream) {
-      if (!response.ok) {
-        const body = await readJsonOrUndefined(response)
-        throw new OpenAiClientError(formatApiError(response.status, body))
-      }
-      return readStreamingGeminiText(response)
-    }
-
-    const body = (await readJsonOrUndefined(response)) as GeminiGenerateContentResponse | undefined
-
-    if (!response.ok) {
-      throw new OpenAiClientError(formatApiError(response.status, body))
-    }
-
-    return extractGeminiText(body)
   }
 
   return {
@@ -176,7 +196,10 @@ function extractGeminiText(response: GeminiGenerateContentResponse | undefined):
   return text
 }
 
-async function readStreamingGeminiText(response: Response): Promise<string> {
+async function readStreamingGeminiText(
+  response: Response,
+  onUsage?: (usage: ModelTokenUsage) => void,
+): Promise<string> {
   const body = response.body
   if (!body) {
     throw new OpenAiClientError('Model API returned an empty stream.')
@@ -196,11 +219,11 @@ async function readStreamingGeminiText(response: Response): Promise<string> {
     const parts = buffer.split(/\r?\n\r?\n/)
     buffer = parts.pop() ?? ''
     for (const part of parts) {
-      text += parseSsePart(part)
+      text += parseSsePart(part, onUsage)
     }
   }
   if (buffer.trim()) {
-    text += parseSsePart(buffer)
+    text += parseSsePart(buffer, onUsage)
   }
 
   const trimmed = text.trim()
@@ -210,7 +233,10 @@ async function readStreamingGeminiText(response: Response): Promise<string> {
   return trimmed
 }
 
-function parseSsePart(part: string): string {
+function parseSsePart(
+  part: string,
+  onUsage?: (usage: ModelTokenUsage) => void,
+): string {
   let text = ''
   const lines = part.split(/\r?\n/)
   for (const line of lines) {
@@ -223,6 +249,10 @@ function parseSsePart(part: string): string {
     }
     try {
       const payload = JSON.parse(data) as GeminiGenerateContentResponse
+      const usage = normalizeTokenUsage(payload.usageMetadata)
+      if (usage) {
+        onUsage?.(usage)
+      }
       const parts = payload.candidates?.[0]?.content?.parts
       const chunk = parts?.map((part) => part.text ?? '').join('') ?? ''
       if (chunk) {

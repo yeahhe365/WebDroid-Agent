@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createOpenAiClient, normalizeBaseUrl } from './openAiClient'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -45,6 +49,33 @@ describe('createOpenAiClient', () => {
     )
   })
 
+  it('reports provider usage to the caller', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        choices: [{ message: { content: '{"action":"done"}' } }],
+        usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+      }),
+    )
+    const client = createOpenAiClient(fetcher)
+    const onUsage = vi.fn()
+
+    await client.completeAction({
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'secret',
+      model: 'agent-model',
+      task: 'Finish',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 10, height: 20 },
+      onUsage,
+    })
+
+    expect(onUsage).toHaveBeenCalledWith({
+      inputTokens: 12,
+      outputTokens: 3,
+      totalTokens: 15,
+    })
+  })
+
   it('posts model config and payload to a local proxy when configured', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => completionResponse('{"action":"done"}'))
     const client = createOpenAiClient(fetcher, {
@@ -77,7 +108,34 @@ describe('createOpenAiClient', () => {
     expect(proxyBody.payload.messages).toBeTruthy()
   })
 
-  it('aggregates streamed chat completion chunks', async () => {
+  it('sends the shared proxy token header when the proxy requires one', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => completionResponse('{"action":"done"}'))
+    const client = createOpenAiClient(fetcher, {
+      proxyUrl: '/api/openai/chat/completions',
+      proxyTokenProvider: async () => 'letmein',
+    })
+
+    await client.completeAction({
+      baseUrl: 'https://api.example.com/v1/',
+      apiKey: 'secret',
+      model: 'agent-model',
+      task: 'Finish',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 10, height: 20 },
+    })
+
+    expect(fetcher).toHaveBeenCalledWith(
+      '/api/openai/chat/completions',
+      expect.objectContaining({
+        headers: {
+          'Content-Type': 'application/json',
+          'x-proxy-token': 'letmein',
+        },
+      }),
+    )
+  })
+
+  it('aggregates streamed chat completion chunks and reports usage', async () => {
     const encoder = new TextEncoder()
     const body = new ReadableStream({
       start(controller) {
@@ -86,6 +144,7 @@ describe('createOpenAiClient', () => {
             [
               'data: {"choices":[{"delta":{"content":"{\\"action\\":"}}]}\n\n',
               'data: {"choices":[{"delta":{"content":"\\"done\\"}"}}]}\n\n',
+              'data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":4,"total_tokens":16}}\n\n',
               'data: [DONE]\n\n',
             ].join(''),
           ),
@@ -95,6 +154,7 @@ describe('createOpenAiClient', () => {
     })
     const fetcher = vi.fn<typeof fetch>(async () => new Response(body))
     const client = createOpenAiClient(fetcher)
+    const onUsage = vi.fn()
 
     const text = await client.completeAction({
       baseUrl: 'https://api.example.com/v1/',
@@ -104,9 +164,15 @@ describe('createOpenAiClient', () => {
       task: 'Finish',
       screenshotDataUrl: 'data:image/png;base64,abc123',
       screen: { width: 10, height: 20 },
+      onUsage,
     })
 
     expect(text).toBe('{"action":"done"}')
+    expect(onUsage).toHaveBeenCalledWith({
+      inputTokens: 12,
+      outputTokens: 4,
+      totalTokens: 16,
+    })
   })
 
   it('sends invalid action output and validation errors when repairing an action', async () => {
@@ -160,12 +226,20 @@ describe('createOpenAiClient', () => {
     expect(requestBody.messages.at(-1).content).toContain('Write the final answer now.')
   })
 
-  it('passes abort signals to the completion request fetch', async () => {
+  it('propagates abort signals to the completion request fetch', async () => {
     const controller = new AbortController()
-    const fetcher = vi.fn<typeof fetch>(async () => completionResponse('{"action":"done"}'))
+    let forwardedSignal: AbortSignal | undefined
+    const fetcher = vi.fn<typeof fetch>((_url, init) => {
+      forwardedSignal = init?.signal as AbortSignal
+      return new Promise<Response>((_resolve, reject) => {
+        forwardedSignal?.addEventListener('abort', () =>
+          reject(new DOMException('Aborted', 'AbortError')),
+        )
+      })
+    })
     const client = createOpenAiClient(fetcher)
 
-    await client.completeAction({
+    const request = client.completeAction({
       baseUrl: 'https://api.example.com/v1/',
       apiKey: 'secret',
       model: 'agent-model',
@@ -175,7 +249,14 @@ describe('createOpenAiClient', () => {
       signal: controller.signal,
     })
 
-    expect(vi.mocked(fetcher).mock.calls[0][1]?.signal).toBe(controller.signal)
+    await vi.waitFor(() => expect(forwardedSignal).toBeDefined())
+    expect(forwardedSignal).not.toBe(controller.signal)
+    expect(forwardedSignal?.aborted).toBe(false)
+
+    controller.abort()
+
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' })
+    expect(forwardedSignal?.aborted).toBe(true)
   })
 
   it('retries retryable HTTP failures before returning the completion', async () => {
@@ -257,6 +338,35 @@ describe('createOpenAiClient', () => {
 
     expect(text).toBe('{"action":"done"}')
     expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('aborts a request that exceeds the configured timeout', async () => {
+    vi.useFakeTimers()
+    const fetcher = vi.fn<typeof fetch>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          )
+        }),
+    )
+    const client = createOpenAiClient(fetcher, { timeoutMs: 250 })
+
+    const request = client.completeAction({
+      baseUrl: 'https://api.example.com/v1/',
+      apiKey: 'secret',
+      model: 'agent-model',
+      task: 'Finish',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 10, height: 20 },
+    })
+    const assertion = expect(request).rejects.toThrow(
+      'OpenAI request timed out after 250ms.',
+    )
+
+    await vi.advanceTimersByTimeAsync(250)
+    await assertion
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
   it('does not retry aborted requests', async () => {

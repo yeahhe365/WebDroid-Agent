@@ -22,6 +22,9 @@ import {
   type DoctorCheckResult,
 } from '../lib/deviceDoctor'
 import { createUnknownDeviceState, UNKNOWN_APP_NAME } from '../lib/deviceState'
+import { testModelConnection } from '../lib/modelConnectionTest'
+import { OPENAI_PROXY_TOKEN_URL, OPENAI_PROXY_URL } from '../lib/openAiRuntimeConfig'
+import { fetchProxyToken } from '../lib/proxyToken'
 import type { ModelConfig } from '../lib/openAiTypes'
 import type { LogEntryInput } from '../lib/runLogEntries'
 import { formatScreenCaptureDetail, toLogScreenshot } from '../lib/runLogEntries'
@@ -275,6 +278,18 @@ export function useDeviceController({
         fetcher: globalThis.fetch,
         isWebUsbSupported,
         modelConfig,
+        probeModel: OPENAI_PROXY_URL
+          ? async (config) => {
+              const proxyToken = OPENAI_PROXY_TOKEN_URL
+                ? await fetchProxyToken(OPENAI_PROXY_TOKEN_URL)
+                : undefined
+              return testModelConnection({
+                modelConfig: config,
+                proxyToken,
+                proxyUrl: OPENAI_PROXY_URL,
+              })
+            }
+          : undefined,
       })
       setDoctorResults(results)
       addLog({

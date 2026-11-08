@@ -2,15 +2,18 @@ import { buildChatCompletionPayload, buildFinalResponsePayload } from './openAiP
 import { OpenAiClientError } from './openAiErrors'
 import {
   formatApiError,
+  normalizeTokenUsage,
   readJsonOrUndefined,
 } from './openAiResponse'
 import { buildRepairTask, fetchWithRetry } from './httpRetry'
+import { withModelRequestTimeout } from './modelRequestTimeout'
 import { normalizeBaseUrl } from './openAiClient'
 import type {
   ChatCompletionPayload,
   ChatMessage,
   CompletionRequest,
   FinalResponseRequest,
+  ModelTokenUsage,
   OpenAiClient,
   RepairActionRequest,
   UserContent,
@@ -34,7 +37,11 @@ export const DEFAULT_OPENAI_RESPONSES_RETRY_DELAYS_MS = [500, 1000] as const
 
 export type OpenAiResponsesClientOptions = {
   proxyUrl?: string
+  /** Resolves the shared proxy token for the local Node proxy, when enabled. */
+  proxyTokenProvider?: () => Promise<string | undefined>
   retryDelaysMs?: readonly number[]
+  /** Overall request timeout; 0 disables it. Defaults to 180s. */
+  timeoutMs?: number
 }
 
 export function createOpenAiResponsesClient(
@@ -51,6 +58,7 @@ export function createOpenAiResponsesClient(
       | 'reasoningEffort'
       | 'openaiReasoningMode'
       | 'openaiReasoningSummary'
+      | 'onUsage'
     >,
     chatPayload: ChatCompletionPayload,
   ) {
@@ -61,53 +69,73 @@ export function createOpenAiResponsesClient(
       reasoningSummary: request.openaiReasoningSummary,
     })
 
-    const response = await fetchWithRetry(
-      fetcher,
-      url,
-      {
-        method: 'POST',
-        headers: proxyUrl
-          ? {
-              'Content-Type': 'application/json',
-            }
-          : {
-              Authorization: `Bearer ${request.apiKey}`,
-              'Content-Type': 'application/json',
-            },
-        signal: request.signal,
-        body: JSON.stringify(
-          proxyUrl
-            ? {
-                baseUrl: request.baseUrl,
-                apiKey: request.apiKey,
-                path: OPENAI_RESPONSES_PATH,
-                payload,
-              }
-            : payload,
-        ),
+    return withModelRequestTimeout(
+      async (signal) => {
+        const proxyToken = proxyUrl ? await options.proxyTokenProvider?.() : undefined
+        const response = await fetchWithRetry(
+          fetcher,
+          url,
+          {
+            method: 'POST',
+            headers: proxyUrl
+              ? {
+                  'Content-Type': 'application/json',
+                  ...(proxyToken ? { 'x-proxy-token': proxyToken } : {}),
+                }
+              : {
+                  Authorization: `Bearer ${request.apiKey}`,
+                  'Content-Type': 'application/json',
+                },
+            signal,
+            body: JSON.stringify(
+              proxyUrl
+                ? {
+                    baseUrl: request.baseUrl,
+                    apiKey: request.apiKey,
+                    path: OPENAI_RESPONSES_PATH,
+                    payload,
+                  }
+                : payload,
+            ),
+          },
+          {
+            retryDelaysMs: options.retryDelaysMs ?? DEFAULT_OPENAI_RESPONSES_RETRY_DELAYS_MS,
+            signal,
+            label: 'OpenAI Responses request',
+          },
+        )
+
+        if (request.stream) {
+          if (!response.ok) {
+            const body = await readJsonOrUndefined(response)
+            throw new OpenAiClientError(formatApiError(response.status, body))
+          }
+          return readStreamingResponsesText(response, request.onUsage)
+        }
+
+        const body = (await readJsonOrUndefined(response)) as ResponsesCreateResponse | undefined
+
+        if (!response.ok) {
+          throw new OpenAiClientError(formatApiError(response.status, body))
+        }
+
+        const text = extractResponsesText(body)
+        const usage = normalizeTokenUsage(
+          typeof body === 'object' && body !== null
+            ? (body as { usage?: unknown }).usage
+            : undefined,
+        )
+        if (usage) {
+          request.onUsage?.(usage)
+        }
+        return text
       },
       {
-        retryDelaysMs: options.retryDelaysMs ?? DEFAULT_OPENAI_RESPONSES_RETRY_DELAYS_MS,
         signal: request.signal,
+        timeoutMs: options.timeoutMs,
         label: 'OpenAI Responses request',
       },
     )
-
-    if (request.stream) {
-      if (!response.ok) {
-        const body = await readJsonOrUndefined(response)
-        throw new OpenAiClientError(formatApiError(response.status, body))
-      }
-      return readStreamingResponsesText(response)
-    }
-
-    const body = (await readJsonOrUndefined(response)) as ResponsesCreateResponse | undefined
-
-    if (!response.ok) {
-      throw new OpenAiClientError(formatApiError(response.status, body))
-    }
-
-    return extractResponsesText(body)
   }
 
   return {
@@ -317,7 +345,10 @@ function collectOutputText(response: ResponsesCreateResponse): string {
   return chunks.join('').trim()
 }
 
-export async function readStreamingResponsesText(response: Response): Promise<string> {
+export async function readStreamingResponsesText(
+  response: Response,
+  onUsage?: (usage: ModelTokenUsage) => void,
+): Promise<string> {
   const body = response.body
   if (!body) {
     throw new OpenAiClientError('Model API returned an empty stream.')
@@ -337,11 +368,11 @@ export async function readStreamingResponsesText(response: Response): Promise<st
     const parts = buffer.split(/\r?\n\r?\n/)
     buffer = parts.pop() ?? ''
     for (const part of parts) {
-      text += parseResponsesSsePart(part)
+      text += parseResponsesSsePart(part, onUsage)
     }
   }
   if (buffer.trim()) {
-    text += parseResponsesSsePart(buffer)
+    text += parseResponsesSsePart(buffer, onUsage)
   }
 
   const trimmed = text.trim()
@@ -351,7 +382,10 @@ export async function readStreamingResponsesText(response: Response): Promise<st
   return trimmed
 }
 
-function parseResponsesSsePart(part: string): string {
+function parseResponsesSsePart(
+  part: string,
+  onUsage?: (usage: ModelTokenUsage) => void,
+): string {
   let text = ''
   const lines = part.split(/\r?\n/)
   for (const line of lines) {
@@ -367,6 +401,12 @@ function parseResponsesSsePart(part: string): string {
         type?: string
         delta?: string
         text?: string
+        usage?: unknown
+        response?: { usage?: unknown }
+      }
+      const usage = normalizeTokenUsage(event.response?.usage ?? event.usage)
+      if (usage) {
+        onUsage?.(usage)
       }
       if (
         event.type === 'response.output_text.delta' &&

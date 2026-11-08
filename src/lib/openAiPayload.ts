@@ -144,7 +144,9 @@ export function buildChatCompletionPayload({
       qwenThinkingEnabled,
       qwenThinkingBudget,
     }),
-    ...(stream ? { stream: true } : {}),
+    ...(stream
+      ? { stream: true, stream_options: { include_usage: true } }
+      : {}),
     messages,
   }
 
@@ -257,7 +259,9 @@ export function buildFinalResponsePayload({
       qwenThinkingEnabled,
       qwenThinkingBudget,
     }),
-    ...(stream ? { stream: true } : {}),
+    ...(stream
+      ? { stream: true, stream_options: { include_usage: true } }
+      : {}),
     messages,
   }
 }

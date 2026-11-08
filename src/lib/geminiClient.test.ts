@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { convertChatPayloadToGemini } from './geminiClient'
+import { describe, expect, it, vi } from 'vitest'
+import { convertChatPayloadToGemini, createGeminiClient } from './geminiClient'
 import type { ChatCompletionPayload } from './openAiTypes'
 
 describe('convertChatPayloadToGemini', () => {
@@ -67,5 +67,45 @@ describe('convertChatPayloadToGemini', () => {
     const gemini = convertChatPayloadToGemini(payload)
 
     expect(gemini.generationConfig?.thinkingConfig).toEqual({ thinkingLevel: 'high' })
+  })
+})
+
+describe('createGeminiClient', () => {
+  it('reports usage from streamed generateContent chunks', async () => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}\n\n',
+              'data: {"candidates":[],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":2,"totalTokenCount":6}}\n\n',
+            ].join(''),
+          ),
+        )
+        controller.close()
+      },
+    })
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(stream))
+    const client = createGeminiClient(fetcher)
+    const onUsage = vi.fn()
+
+    const text = await client.completeAction({
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+      apiKey: 'key',
+      model: 'gemini-3.5-flash',
+      stream: true,
+      task: 'Say ok',
+      screenshotDataUrl: 'data:image/png;base64,abc',
+      screen: { width: 10, height: 20 },
+      onUsage,
+    })
+
+    expect(text).toBe('ok')
+    expect(onUsage).toHaveBeenCalledWith({
+      inputTokens: 4,
+      outputTokens: 2,
+      totalTokens: 6,
+    })
   })
 })

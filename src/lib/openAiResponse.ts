@@ -1,4 +1,5 @@
 import { OpenAiClientError } from './openAiErrors'
+import type { ModelTokenUsage } from './openAiTypes'
 
 export function extractAssistantText(response: unknown): string {
   if (!isRecord(response) || !Array.isArray(response.choices)) {
@@ -23,6 +24,35 @@ export function extractAssistantText(response: unknown): string {
   throw new OpenAiClientError('No assistant content returned by model.')
 }
 
+export function normalizeTokenUsage(raw: unknown): ModelTokenUsage | undefined {
+  if (!isRecord(raw)) {
+    return undefined
+  }
+
+  const input = readTokenCount(raw.input_tokens ?? raw.prompt_tokens ?? raw.promptTokenCount)
+  const output = readTokenCount(
+    raw.output_tokens ?? raw.completion_tokens ?? raw.candidatesTokenCount,
+  )
+  const total = readTokenCount(raw.total_tokens ?? raw.totalTokenCount) ?? (
+    input !== undefined || output !== undefined ? (input ?? 0) + (output ?? 0) : undefined
+  )
+  if (total === undefined || total <= 0) {
+    return undefined
+  }
+
+  return {
+    inputTokens: input ?? 0,
+    outputTokens: output ?? 0,
+    totalTokens: total,
+  }
+}
+
+function readTokenCount(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.round(value)
+    : undefined
+}
+
 export async function readJsonOrUndefined(response: Response) {
   try {
     return await response.json()
@@ -31,7 +61,10 @@ export async function readJsonOrUndefined(response: Response) {
   }
 }
 
-export async function readStreamingAssistantText(response: Response) {
+export async function readStreamingAssistantText(
+  response: Response,
+  onUsage?: (usage: ModelTokenUsage) => void,
+) {
   const body = response.body
   if (!body) {
     throw new OpenAiClientError('Model API returned an empty stream.')
@@ -53,12 +86,12 @@ export async function readStreamingAssistantText(response: Response) {
     buffer = parts.pop() ?? ''
 
     for (const part of parts) {
-      text += parseSsePart(part)
+      text += parseSsePart(part, onUsage)
     }
   }
 
   if (buffer.trim()) {
-    text += parseSsePart(buffer)
+    text += parseSsePart(buffer, onUsage)
   }
 
   const trimmed = text.trim()
@@ -78,7 +111,10 @@ export function formatApiError(status: number, body: unknown) {
   return `Model API failed with ${status}.`
 }
 
-function parseSsePart(part: string) {
+function parseSsePart(
+  part: string,
+  onUsage?: (usage: ModelTokenUsage) => void,
+) {
   let text = ''
   const lines = part.split(/\r?\n/)
   for (const line of lines) {
@@ -91,6 +127,10 @@ function parseSsePart(part: string) {
     }
     try {
       const payload = JSON.parse(data)
+      const usage = normalizeTokenUsage(payload?.usage)
+      if (usage) {
+        onUsage?.(usage)
+      }
       const delta = payload?.choices?.[0]?.delta?.content
       const message = payload?.choices?.[0]?.message?.content
       if (typeof delta === 'string') {

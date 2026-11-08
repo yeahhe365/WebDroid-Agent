@@ -100,6 +100,10 @@ describe('buildChatCompletionPayload', () => {
     expect(payload.messages[0].content).toContain('"clear":boolean')
     expect(payload.messages[0].content).toContain('"action":"wait","duration":number')
     expect(payload.messages[0].content).toContain('"action":"view_screenshot"')
+    expect(payload.messages[0].content).toContain(
+      '"action":"take_over","kind":"login|captcha|payment|other"',
+    )
+    expect(payload.messages[0].content).toContain('use take_over with kind "login" or "captcha"')
     expect(payload.messages[0].content).not.toContain('"action":"interact"')
     expect(payload.messages[0].content).not.toContain('"action":"call_api"')
     expect(payload.messages[0].content).not.toContain('Open-AutoGLM')
@@ -465,6 +469,7 @@ describe('buildChatCompletionPayload', () => {
     })
 
     expect(payload.stream).toBe(true)
+    expect(payload.stream_options).toEqual({ include_usage: true })
   })
 
   it('passes reasoning effort through to action requests when configured', () => {

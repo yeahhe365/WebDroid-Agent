@@ -3,6 +3,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { IconThinking, ModelProviderIcon } from './icons'
 import type { AppCopy } from '../lib/appCopy'
 import { isActionProtocol, type ActionProtocol } from '../lib/actionProtocol'
+import type { ModelConnectionTestResult } from '../lib/modelConnectionTest'
 import {
   DEFAULT_QWEN_THINKING_BUDGET,
   MAX_QWEN_THINKING_BUDGET,
@@ -28,6 +29,7 @@ export type ModelPanelProps = {
   onActionProtocolChange: (value: ActionProtocol) => void
   onModelConfigChange: <Key extends keyof ModelConfig>(key: Key, value: ModelConfig[Key]) => void
   onStreamResponsesChange: (value: boolean) => void
+  onTestConnection?: () => Promise<ModelConnectionTestResult>
   streamResponses: boolean
 }
 
@@ -38,6 +40,7 @@ export function ModelPanel({
   onActionProtocolChange,
   onModelConfigChange,
   onStreamResponsesChange,
+  onTestConnection,
   streamResponses,
 }: ModelPanelProps) {
   const apiKeyInputId = useId()
@@ -52,6 +55,14 @@ export function ModelPanel({
   const actionProtocolInputId = useId()
   const streamResponsesInputId = useId()
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
+  const testConfigKey = `${modelConfig.provider ?? ''}|${modelConfig.baseUrl}|${modelConfig.apiKey}|${modelConfig.model}`
+  const [testResult, setTestResult] = useState<{
+    key: string
+    message: string | null
+    status: 'testing' | 'ok' | 'error'
+  } | null>(null)
+  const testStatus = testResult?.key === testConfigKey ? testResult.status : 'idle'
+  const testMessage = testResult?.key === testConfigKey ? testResult.message : null
   const providerValue = providerValueFor(modelConfig)
   const isOpenAiPreset = providerValue === 'openai'
   const isQwenPreset = providerValue === 'qwen'
@@ -77,6 +88,16 @@ export function ModelPanel({
   const modelHeadingStatusTone = modelConfigurationReady ? 'ready' : 'warning'
   const modelFieldClassName = (key: RequiredModelFieldKey) =>
     missingModelFieldKeys.has(key) ? 'model-settings-field missing' : 'model-settings-field'
+  async function handleTestConnection() {
+    if (!onTestConnection || testStatus === 'testing') {
+      return
+    }
+    const key = testConfigKey
+    setTestResult({ key, message: null, status: 'testing' })
+    const result = await onTestConnection()
+    setTestResult({ key, message: result.message, status: result.ok ? 'ok' : 'error' })
+  }
+
   const handleActionProtocolChange = (value: string) => {
     if (isActionProtocol(value)) {
       onActionProtocolChange(value)
@@ -374,6 +395,37 @@ export function ModelPanel({
               />
               <span>{copy.streamModelResponses}</span>
             </label>
+            {onTestConnection ? (
+              <div className="model-test-row">
+                <button
+                  type="button"
+                  className="button--sm"
+                  onClick={() => {
+                    void handleTestConnection()
+                  }}
+                  disabled={!modelConfigurationReady || testStatus === 'testing'}
+                >
+                  {testStatus === 'testing' ? copy.modelTestTesting : copy.modelTestConnection}
+                </button>
+                <span
+                  className={[
+                    'model-test-result',
+                    testStatus === 'ok' ? 'ok' : '',
+                    testStatus === 'error' ? 'error' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {testStatus === 'ok'
+                    ? `${copy.modelTestSuccess}: ${testMessage ?? ''}`
+                    : testStatus === 'error'
+                      ? `${copy.modelTestFailure}: ${testMessage ?? ''}`
+                      : ''}
+                </span>
+              </div>
+            ) : null}
           </form>
         </details>
       </div>

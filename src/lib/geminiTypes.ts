@@ -46,6 +46,11 @@ export type GeminiGenerateContentResponse = {
     message?: string
     code?: number
   }
+  usageMetadata?: {
+    promptTokenCount?: number
+    candidatesTokenCount?: number
+    totalTokenCount?: number
+  }
 }
 
 export function isGeminiProvider(provider: unknown): boolean {

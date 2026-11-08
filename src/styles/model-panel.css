@@ -117,3 +117,29 @@
 }
 
 
+
+.model-test-row {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.model-test-row button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+}
+
+.model-test-result {
+  color: var(--text-muted);
+  flex: 1 1 160px;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
+  padding-top: 6px;
+}
+
+.model-test-result.ok { color: var(--status-ok-text); }
+.model-test-result.error { color: var(--danger); }
