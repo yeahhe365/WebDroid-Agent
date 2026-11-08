@@ -49,6 +49,15 @@
   --space-9: 48px;
   --space-10: 64px;
 
+  /* ── Layering — one place to reason about overlays ── */
+  --z-topbar: 40;
+  --z-drawer: 60;
+  --z-settings: 65;
+  --z-fullscreen: 75;
+  --z-lightbox: 80;
+  --z-confirm: 90;
+  --z-toast: 100;
+
   /* ── Transition Durations ── */
   --duration-fast: 120ms;
   --duration-normal: 200ms;
@@ -57,9 +66,9 @@
   --duration-slower: 550ms;
 
   /* ── Font Size Scale ── */
-  --text-2xs: 10px;
-  --text-xs: 11px;
-  --text-sm: 12px;
+  --text-2xs: 12px;
+  --text-xs: 12px;
+  --text-sm: 13px;
   --text-base: 13px;
   --text-md: 14px;
   --text-lg: 16px;
@@ -79,8 +88,8 @@
   --accent-soft-text: #4338ca;
 
   /* Primary — restrained green (success semantics only) */
-  --primary: #16a34a;
-  --primary-hover: #15803d;
+  --primary: #15803d;
+  --primary-hover: #166534;
   --primary-muted: #86efac;
   --primary-soft: #f0fdf4;
 
@@ -253,6 +262,7 @@
   --primary-hover: #86efac;
   --primary-muted: #22c55e;
   --primary-soft: rgba(74, 222, 128, 0.1);
+  --on-primary: #0a0a0a;
 
   /* Danger — rose */
   --danger: #f87171;
@@ -353,6 +363,7 @@
     --primary-hover: #86efac;
     --primary-muted: #22c55e;
     --primary-soft: rgba(74, 222, 128, 0.1);
+    --on-primary: #0a0a0a;
 
     --danger: #f87171;
     --danger-bg: rgba(248, 113, 113, 0.1);
