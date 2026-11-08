@@ -9,6 +9,10 @@ Run this before tagging a release. Every row states what to do, what to look at,
 and what "pass" means. Record the result in the table at the bottom and keep the
 screenshot or run-log export next to it.
 
+The pause/resume state machine behind P3–P6b is covered offline
+(`useAgentRunController.test.tsx`); what still needs hardware is whether the
+*buttons and labels* appear where the matrix says they should.
+
 ## 1. Setup
 
 | Step | Command / action |
@@ -32,6 +36,7 @@ that is mid-flight, and the matrix must not assume it can.
 | P4 | Count the user messages in the composer history before and after P3 | Exactly the same number: resuming is not a new task | An extra "continue" message appears in the thread |
 | P5 | Press Pause twice in a row while the run is between steps | One pause, no duplicated status; the second press does nothing | Two pause entries, or the run stops twice |
 | P6 | Pause, then reload the page | The thread still shows `paused` and **Resume** is offered | The status resets to `running` or the resume button disappears |
+| P6b | After P6, press **Resume** | Exactly one more step runs; the tap from before the reload is not repeated | The first step is replayed, or the run starts over |
 | P7 | Pause while a *sensitive action* confirmation dialog is open | The run pauses after the confirmation is resolved, not before | The dialog is dismissed or the run stops mid-confirmation |
 
 ## 3. Take-over and review cards

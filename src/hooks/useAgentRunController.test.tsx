@@ -9,6 +9,8 @@ import { APP_COPY } from '../lib/appCopy'
 import type { BusyTask } from '../lib/busyTask'
 import { OpenAiClientError } from '../lib/openAiErrors'
 import type { OpenAiClient } from '../lib/openAiTypes'
+import { recoverInterruptedThread } from '../lib/agentThread'
+import { createMemoryThreadStore } from '../lib/threadStore'
 import { createDefaultActionToolRegistry } from '../lib/toolRegistry'
 import {
   createRunEndNotification,
@@ -257,6 +259,148 @@ describe('useAgentRunController', () => {
 
     expect(session.status).toBe('done')
     expect(session.messages.filter((message) => message.role === 'user')).toHaveLength(1)
+  })
+
+  it('resumes a paused thread that came back from storage after a reload', async () => {
+    const backend = createDevice()
+    const session = createAgentSession('')
+    const store = createMemoryThreadStore()
+    const firstClient: OpenAiClient = {
+      completeAction: vi
+        .fn()
+        .mockResolvedValueOnce('{"action":"tap","x":540,"y":1200}')
+        .mockResolvedValueOnce('{"action":"done","summary":"done"}'),
+      completeFinalResponse: vi.fn(async () => 'All done.'),
+    }
+    let pauseCurrentRun: (() => void) | null = null
+    let requestedPause = false
+
+    const { result } = renderHook(() =>
+      useAgentRunController({
+        actionProtocol: 'webdroid_json',
+        actionToolRegistry: createDefaultActionToolRegistry(),
+        addLog: vi.fn(),
+        appCards: createDefaultAppCards(),
+        backend,
+        busyTask: null,
+        canRunAgent: true,
+        client: firstClient,
+        copy: APP_COPY['en-US'],
+        customTools: [],
+        device: {
+          applyDeviceSnapshot: vi.fn(),
+          confirmSensitiveAction: vi.fn(() => true),
+          refreshDisplayedSnapshot: vi.fn(async () => ({
+            deviceState: { app: 'Chrome' },
+            screenshot: {
+              bytes: new Uint8Array(),
+              dataUrl: 'data:image/png;base64,abc',
+              screen: { width: 1080, height: 2400 },
+            },
+          })),
+        },
+        ensureSession: () => session,
+        maxSteps: 3,
+        memoryEnabled: false,
+        memoryItems: [],
+        modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+        onMemoryItem: vi.fn(),
+        pendingStep: null,
+        runTask: async (_id, _label, action) => {
+          await action()
+        },
+        screenBlackoutDuringAutoControl: false,
+        secrets: [],
+        setError: vi.fn(),
+        setPendingStep: (step) => {
+          if (step && !requestedPause) {
+            requestedPause = true
+            pauseCurrentRun?.()
+          }
+        },
+        streamResponses: false,
+        syncConversation: vi.fn(),
+        unrestrictedMode: false,
+      }),
+    )
+    pauseCurrentRun = result.current.pauseCurrentRun
+
+    await act(async () => {
+      await result.current.submitChatMessage('Tap once.')
+    })
+    expect(session.status).toBe('paused')
+
+    // Persist and read back through the store: a reload gets a fresh object
+    // graph, so anything only held in memory would not survive this.
+    await store.save(session)
+    const restored = await store.load(session.id)
+    expect(restored).not.toBeNull()
+    expect(restored?.status).toBe('paused')
+    // The reload path runs this on every restored thread. A paused run must not
+    // be mistaken for an interrupted one, or the resume button never comes back.
+    expect(recoverInterruptedThread(restored!)).toBe(false)
+    expect(restored?.status).toBe('paused')
+    const turnsBefore = restored?.turns.length ?? 0
+    expect(turnsBefore).toBeGreaterThan(0)
+
+    // A second hook with the restored thread is the page after the reload.
+    const reloadedClient: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"done","summary":"done"}'),
+      completeFinalResponse: vi.fn(async () => 'Finished.'),
+    }
+    const { result: reloaded } = renderHook(() =>
+      useAgentRunController({
+        actionProtocol: 'webdroid_json',
+        actionToolRegistry: createDefaultActionToolRegistry(),
+        addLog: vi.fn(),
+        appCards: createDefaultAppCards(),
+        backend,
+        busyTask: null,
+        canRunAgent: true,
+        client: reloadedClient,
+        copy: APP_COPY['en-US'],
+        customTools: [],
+        device: {
+          applyDeviceSnapshot: vi.fn(),
+          confirmSensitiveAction: vi.fn(() => true),
+          refreshDisplayedSnapshot: vi.fn(async () => ({
+            deviceState: { app: 'Chrome' },
+            screenshot: {
+              bytes: new Uint8Array(),
+              dataUrl: 'data:image/png;base64,abc',
+              screen: { width: 1080, height: 2400 },
+            },
+          })),
+        },
+        ensureSession: () => restored!,
+        maxSteps: 3,
+        memoryEnabled: false,
+        memoryItems: [],
+        modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+        onMemoryItem: vi.fn(),
+        pendingStep: null,
+        runTask: async (_id, _label, action) => {
+          await action()
+        },
+        screenBlackoutDuringAutoControl: false,
+        secrets: [],
+        setError: vi.fn(),
+        setPendingStep: vi.fn(),
+        streamResponses: false,
+        syncConversation: vi.fn(),
+        unrestrictedMode: false,
+      }),
+    )
+
+    await act(async () => {
+      await reloaded.current.resumeRun()
+    })
+
+    expect(restored?.status).toBe('done')
+    // Exactly one more turn: the resumed run continues the thread rather than
+    // replaying the tap it had already executed.
+    expect(restored?.turns.length).toBe(turnsBefore + 1)
+    expect(restored?.messages.filter((message) => message.role === 'user')).toHaveLength(1)
   })
 
   it('reports a pending pause while the in-flight step is still finishing', async () => {
