@@ -21,6 +21,28 @@ Docker:
   browser fetch -> same-origin local proxy (/chat/completions or /responses) -> model API
 ```
 
+## Contents
+
+- [What It Can Do](#what-it-can-do)
+- [Good Fits](#good-fits)
+- [Project Status](#project-status)
+- [Flow](#flow)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Docker Deployment](#docker-deployment)
+- [Action Protocol](#action-protocol)
+- [Device Control Details](#device-control-details)
+- [Screen Observation and Self-Checks](#screen-observation-and-self-checks)
+- [Safety Boundaries](#safety-boundaries)
+- [Project Structure](#project-structure)
+- [Verification](#verification)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Deploying to Cloudflare Pages](#deploying-to-cloudflare-pages)
+- [License](#license)
+- [Related Projects and Community](#related-projects-and-community)
+
 ## What It Can Do
 
 - Run entirely on the frontend for static deployments such as Cloudflare Pages.
@@ -30,12 +52,17 @@ Docker:
 - Use WebDroid JSON-family action protocols and canonical JSON action format: `webdroid_json` uses screenshot pixels, while `webdroid_normalized_json` uses Vision-Pointer-style 0-1000 normalized coordinates.
 - Parse, normalize, and validate the next action returned by the model.
 - Execute app launches, taps, swipes, text input, Back, Home, long press, double tap, and wait actions through ADB, including model-controlled wait duration.
-- Support clear-before-type input, fixed post-action settle delay, transient model API and empty-model-response retries, and automatic recovery limited to transient device errors (`device_io` / `device_timeout`, three attempts before `awaiting_review`); every other failure class stops after one attempt.
+- Support clear-before-type input, waiting for the screen to settle after an action, transient model API and empty-model-response retries, and automatic recovery for a fixed whitelist (`action_stale` plus the transient device errors `device_io` / `device_timeout`, three attempts before `awaiting_review`); every other failure class stops after one attempt.
 - Support editable App Cards, local Custom Tools, and safe Secret typing that exposes only IDs/labels to the model.
 - Support continuous auto-execution as well as step-by-step human confirmation.
 - Send chat messages to run automatically, with one-step planning kept in advanced debug controls.
 - Support sensitive-action confirmation, unrestricted mode, max-step limits, true pause/resume from the current checkpoint, stop controls, and advanced reset/run-log export.
 - Persist page settings in the local browser `localStorage`, and persist agent thread/turn history in IndexedDB.
+- Judge every action by diffing the UI tree before and after it (`done` / `small_change` / `no_effect` / `place_changed`), and give each element a ref that survives re-dumps: `tap_ref` taps by ref, and an expired ref is reported instead of tapping the wrong place.
+- Name why a screen is unusable (still loading, blank, capture-blocked, unreadable, needs a human) and pick the takeover kind from the screen itself rather than from the model's wording.
+- Memory (when enabled): facts the model records are not dumped back into every prompt; the few most relevant items are retrieved per task, and anything containing a password, verification code, ID number, card number, or API key is refused at write time.
+- Skills: a run that finishes is drafted into a procedure and offered as a suggestion the next time a similar task comes up; the skill text is treated as untrusted data too.
+- Answer grounding: quotes, unit-bearing numbers, and dates in the final answer are checked by plain code against what the run actually read; a mismatch is logged, never silently rewritten.
 - Operate the console from the keyboard: `Cmd/Ctrl+K` focuses the composer, `Cmd/Ctrl+B` toggles the configuration panel, `Cmd/Ctrl+J` toggles the run log. `Esc` closes only the top-most dialog and never stops a run by itself; use the Stop button instead. The divider between the phone preview and the chat pane can be dragged (double-click resets it).
 
 ## Good Fits
@@ -52,6 +79,19 @@ It is not a good fit for:
 - Login, captcha, password, or verification-code flows that need explicit human intervention.
 - Production use cases that require a backend, long-running reliability, or multi-device orchestration.
 
+## Project Status
+
+The project is at an experimentally usable stage; the core loop already works:
+
+- Connect to an Android device from the browser and capture its screen.
+- Ask an OpenAI-compatible vision model for the next action.
+- Parse the canonical JSON action.
+- Execute the common ADB control commands and record a run log.
+- Support chat-driven auto-execution, human confirmation, stop, context restoration, and automatic recovery for `action_stale` plus transient device errors.
+- Screen diagnosis, action-effect verdicts, stable element refs, memory retrieval, skill reuse, and answer grounding sit on the same loop.
+
+It is still best treated as a local experiment. Real devices, model quality, browser permissions, CORS configuration, and Android ROM differences all affect the result.
+
 ## Flow
 
 1. Open the app in a Chromium-based browser.
@@ -60,7 +100,7 @@ It is not a good fit for:
 4. Type a natural-language instruction in the chat, such as "Open Settings and go to Wi-Fi".
 5. Sending the message captures the screen and asks the model for one action.
 6. The frontend parses and validates the action, then executes safe actions automatically while sensitive actions ask for confirmation by default.
-7. Only transient device errors (`device_io` / `device_timeout`) are retried automatically: the failure feedback is added to the next model context and the run moves to `awaiting_review` after three attempts. Every other failure class stops after one attempt.
+7. Only whitelisted failures (`action_stale` plus the transient device errors `device_io` / `device_timeout`) are retried automatically: the failure feedback is added to the next model context and the run moves to `awaiting_review` after three attempts. Every other failure class stops after one attempt. An expired element ref belongs to this bucket: re-read the screen and continue.
 8. The loop continues until the model returns `done`, requests `take_over`, the max step count is reached, or the user stops execution; unrestricted mode does not stop on `take_over`.
 
 ## Requirements
@@ -108,7 +148,12 @@ The app stores these values in the current browser's `localStorage`:
 - `Unrestricted mode`: bypass local safety policy and sensitive confirmations, and prompt the model not to request human takeover.
 - `Stream responses`: whether to use streaming responses, default off. Streaming sends `stream_options.include_usage` so usage can be counted while the run is in flight; if a compatible gateway rejects that field the request is retried once without it, the run continues, and the log notes that the token count will be incomplete.
 - `Use ADB Keyboard for text`: whether to prefer ADB Keyboard input, default off.
-- `Action settle`, `Double tap interval`, `Keyboard step`: timing controls for action execution and text input.
+- `Memory`: whether the model may record durable facts with `note`, default off. When enabled, a run retrieves the most relevant items per task (at most 6 items / 1800 characters); anything containing a password, verification code, ID number, card number, or API key is never written.
+- `Task notifications`: send a system notification when a run ends; requires browser permission, default off.
+- `Darken screen during auto control`: dim the phone screen while the agent runs and restore the original brightness when it ends or fails, default off.
+- `Action tool toggles`: disable individual action tools; a disabled tool never appears in the model's tool list.
+- `Theme` / `Language`: UI theme (follow system / light / dark) and UI language (follow system / Chinese / English). They only affect the local interface.
+- `Action settle`, `Double tap interval`, `Keyboard step`: `Action settle` is the minimum wait after an action; the app then polls the screenshot until the screen settles, up to three times that value. The other two control the double-tap interval and per-character input pacing.
 - `App Cards`: package-name keyed editable app context cards; Chrome, Gmail, and Settings are built in by default.
 - `Secrets`: local secret records; the model sees only `id` and `label`, and `type_secret` resolves the value locally at execution time.
 - `Custom Tools`: local tool definitions; the model sees only tool names/descriptions, and local results are returned into later context.
@@ -195,6 +240,7 @@ Recommended canonical JSON actions:
 | --- | --- |
 | `launch` | Launch an app by common app name or package name |
 | `tap` | Tap a screen coordinate |
+| `tap_ref` | Tap the element with a stable ref from the screen tree (such as `e12`), converted to coordinates before execution; an expired ref is reported as `stale` instead of tapping the wrong place |
 | `swipe` | Swipe from one point to another |
 | `input_text` | Type text; `clear:true` clears the currently focused field first |
 | `type_secret` | Type a local secret; the model sends only `secretId` and never sees the value |
@@ -210,6 +256,9 @@ Recommended canonical JSON actions:
 | `wait` | Wait for a duration, preferably with `duration` in seconds |
 | `take_over` | Request human takeover; `kind` may be `login`, `captcha`, `payment`, or `other` |
 | `note` | Record an observation without touching the device |
+| `view_screenshot` | Recall an earlier step's screenshot and attach it to the next model request |
+| `sequence` | Run a bounded list of actions in order, stopping on the first failure |
+| `repeat` | Repeat one action a given number of times, optionally with a delay |
 | `done` | Mark the task as complete |
 
 Examples:
@@ -234,13 +283,17 @@ Examples:
 { "action": "open_url", "url": "https://example.com/search?q=webdroid", "reason": "Open the target page directly" }
 ```
 
+```json
+{ "action": "tap_ref", "ref": "e12", "reason": "The Wi-Fi switch in the screen tree" }
+```
+
 The legacy compatibility layer still accepts `interact` and `call_api`, but they are not recommended real execution actions. `interact` is converted to `take_over`; `call_api` is converted to `take_over` with an unsupported-second-API-call message.
 
 ## Device Control Details
 
 - Launching apps: prefer the device's installed-app list, and also support built-in common app-name mappings or direct Android package names.
 - Tap and swipe: coordinates are validated against the screen bounds before execution.
-- Screen tree: each step best-effort reads `uiautomator dump --compressed` and injects visible text, descriptions, resource ids, clickable state, and bounds into the model context.
+- Screen tree: each step best-effort reads `uiautomator dump --compressed` and injects visible text, descriptions, resource ids, clickable state, bounds, and a stable element ref into the model context; the whole block is wrapped in `<untrusted>` and sized according to how much of the screen the tree describes.
 - Opening URLs: uses Android `am start -a android.intent.action.VIEW -d <url>` for web URLs and registered deep links.
 - Long press: simulated with Android `input swipe x y x y duration`.
 - Double tap: two taps with a configurable delay in between.
@@ -248,7 +301,22 @@ The legacy compatibility layer still accepts `interact` and `call_api`, but they
 - Clear-before-type, Chinese, and complex text: use ADB Keyboard or AutoGLM Keyboard broadcast input.
 - Clipboard: `set_clipboard` stores a local WebDroid clipboard and tries `cmd clipboard set`; `paste` prefers the local clipboard through the current text-input channel.
 - ADB Keyboard mode requires `com.android.adbkeyboard/.AdbIME` to be installed and enabled on the device; the device panel provides install and enable controls.
-- After every device action, the app waits according to the `Action settle` setting so the next step is less likely to run during animation or page loading.
+- After every device action, the app waits for the screen to settle: it waits out `Action settle`, then polls the screenshot and continues once two reads agree, up to three times that budget.
+
+## Screen Observation and Self-Checks
+
+Every step rests on what is actually on the screen, so as much of that as possible is decided by code instead of by the model's own guesswork:
+
+- **Action effect**: once the next screen arrives, the UI tree before and after the action is diffed structurally (added, removed, moved, edited, toggled, focus). The verdict — `done`, `small_change`, `no_effect`, `place_changed` — goes into the next context as `<last_action_effect>` and shows up as a chip on the step card. "The tap did nothing" becomes evidence rather than a feeling.
+- **Stable element refs**: node indexes are reassigned on every dump, so each element also gets a ref (`e12`) that survives re-dumps. `tap_ref` taps by ref and is converted back to coordinates before execution; an expired ref reports `stale`, classifies as the auto-recoverable `action_stale`, and the model simply re-reads the screen instead of tapping the wrong place.
+- **Screen diagnosis**: a password field, captcha and payment phrase lists, readability, and consecutive black frames decide between `normal`, `loading`, `blank`, `protected`, `capture_unavailable`, and `needs_human`. A capture-blocked app, a black screen, and a page that is still loading each get their own explanation, and the takeover card's kind now comes from the screen rather than from the model's wording.
+- **Tree quality**: when the tree clearly describes the screen it costs fewer tokens; when most controls are unlabeled or a large region is unreadable, the model gets more nodes plus an explicit warning not to treat a missing node as proof that something is absent.
+- **Waiting for the screen to settle**: an action no longer sleeps for `Action settle` and hopes. The app polls the screenshot and continues once two reads agree — one poll on a static list, up to three times the budget on a slow page.
+- **Limit notices**: a short line that appears only after an action ("attempts used up", "too many requests") ends the turn immediately with a "Quota used up" card, so the model cannot burn the remaining steps against the same refusal.
+- **Screen text is data**: the whole tree reaches the model inside `<untrusted>`, the prompt explains the rule once, and a closing tag inside the payload is escaped — so a screen that prints "ignore your previous instructions" stays data.
+- **Answer grounding**: screen text and tool results read during the run go into a ledger, and the final answer's quotes, unit-bearing numbers, and dates are checked against it by plain code. A mismatch is logged; the answer is not rewritten and no extra model call is made.
+
+Declining to judge is the shared premise: with fewer than two meaningful nodes on either side the effect is not judged at all, a single black frame only counts as loading, and a task that matches no skill simply gets no suggestion. Saying nothing is better than handing the model a conclusion that sends it the wrong way.
 
 ## Safety Boundaries
 
@@ -269,6 +337,10 @@ The frontend tries to constrain and confirm actions before execution:
 - The ADB Keyboard APK is pinned to a specific commit and its SHA-256 is verified before installation, so upstream changes cannot silently reach the device. The APK comes from a third-party GPL-2.0 repository and is downloaded only on demand.
 - Model requests have a 180-second overall timeout; a stalled upstream fails as `model_transport` instead of hanging forever.
 - Server responses carry CSP, `X-Frame-Options: DENY`, and `X-Content-Type-Options: nosniff`; the CSP `connect-src` list can be extended with `CSP_CONNECT_SRC`.
+- The screen tree and tool results always reach the model wrapped in `<untrusted>`, the prompt states once that this is data and not instructions, and a closing tag inside the payload is escaped.
+- Memory refuses passwords, verification codes, ID numbers, card numbers, and API keys at write time; when injected, items are retrieved per task instead of the whole store being pasted in.
+- The final answer is checked by plain code: quotes, unit-bearing numbers, and dates must appear in something the run actually read. A mismatch is logged, never silently rewritten.
+- Action effects, screen diagnosis, and limit notices only change prompting and stop decisions; they run after the safety verdict and do not move any capability boundary.
 
 It is still strongly recommended to avoid letting the agent handle account login, payments, checkout, deletions, authorization, verification codes, or privacy-sensitive pages. By default, when the model returns `take_over`, auto-execution stops and waits for a human; unrestricted mode does not stop on takeover requests.
 
@@ -303,6 +375,7 @@ src/
     ChatHistorySidebar.tsx    # chat-history sidebar
     ChatPanel.tsx             # chat transcript and composer shell
     ConfigSidebar.tsx         # device and model configuration sidebar composition
+    ConfirmDialog.tsx         # shared confirmation dialog
     ConversationPanel.tsx     # chat, history, and pending action view
     DeviceHomeOptionsSection.tsx # device input, confirmation, and timing options
     DevicePanel.tsx           # device connection and execution settings panel
@@ -313,13 +386,16 @@ src/
     LazyMarkdownContent.tsx   # lazily loaded Markdown rendering
     MarkdownContent.tsx       # chat message Markdown rendering
     ModelPanel.tsx            # model configuration panel
+    NeedsYouCard.tsx          # "needs you" card
     PendingActionCard.tsx     # pending action confirmation card
     PhoneStage.tsx            # phone screenshot and action overlay
     RunLog.tsx                # run log view
+    RunProgressBlock.tsx      # run progress block
     ScreenshotLightbox.tsx    # screenshot preview modal
     SensitiveActionDialog.tsx # sensitive action confirmation dialog (with focus trap)
     SettingsDialog.tsx        # app settings, repository info, and editable resources
     SetupHome.tsx             # first-run device/model setup onboarding
+    ToastViewport.tsx         # transient toast container
     TutorialPanel.tsx         # quick-start tutorial expanded from the topbar
     UnrestrictedModeConfirmDialog.tsx # unrestricted-mode confirmation dialog
     actionDisplay.ts          # action display text helpers
@@ -327,36 +403,41 @@ src/
     deviceDisplay.ts          # device display text helpers
     primitives/               # button and icon-button primitives
   hooks/
-    useAgentRunController.ts        # auto-run and pending-action control
-    useAgentSessionHistory.ts       # session restore, persistence, and history state
-    useBodyOverflow.ts              # shared body scroll lock for dialogs and fullscreen
-    useBusyTask.ts                  # busy-task and error state management
-    useBusyTaskDocumentTitle.ts     # busy task reflected in the document title
-    useConfigTargetScroll.ts        # config sidebar target scrolling
-    useDeviceBackendPreferences.ts  # device backend preference sync
-    useDeviceController.ts          # device connection, screenshot, and direct action state
-    useDisplayImageUrl.ts           # screenshot blob URL lifecycle
-    useDocumentPreferences.ts       # document theme and language attribute sync
-    useHotkeys.ts                   # global keyboard shortcut registration
-    useLatestValue.ts               # ref for reading latest values inside async callbacks
-    useLocalResourcesState.ts       # app cards / custom tools / secrets state
-    usePersistedSettings.ts         # settings persistence on changes
-    useRepositoryStats.ts           # GitHub repository stats loading for settings
-    useRunLog.ts                    # run-log state management
-    useSplitPane.ts                 # workspace split dragging and persistence
-    useStorageEstimate.ts           # local storage quota estimate
-    useVirtualWindow.ts             # virtual window for long lists
+    useAgentRunController.ts  # auto-run and pending-action control
+    useAgentSessionHistory.ts # session restore, persistence, and history state
+    useBodyOverflow.ts        # shared body scroll lock for dialogs and fullscreen
+    useBusyTask.ts            # busy-task and error state management
+    useBusyTaskDocumentTitle.ts # busy task reflected in the document title
+    useConfigTargetScroll.ts  # config sidebar target scrolling
+    useDeviceBackendPreferences.ts # device backend preference sync
+    useDeviceController.ts    # device connection, screenshot, and direct action state
+    useDialogFocusTrap.ts     # dialog focus trap
+    useDisplayImageUrl.ts     # screenshot blob URL lifecycle
+    useDocumentPreferences.ts # document theme and language attribute sync
+    useHotkeys.ts             # global keyboard shortcut registration
+    useLatestValue.ts         # ref for reading latest values inside async callbacks
+    useLocalResourcesState.ts # app cards / custom tools / secrets state
+    useOverlayLayer.ts        # overlay layer management
+    usePersistedSettings.ts   # settings persistence on changes
+    useRepositoryStats.ts     # GitHub repository stats loading for settings
+    useRunLog.ts              # run-log state management
+    useSplitPane.ts           # workspace split dragging and persistence
+    useStorageEstimate.ts     # local storage quota estimate
+    useToasts.ts              # toast state management
+    useVirtualWindow.ts       # virtual window for long lists
   lib/
     abortSignal.ts            # abort-signal helpers
     actionAliases.ts          # action alias normalization
     actionCoordinates.ts      # action coordinate conversion helpers
     actionDefaults.ts         # common screenshot action defaults
+    actionEffect.ts           # screen-diff verdict for the previous action
     actionFormats.ts          # action format definitions
     actionParser.ts           # action parsing and normalization
     actionPreview.ts          # action preview text formatting
     actionProtocol.ts         # explicit action protocol enum
     actionRisk.ts             # risk levels, verdict ladder, and safety strictness
     actionSafetyPolicy.ts     # local action safety policy
+    actionSecrets.ts          # whether an action carries a resolved secret value
     actionTypes.ts            # action types and validation error definitions
     actionValidation.ts       # action field validation (package names, URIs, control chars)
     agentResources.ts         # local Secret and Custom Tool resources
@@ -369,19 +450,30 @@ src/
     auditLog.ts               # local audit log
     busyTask.ts               # in-page busy task identifiers
     chatComposer.ts           # chat composer focus helper
+    chatRun.ts                # chat-driven run state helpers
     contextBuilder.ts         # model context building and compaction
     coordinateSystems.ts      # screenshot and device pixel coordinate systems
     cursorMotion.ts           # agent cursor motion path calculation
     deviceControlTypes.ts     # shared device control types
     deviceDoctor.ts           # device and model configuration diagnostics
+    deviceErrors.ts           # device error codes mapped onto UI copy
     deviceState.ts            # device state display formatting
+    elementRefs.ts            # element refs that survive re-dumps
+    evidenceLedger.ts         # ledger of everything the run has read
     failureTaxonomy.ts        # failure classes (FailureClass) and auto-recoverable kinds
     fileExport.ts             # local JSON import/export helpers
     geminiClient.ts           # native Gemini generateContent client
     geminiTypes.ts            # Gemini request/response types
+    grounding.ts              # answer grounding checks (quotes, numbers, dates)
     httpRetry.ts              # HTTP retry helpers
     interactionStream.ts      # combined chat message and agent step display stream
+    lazyWithRetry.ts          # lazy import that reloads after a stale chunk
+    limitNotice.ts            # quota and rate-limit notice detection
     memory.ts                 # local agent memory items
+    memoryIndex.ts            # memory tokenizer and BM25 retrieval
+    modelConnectionTest.ts    # model connection test
+    modelRequestTimeout.ts    # model request timeout wrapper
+    needsYou.ts               # "needs you" card kind resolution
     openAiClient.ts           # OpenAI-compatible chat completions client
     openAiErrors.ts           # OpenAI client error types
     openAiPayload.ts          # OpenAI-compatible request payload building
@@ -391,53 +483,64 @@ src/
     openAiRuntimeConfig.ts    # OpenAI request runtime configuration
     openAiTypes.ts            # OpenAI client and message types
     modelProviders.ts         # provider presets (OpenAI / Qwen / Gemini)
+    overlayStack.ts           # overlay layer stack
     promptContextFormatting.ts # model context formatting helpers
     prompts.ts                # prompts and action rules
+    proxyToken.ts             # same-origin proxy token fetch
     repository.ts             # repository links and GitHub stats parsing
     runLogEntries.ts          # run-log entry and screenshot-view formatting
     screenshot/               # screenshot coordinates, context, and retention policy
       coordinates.ts
       index.ts
       retention.ts
+    screenDiagnosis.ts        # screen state diagnosis (blank, secure, needs human)
+    screenSettle.ts           # waits for the screen to stop changing
+    screenshotBlank.ts        # decides whether a screenshot is entirely black
     secretVault.ts            # encrypted local secret storage (AES-GCM)
+    sensitiveFilter.ts        # sensitive-content gate for memory and skills
     settings.ts               # local settings persistence
+    skillDraft.ts             # drafts a skill from a run that finished
+    skillStore.ts             # local skill storage and matching
     taskNotifications.ts      # task completion system notifications
     textRetention.ts          # long-text retention policy
     threadStore.ts            # agent thread persistent storage
     toolRegistry.ts           # agent action tool registration and execution
     trajectory.ts             # versioned, sanitised projection of one run
     trajectoryFixture.ts      # trajectory-to-fixture projection (authoritative fixture shape)
+    treeQuality.ts            # how much of the screen the tree describes
+    untrusted.ts              # wraps device data as untrusted
   styles/                    # styles split by page area
-    agent-step-card.css      # agent step-card styles
-    chat-composer.css        # chat composer styles
-    chat-history.css         # chat-history sidebar styles
-    chat-panel.css           # chat panel styles
-    compact-section.css      # collapsible tool-section styles
-    config-panel.css         # device and model configuration panel styles
-    controls.css             # forms, buttons, and shared control styles
-    conversation-panel.css   # conversation-panel shell and pending-action styles
-    device-doctor.css        # device doctor result styles
-    device-options.css       # device execution option styles
-    device-panel.css         # device connection section styles
-    direct-commands.css      # direct command panel styles
-    index.css                # global style entrypoint
-    installed-apps.css       # installed-app list styles
-    layout.css               # page layout and panel frames
-    markdown-content.css     # Markdown content styles
-    model-panel.css          # model configuration section styles
-    phone-stage.css          # phone preview and action-overlay styles
-    primitives.css           # primitive controls and typography styles
-    responsive.css           # responsive layout adjustments
-    run-log.css              # run-log styles
-    screenshot-lightbox.css  # screenshot preview modal styles
+    agent-step-card.css       # agent step-card styles
+    chat-composer.css         # chat composer styles
+    chat-history.css          # chat-history sidebar styles
+    chat-panel.css            # chat panel styles
+    compact-section.css       # collapsible tool-section styles
+    config-panel.css          # device and model configuration panel styles
+    controls.css              # forms, buttons, and shared control styles
+    conversation-panel.css    # conversation-panel shell and pending-action styles
+    device-doctor.css         # device doctor result styles
+    device-options.css        # device execution option styles
+    device-panel.css          # device connection section styles
+    direct-commands.css       # direct command panel styles
+    index.css                 # global style entrypoint
+    installed-apps.css        # installed-app list styles
+    layout.css                # page layout and panel frames
+    markdown-content.css      # Markdown content styles
+    model-panel.css           # model configuration section styles
+    phone-stage.css           # phone preview and action-overlay styles
+    primitives.css            # primitive controls and typography styles
+    responsive.css            # responsive layout adjustments
+    run-log.css               # run-log styles
+    screenshot-lightbox.css   # screenshot preview modal styles
     sensitive-action-dialog.css # sensitive action dialog styles
-    settings-dialog.css      # settings dialog styles
-    setup-home.css           # setup onboarding styles
-    theme.css                # theme tokens and base reset
-    tutorial-panel.css       # tutorial panel styles
+    settings-dialog.css       # settings dialog styles
+    setup-home.css            # setup onboarding styles
+    theme.css                 # theme tokens and base reset
+    tutorial-panel.css        # tutorial panel styles
   App.tsx                     # page state, workflow logic, and component composition
   main.tsx                    # React entrypoint and global style loading
 scripts/
+  bundle-budget.mjs           # enforces build output size budgets (runs inside build)
   css-audit.mjs               # reports CSS selectors no longer referenced (heuristic)
   trajectory-to-fixture.mjs   # derives sanitised replay fixtures from a trajectory (bare Node, no build step)
 server/
@@ -469,7 +572,7 @@ npm run build:budget  # check the budgets of an existing dist (build runs it too
 
 > `npm run build` finishes with `scripts/bundle-budget.mjs`: 400 KiB for the entry chunk, 500 KiB for any single chunk, 1100 KiB for everything emitted. Exceeding one fails the build. Override a budget for a one-off look with e.g. `BUNDLE_BUDGET_ENTRY_KB=500`.
 >
-> React and `@yume-chan/adb` are split into their own chunks (see `vite.config.ts`), which leaves the entry chunk at roughly 318 kB / 99 kB gzip — about 180 kB of headroom under Vite's 500 kB warning. The Markdown stack is deliberately not chunked by hand: doing so makes Vite preload it from the entry and undoes the lazy import.
+> React and `@yume-chan/adb` are split into their own chunks (see `vite.config.ts`), which currently leaves the entry chunk at about 348 KiB and everything emitted at about 941 KiB (budget 1100 KiB). The Markdown stack is deliberately not chunked by hand: doing so makes Vite preload it from the entry and undoes the lazy import.
 
 Derive replay fixtures from an exported trajectory:
 
@@ -485,7 +588,7 @@ The current tests mainly cover:
 - OpenAI-compatible and Responses API request payload construction, response parsing, and network client errors.
 - Docker local proxy forwarding constraints for `/chat/completions` and `/responses`.
 - Single-step and continuous agent execution.
-- Failure feedback and automatic recovery for transient device errors (`device_io` / `device_timeout`: three attempts before `awaiting_review`; every other failure class stops after one attempt), plus transient model API and empty-model-response retries.
+- Failure feedback and automatic recovery for the whitelisted failures (`action_stale` plus the transient device errors `device_io` / `device_timeout`: three attempts before `awaiting_review`; every other failure class stops after one attempt), plus transient model API and empty-model-response retries.
 - Failure classification, trajectory projection and sanitisation, and offline replay of action, coordinate, and command fixtures plus the device loop (three `device_timeout` attempts before `awaiting_review`; an abort keeps the steps already executed).
 - Settings persistence and compatibility migration.
 - Agent thread/turn persistence.
@@ -493,6 +596,13 @@ The current tests mainly cover:
 - Screenshot coordinate mapping.
 - The run-log, screenshot preview, and main layout components.
 - Global hotkeys, split-pane dragging, dialog focus traps, and body scroll locking.
+- Action-effect diffing, the `no_effect` / `place_changed` distinction, and the refusal to judge from a poor tree.
+- Stable element refs across re-dumps (carry, retire, relocate, stale causes), `tap_ref` resolution, and continuing as `action_stale` after an expired ref.
+- All six screen-diagnosis states (including capture-blocked and "one black frame is only loading") and limit notices counting only when new.
+- Tree-quality grading, the untrusted wrapper, and closing-tag escaping.
+- Memory BM25 retrieval and the sensitive-content filter (passwords, codes, ID numbers, card numbers, API keys).
+- Skill drafting thresholds and matching, plus the untrusted wrapper around skill text.
+- Grounding's treatment of quotes, unit-bearing numbers, dates, and ordinals.
 - Safety-policy risk levels, the verdict ladder, the strictness setting, and the dedicated card for a blocked action.
 
 Real-device control still needs manual verification with an Android device. Work through [`docs/device-verification-matrix.md`](docs/device-verification-matrix.md): pause timing, resume without a new user message, resuming after a reload, streaming tokens per provider, and the safety strictness all live there.
@@ -512,6 +622,25 @@ Real-device control still needs manual verification with an Android device. Work
 - [x] More systematic failure classification, with per-class action retry (delivered in this milestone).
 - [x] Task pause and resume.
 - [x] More systematic safety policy and risk grading (risk levels + verdict ladder + configurable strictness, see `src/lib/actionRisk.ts`).
+- [x] Screen observation and self-checks: action effects, stable element refs (`tap_ref`), screen diagnosis, tree-quality grading, adaptive settling, limit-notice detection.
+- [x] Memory retrieval with sensitive-content filtering, skill drafting and reuse, and answer grounding.
+
+## Contributing
+
+Issues and pull requests are welcome around:
+
+- Compatibility reports for new devices, browsers, or models.
+- Action parsing, coordinate mapping, and ADB execution stability.
+- Documentation, example tasks, troubleshooting, and safety notes.
+- UI usability, log readability, and the local experimentation experience.
+
+Before submitting a change, please run:
+
+```bash
+npm test
+npm run lint
+npm run build
+```
 
 ## Deploying to Cloudflare Pages
 

@@ -41,6 +41,7 @@ Docker:
 - [Docker 部署](#docker-部署)
 - [模型动作协议](#模型动作协议)
 - [设备控制细节](#设备控制细节)
+- [屏幕观测与自检](#屏幕观测与自检)
 - [安全边界](#安全边界)
 - [项目结构](#项目结构)
 - [验证](#验证)
@@ -59,11 +60,16 @@ Docker:
 - 支持 WebDroid JSON 系列动作协议和 canonical JSON 动作格式：`webdroid_json` 使用截图像素，`webdroid_normalized_json` 使用 Vision-Pointer 风格 0-1000 归一化坐标。
 - 自动解析、规范化并校验模型返回的下一步动作。
 - 通过 ADB 执行启动应用、点击、滑动、输入文本、返回、Home、长按、双击、等待等操作，支持模型显式配置等待时间。
-- 支持输入前清空文本、动作后固定等待、瞬时模型 API 错误/模型空回复重试，以及仅限瞬时设备错误（`device_io` / `device_timeout`，最多三次尝试后转入 `awaiting_review`）的自动恢复；其余失败类别一次即停。
+- 支持输入前清空文本、动作后等界面稳定、瞬时模型 API 错误/模型空回复重试，以及按白名单（`action_stale` 与瞬时设备错误 `device_io` / `device_timeout`，最多三次尝试后转入 `awaiting_review`）的自动恢复；其余失败类别一次即停。
 - 支持可编辑 App Cards、本地 Custom Tools，以及只向模型暴露 ID/标签的安全 Secret 输入。
 - 发送聊天消息后默认自动执行，也保留单步计划等高级调试能力。
 - 支持敏感动作确认、完全无限制模式、最大步数限制、真正暂停并在断点恢复、停止运行，以及高级区中的上下文重置和运行日志导出。
 - 页面配置持久化到本机浏览器 `localStorage`，Agent thread/turn 历史持久化到 IndexedDB。
+- 每一步都用动作前后的控件树判出动作效果（`done` / `small_change` / `no_effect` / `place_changed`），并给元素分配跨屏稳定的编号：点元素可以用 `tap_ref`，编号过期会明确回报而不是点错位置。
+- 屏幕不可用时给出确定原因（还在加载、空白、防截屏、完全读不到、需要人工），接管卡片的类型按屏幕事实判定，而不是按模型的措辞。
+- 记忆（开启后）：模型用 `note` 记下的事实不会全量灌回提示词，而是按当前任务检索最相关的几条；写入前拦下密码、验证码、身份证号、银行卡号和 API Key。
+- 技能：任务跑通后把步骤起草成技能，下次遇到同类任务作为建议注入；技能文本同样标为不可信数据。
+- 回答接地校验：最终回答里的引文、带单位数字和日期会按纯代码规则核对本次运行真的读到过；对不上只在日志提示，不改写回答。
 - 操作台快捷键：`Cmd/Ctrl+K` 聚焦输入框、`Cmd/Ctrl+B` 开关配置面板、`Cmd/Ctrl+J` 开关运行日志；`Esc` 只关闭最上层弹窗（不再误停 Agent，停止请用界面上的停止按钮）；手机预览与聊天区之间的分隔条可拖拽调整宽度并记住比例（双击复位）。
 
 ## 适合谁使用
@@ -89,7 +95,8 @@ Docker:
 - 调用 OpenAI 兼容视觉模型生成下一步动作。
 - 解析 canonical JSON 动作。
 - 执行常见 ADB 控制指令并记录运行日志。
-- 支持聊天驱动的自动执行、人工确认、停止、上下文恢复，以及仅限瞬时设备错误（`device_io` / `device_timeout`）的自动恢复。
+- 支持聊天驱动的自动执行、人工确认、停止、上下文恢复，以及 `action_stale` 与瞬时设备错误的自动恢复。
+- 屏幕诊断、动作效果判定、稳定元素编号、记忆检索、技能复用和回答接地校验也在这条链路上。
 
 仍建议把它当作本地实验工具使用。真实设备、模型能力、浏览器权限、CORS 配置和 Android ROM 差异都会影响效果。
 
@@ -101,7 +108,7 @@ Docker:
 4. 在右侧聊天区输入自然语言指令，例如「打开设置并进入 Wi-Fi 页面」。
 5. 发送后应用截屏并请求模型返回一个动作。
 6. 前端解析、校验动作，并自动执行安全动作；敏感动作默认仍会请求确认。
-7. 只有瞬时设备错误（`device_io` / `device_timeout`）会自动重试：失败反馈进入下一轮上下文，最多三次尝试后转入 `awaiting_review`；其余失败类别一次失败即停，不再自动重试。
+7. 只有白名单内的失败（`action_stale` 与瞬时设备错误 `device_io` / `device_timeout`）会自动重试：失败反馈进入下一轮上下文，最多三次尝试后转入 `awaiting_review`；其余失败类别一次失败即停。元素编号过期属于这一档，重读屏幕即可继续。
 8. 重复执行，直到模型返回 `done`、请求 `take_over`、达到最大步数或用户停止；开启完全无限制模式时不会因 `take_over` 停止。
 
 ## 环境要求
@@ -149,7 +156,12 @@ npm run preview
 - `完全无限制模式`：绕过本地安全策略和敏感确认，模型也会被提示不要请求人工接管。
 - `Stream responses`：是否启用流式响应，默认关闭。开启后按 OpenAI 标准附带 `stream_options.include_usage` 统计流式 Token；兼容网关拒绝该字段时会自动去掉并重试一次，运行继续，只在日志里提示 Token 统计不完整。
 - `Use ADB Keyboard for text`：是否优先使用 ADB Keyboard 输入文本，默认关闭。
-- `Action settle`、`Double tap interval`、`Keyboard step`：动作执行后的等待和输入节奏参数。
+- `记忆功能`（`Memory`）：是否允许模型用 `note` 记下持久事实，默认关闭。开启后执行时会按当前任务检索相关条目注入（最多 6 条、1800 字），含密码、验证码、身份证号、银行卡号或 API Key 的内容不会写入。
+- `任务通知`：一次运行结束时发系统通知，需要浏览器授权，默认关闭。
+- `自动控制期间屏幕变暗`：自动运行时先把手机屏幕调暗以减少旁观，结束或出错后恢复原亮度，默认关闭。
+- `动作工具开关`：可以逐个关掉不需要的动作工具；关掉的工具不会再出现在模型的工具列表里。
+- `主题` / `语言`：界面主题（跟随系统 / 亮色 / 暗色）和界面语言（跟随系统 / 中文 / English），只影响本机界面。
+- `Action settle`、`Double tap interval`、`Keyboard step`：`Action settle` 是动作后的最短等待，实际会继续轮询截图直到画面稳定，最多等到该值的三倍；另外两项是双击间隔和逐字输入节奏。
 - `App Cards`：按包名编辑的应用上下文卡片，默认内置 Chrome、Gmail、Settings。
 - `Secrets`：本地 Secret 列表，模型只看到 `id` 和 `label`，执行时通过 `type_secret` 在本机解析真实值。
 - `Custom Tools`：本地工具定义，模型只看到工具名和描述，执行结果在本地返回给下一轮上下文。
@@ -236,6 +248,7 @@ canonical JSON 推荐使用的标准动作：
 | --- | --- |
 | `launch` | 启动应用，可传常见应用名或包名 |
 | `tap` | 点击屏幕坐标 |
+| `tap_ref` | 点击界面树里带稳定编号的元素（如 `e12`），执行前换算成坐标；编号过期会回报 `stale` 而不是点错位置 |
 | `swipe` | 从一个坐标滑动到另一个坐标 |
 | `input_text` | 输入文本；`clear:true` 会先清空当前焦点文本框 |
 | `type_secret` | 输入本地 Secret；模型只传 `secretId`，不会看到真实值 |
@@ -251,6 +264,9 @@ canonical JSON 推荐使用的标准动作：
 | `wait` | 等待一段时间，推荐使用 `duration` 秒数 |
 | `take_over` | 请求人工接管；`kind` 可标记为 `login`、`captcha`、`payment` 或 `other` |
 | `note` | 记录观察，不执行设备动作 |
+| `view_screenshot` | 调出之前某一步的截图，附加到下一轮模型请求 |
+| `sequence` | 顺序执行一组动作，任一步失败即停止 |
+| `repeat` | 重复执行一个动作若干次，可带间隔 |
 | `done` | 任务完成 |
 
 示例：
@@ -275,13 +291,17 @@ canonical JSON 推荐使用的标准动作：
 { "action": "open_url", "url": "https://example.com/search?q=webdroid", "reason": "直接打开目标网页" }
 ```
 
+```json
+{ "action": "tap_ref", "ref": "e12", "reason": "界面树里的 Wi-Fi 开关" }
+```
+
 遗留兼容层仍能接收 `interact` 和 `call_api`，但它们不是推荐给模型使用的真实执行动作：`interact` 会转成 `take_over`，`call_api` 会转成带有“不支持二次 API 调用”说明的 `take_over`。
 
 ## 设备控制细节
 
 - 启动应用：优先匹配设备已安装应用列表，也支持内置常见 App 名称映射或直接传 Android 包名。
 - 点击/滑动：执行前会校验坐标是否在屏幕范围内。
-- 界面结构：每步会尽力通过 `uiautomator dump --compressed` 读取当前控件树，把可见文本、描述、资源 ID、可点击状态和 bounds 注入模型上下文。
+- 界面结构：每步会尽力通过 `uiautomator dump --compressed` 读取当前控件树，把可见文本、描述、资源 ID、可点击状态、bounds 和跨屏稳定的元素编号注入模型上下文；整块内容包在 `<untrusted>` 里，并按控件树质量决定给多少节点。
 - 打开 URL：使用 Android `am start -a android.intent.action.VIEW -d <url>`，支持网页和设备上已注册的 deep link。
 - 长按：使用 Android `input swipe x y x y duration` 命令模拟。
 - 双击：连续发送两次 `tap`，中间带可配置延迟。
@@ -289,7 +309,22 @@ canonical JSON 推荐使用的标准动作：
 - 清空后输入、中文和复杂字符：使用 ADB Keyboard 或 AutoGLM Keyboard 广播模式输入。
 - 剪贴板：`set_clipboard` 会保存一份本地 WebDroid 剪贴板并尝试调用 `cmd clipboard set`；`paste` 优先用本地剪贴板通过当前输入通道写入焦点框。
 - ADB Keyboard 模式要求设备上已安装并启用 `com.android.adbkeyboard/.AdbIME`；设备面板提供安装和启用入口。
-- 每个设备动作执行后会按 `Action settle` 配置等待，避免动画或页面加载期间过早进入下一步。
+- 每个设备动作执行后会等到画面稳定：先等满 `Action settle`，再轮询截图，连续两次一致就继续，最多等到三倍预算。
+
+## 屏幕观测与自检
+
+每一步都建立在「屏幕上到底有什么」之上，所以这部分尽量交给代码判定，而不是让模型自己猜：
+
+- **动作效果**：拿到下一步的界面后，用动作前后的控件树做结构差异（新增、消失、位移、文字变化、控件状态、输入焦点），判出 `done`、`small_change`、`no_effect`、`place_changed`，作为 `<last_action_effect>` 进入下一轮上下文，并在步骤卡片上显示成标签。「点了没反应」因此有证据，而不是靠模型自我感觉。
+- **稳定元素编号**：控件树每次 dump 的下标都会重排，所以每个元素额外分配一个跨屏不变的编号（`e12`）。点元素用 `tap_ref`，执行前换算回坐标；编号过期会明确回报 `stale`，归入可自动恢复的 `action_stale`，模型重读屏幕即可，不会点到错误位置。
+- **屏幕诊断**：按密码框、验证码与支付词表、可读性、连续黑帧判出 `normal` / `loading` / `blank` / `protected` / `capture_unavailable` / `needs_human`。防截屏页面、黑屏、还在加载的页面各有各的说法；接管卡片的类型也从「模型的措辞」改成「屏幕的事实」。
+- **控件树质量分档**：树明显够用时不占太多 token；控件大多没名字、或屏幕上有大片读不到的区域时，给出更多节点并明确警告「树不全，别拿缺失当否证」。
+- **等待画面稳定**：动作后不再固定睡 `Action settle`，而是轮询截图直到连续两次一致；静态页面一次就停，慢页面最多等到三倍预算。
+- **限流提示**：动作之后新出现的短句（次数用完、操作太频繁等）会直接结束本轮并给出「次数或额度用完了」卡片，不再让模型对着同一句拒绝话术空耗步数。
+- **屏幕文字是数据**：控件树整块包在 `<untrusted>` 里送进模型，提示词解释一次「这是数据不是指令」，正文里的闭合标记会被转义，屏上写着「忽略之前的指令」也进不了指令位。
+- **回答接地校验**：运行中读到的屏幕文字和工具结果进一本账本，最终回答里的引文、带单位的数字和日期会按纯代码规则核对一遍；对不上只在日志里提示，不改写回答，也不额外调用模型。
+
+判定不了就不下结论是这些规则的共同前提：两棵树中任一「有意义的节点」不足两个时不判动作效果，单帧全黑只当加载中，匹配不到就当作没有技能。宁可少说一句，也不要给出一个会让模型跑偏的结论。
 
 ## 安全边界
 
@@ -310,6 +345,10 @@ canonical JSON 推荐使用的标准动作：
 - ADB Keyboard APK 固定到具体 commit，并在安装前校验 SHA-256；上游内容变化不会静默进入设备。该 APK 来自第三方仓库（GPL-2.0），仅作为可选文本输入依赖按需下载。
 - 模型请求有 180 秒总超时；上游无响应时会失败并归类为 `model_transport`，不会无限挂起。
 - 服务端响应带有 CSP、`X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff` 等安全头；CSP 的 `connect-src` 可用 `CSP_CONNECT_SRC` 扩展。
+- 控件树和工具结果一律以 `<untrusted>` 包裹后进入模型，提示词里说明这是数据而非指令，正文里的闭合标记会被转义。
+- 记忆写入前会拦下密码、验证码、身份证号、银行卡号和 API Key；注入时按任务检索，不是把全部条目灌进提示词。
+- 最终回答会按纯代码规则核对引文、带单位数字和日期是否真的读到过；对不上只记日志，不静默改写回答。
+- 动作效果、屏幕诊断和限流提示都只影响提示与停跑决策，不改变能力边界：它们在安全判定之后才运行。
 
 仍然建议避免让 Agent 操作账号登录、支付、下单、删除、授权、验证码、隐私页面等高风险流程。默认情况下模型返回 `take_over` 时，自动执行会停止并等待人工接管；开启完全无限制模式后不会因接管请求停止。
 
@@ -344,6 +383,7 @@ src/
     ChatHistorySidebar.tsx    # 历史会话侧栏
     ChatPanel.tsx             # 聊天记录和输入区外壳
     ConfigSidebar.tsx         # 设备和模型配置侧栏编排
+    ConfirmDialog.tsx         # 通用确认对话框
     ConversationPanel.tsx     # 聊天、历史会话和待执行动作
     DeviceHomeOptionsSection.tsx # 设备输入、确认和时序选项
     DevicePanel.tsx           # 设备连接和执行设置面板
@@ -354,13 +394,16 @@ src/
     LazyMarkdownContent.tsx   # 延迟加载的 Markdown 渲染
     MarkdownContent.tsx       # 聊天消息 Markdown 渲染
     ModelPanel.tsx            # 模型配置面板
+    NeedsYouCard.tsx          # 「需要你处理」卡片
     PendingActionCard.tsx     # 待执行动作确认卡片
     PhoneStage.tsx            # 手机截图和动作覆盖层
     RunLog.tsx                # 运行日志
+    RunProgressBlock.tsx      # 运行进度块
     ScreenshotLightbox.tsx    # 截图预览弹窗
     SensitiveActionDialog.tsx # 敏感动作确认对话框（含焦点陷阱）
     SettingsDialog.tsx        # 应用设置、仓库信息和可编辑资源
     SetupHome.tsx             # 首次连接设备/配置模型引导页
+    ToastViewport.tsx         # 轻提示容器
     TutorialPanel.tsx         # 顶部栏展开的快速上手教程
     UnrestrictedModeConfirmDialog.tsx # 完全无限制模式确认对话框
     actionDisplay.ts          # 动作展示文案辅助
@@ -368,35 +411,41 @@ src/
     deviceDisplay.ts          # 设备展示文案辅助
     primitives/               # 按钮、图标按钮等基础控件
   hooks/
-    useAgentRunController.ts        # Agent 自动运行和待执行动作控制
-    useAgentSessionHistory.ts       # 会话恢复、保存和历史列表状态
-    useBodyOverflow.ts              # 弹窗/全屏期间共享的 body 滚动锁
-    useBusyTask.ts                  # 运行中任务和错误状态管理
-    useBusyTaskDocumentTitle.ts     # 运行中任务写入页面标题
-    useConfigTargetScroll.ts        # 配置侧栏目标定位
-    useDeviceBackendPreferences.ts  # 设备后端偏好同步
-    useDeviceController.ts          # 设备连接、截图和直接动作控制
-    useDisplayImageUrl.ts           # 截图 blob URL 生命周期
-    useDocumentPreferences.ts       # 文档主题和语言属性同步
-    useHotkeys.ts                   # 全局快捷键注册
-    useLatestValue.ts               # 异步回调读取最新值的 ref
-    useLocalResourcesState.ts       # App Cards / Custom Tools / Secrets 状态
-    usePersistedSettings.ts         # 设置变更持久化
-    useRepositoryStats.ts           # 设置弹窗中的 GitHub 仓库统计加载
-    useRunLog.ts                    # 运行日志状态管理
-    useSplitPane.ts                 # 工作区左右分栏拖拽和持久化
-    useStorageEstimate.ts           # 本地存储容量估算
-    useVirtualWindow.ts             # 长列表虚拟窗口
+    useAgentRunController.ts  # Agent 自动运行和待执行动作控制
+    useAgentSessionHistory.ts # 会话恢复、保存和历史列表状态
+    useBodyOverflow.ts        # 弹窗/全屏期间共享的 body 滚动锁
+    useBusyTask.ts            # 运行中任务和错误状态管理
+    useBusyTaskDocumentTitle.ts # 运行中任务写入页面标题
+    useConfigTargetScroll.ts  # 配置侧栏目标定位
+    useDeviceBackendPreferences.ts # 设备后端偏好同步
+    useDeviceController.ts    # 设备连接、截图和直接动作控制
+    useDialogFocusTrap.ts     # 对话框焦点陷阱
+    useDisplayImageUrl.ts     # 截图 blob URL 生命周期
+    useDocumentPreferences.ts # 文档主题和语言属性同步
+    useHotkeys.ts             # 全局快捷键注册
+    useLatestValue.ts         # 异步回调读取最新值的 ref
+    useLocalResourcesState.ts # App Cards / Custom Tools / Secrets 状态
+    useOverlayLayer.ts        # 弹窗层级管理
+    usePersistedSettings.ts   # 设置变更持久化
+    useRepositoryStats.ts     # 设置弹窗中的 GitHub 仓库统计加载
+    useRunLog.ts              # 运行日志状态管理
+    useSplitPane.ts           # 工作区左右分栏拖拽和持久化
+    useStorageEstimate.ts     # 本地存储容量估算
+    useToasts.ts              # 轻提示状态管理
+    useVirtualWindow.ts       # 长列表虚拟窗口
   lib/
     abortSignal.ts            # 中止信号工具
     actionAliases.ts          # 动作别名归一化
     actionCoordinates.ts      # 动作坐标换算辅助
     actionDefaults.ts         # 常用截图动作默认值
+    actionEffect.ts           # 动作前后界面状态差异与效果判定
     actionFormats.ts          # 动作格式定义
     actionParser.ts           # 动作解析和规范化
     actionPreview.ts          # 动作预览文案格式化
     actionProtocol.ts         # 显式动作协议枚举
+    actionRisk.ts             # 风险等级、判定阶梯与安全强度
     actionSafetyPolicy.ts     # 本地动作安全策略
+    actionSecrets.ts          # 判断动作是否携带已解析的 Secret 值
     actionTypes.ts            # 动作类型和校验错误定义
     actionValidation.ts       # 动作字段校验（包名、URI、控制字符）
     agentResources.ts         # App 外的本地 Secret 和 Custom Tool 资源
@@ -409,19 +458,30 @@ src/
     auditLog.ts               # 本地操作审计日志
     busyTask.ts               # 页面运行中任务标识
     chatComposer.ts           # 聊天输入框聚焦辅助
+    chatRun.ts                # 聊天驱动的运行状态辅助
     contextBuilder.ts         # 本轮模型上下文构建和压缩
     coordinateSystems.ts      # 截图像素与设备像素坐标系统
     cursorMotion.ts           # Agent 光标运动路径计算
     deviceControlTypes.ts     # 设备控制共享类型
     deviceDoctor.ts           # 设备和模型配置诊断
+    deviceErrors.ts           # 设备错误码到界面文案的映射
     deviceState.ts            # 设备状态展示格式化
+    elementRefs.ts            # 跨屏稳定的元素编号
+    evidenceLedger.ts         # 本次运行读到的证据账本
     failureTaxonomy.ts        # 失败分类（FailureClass）和可自动恢复类别
     fileExport.ts             # 本地 JSON 文件导入导出
     geminiClient.ts           # Gemini 原生 generateContent 客户端
     geminiTypes.ts            # Gemini 请求/响应类型
+    grounding.ts              # 回答接地校验（引文、数字、日期）
     httpRetry.ts              # HTTP 重试工具
     interactionStream.ts      # 聊天消息和 Agent 步骤合并展示
+    lazyWithRetry.ts          # 动态导入失败后的重载封装
+    limitNotice.ts            # 限流与额度提示识别
     memory.ts                 # 本地 Agent 记忆条目
+    memoryIndex.ts            # 记忆切词与 BM25 检索
+    modelConnectionTest.ts    # 模型连接测试
+    modelRequestTimeout.ts    # 模型请求超时包装
+    needsYou.ts               # 「需要你处理」卡片类型判定
     openAiClient.ts           # OpenAI 兼容 chat completions 客户端
     openAiErrors.ts           # OpenAI 客户端错误类型
     openAiPayload.ts          # OpenAI 兼容请求体构造
@@ -431,53 +491,64 @@ src/
     openAiRuntimeConfig.ts    # OpenAI 请求运行时配置
     openAiTypes.ts            # OpenAI 客户端和消息类型
     modelProviders.ts         # 服务商预设（OpenAI / Qwen / Gemini）
+    overlayStack.ts           # 弹窗层级栈
     promptContextFormatting.ts # 模型上下文格式化工具
     prompts.ts                # 提示词和动作规则
+    proxyToken.ts             # 同源代理 token 获取
     repository.ts             # 仓库链接和 GitHub 统计解析
     runLogEntries.ts          # 运行日志条目和截图视图格式化
     screenshot/              # 截图坐标、上下文和内存保留策略
       coordinates.ts
       index.ts
       retention.ts
+    screenDiagnosis.ts        # 屏幕状态诊断（黑屏、防截屏、需人工）
+    screenSettle.ts           # 等待画面稳定
+    screenshotBlank.ts        # 截图是否全黑的判定
     secretVault.ts            # 本地 Secret 加密存储（AES-GCM）
+    sensitiveFilter.ts        # 记忆与技能的敏感内容关卡
     settings.ts               # 本地设置读写
+    skillDraft.ts             # 从跑通的运行起草技能
+    skillStore.ts             # 技能本地存储与匹配
     taskNotifications.ts      # 任务完成系统通知
     textRetention.ts          # 长文本保留策略
     threadStore.ts            # Agent thread 持久化存储
     toolRegistry.ts           # Agent 动作工具注册和执行入口
     trajectory.ts             # 把一次 run 投影为带版本、已脱敏的 trajectory 产物
     trajectoryFixture.ts      # trajectory → 重放夹具投影（夹具形状的权威定义）
+    treeQuality.ts            # 控件树质量分档
+    untrusted.ts              # 不可信内容包裹
   styles/                    # 按页面区域拆分的样式
-    agent-step-card.css      # Agent 步骤卡片样式
-    chat-composer.css        # 聊天输入区样式
-    chat-history.css         # 历史会话侧栏样式
-    chat-panel.css           # 聊天面板样式
-    compact-section.css      # 折叠工具区样式
-    config-panel.css         # 设备和模型配置面板样式
-    controls.css             # 表单、按钮和通用控件样式
-    conversation-panel.css   # 会话面板外壳和待执行动作样式
-    device-doctor.css        # 设备诊断结果样式
-    device-options.css       # 设备执行选项样式
-    device-panel.css         # 设备连接区样式
-    direct-commands.css      # 直接命令面板样式
-    index.css                # 全局样式入口
-    installed-apps.css       # 已安装应用列表样式
-    layout.css               # 页面布局和面板外框
-    markdown-content.css     # Markdown 内容样式
-    model-panel.css          # 模型配置区样式
-    phone-stage.css          # 手机预览和动作覆盖层样式
-    primitives.css           # 基础控件和排版样式
-    responsive.css           # 响应式布局调整
-    run-log.css              # 运行日志样式
-    screenshot-lightbox.css  # 截图预览弹窗样式
+    agent-step-card.css       # Agent 步骤卡片样式
+    chat-composer.css         # 聊天输入区样式
+    chat-history.css          # 历史会话侧栏样式
+    chat-panel.css            # 聊天面板样式
+    compact-section.css       # 折叠工具区样式
+    config-panel.css          # 设备和模型配置面板样式
+    controls.css              # 表单、按钮和通用控件样式
+    conversation-panel.css    # 会话面板外壳和待执行动作样式
+    device-doctor.css         # 设备诊断结果样式
+    device-options.css        # 设备执行选项样式
+    device-panel.css          # 设备连接区样式
+    direct-commands.css       # 直接命令面板样式
+    index.css                 # 全局样式入口
+    installed-apps.css        # 已安装应用列表样式
+    layout.css                # 页面布局和面板外框
+    markdown-content.css      # Markdown 内容样式
+    model-panel.css           # 模型配置区样式
+    phone-stage.css           # 手机预览和动作覆盖层样式
+    primitives.css            # 基础控件和排版样式
+    responsive.css            # 响应式布局调整
+    run-log.css               # 运行日志样式
+    screenshot-lightbox.css   # 截图预览弹窗样式
     sensitive-action-dialog.css # 敏感动作确认对话框样式
-    settings-dialog.css      # 设置弹窗样式
-    setup-home.css           # 启动引导页样式
-    theme.css                # 主题变量和基础 reset
-    tutorial-panel.css       # 教程面板样式
+    settings-dialog.css       # 设置弹窗样式
+    setup-home.css            # 启动引导页样式
+    theme.css                 # 主题变量和基础 reset
+    tutorial-panel.css        # 教程面板样式
   App.tsx                     # 页面状态、业务流程和组件编排
   main.tsx                    # React 入口和全局样式加载
 scripts/
+  bundle-budget.mjs           # 构建产物体积预算检查（build 自动执行）
   css-audit.mjs               # 扫描不再被引用的 CSS 选择器（启发式）
   trajectory-to-fixture.mjs   # 由 trajectory 生成脱敏重放夹具（Node 侧，无构建步骤）
 server/
@@ -509,7 +580,7 @@ npm run build:budget  # 单独检查已有 dist 的包体预算（build 会自�
 
 > `npm run build` 结束时会跑 `scripts/bundle-budget.mjs`：入口 chunk 上限 400 KiB、单个 chunk 上限 500 KiB、产物总量上限 1100 KiB，超了就让构建失败。临时排查可用 `BUNDLE_BUDGET_ENTRY_KB=500` 之类的环境变量放宽。
 >
-> 打包时 React 与 `@yume-chan/adb` 被拆成独立 chunk（见 `vite.config.ts`），入口 chunk 当前约 318 KB / gzip 99 KB，距 Vite 的 500 KB 警告线留有约 180 KB 余量。Markdown 渲染栈不参与手动分块，否则 Vite 会把它预加载回入口，反而丢掉懒加载。
+> 打包时 React 与 `@yume-chan/adb` 被拆成独立 chunk（见 `vite.config.ts`），入口 chunk 当前约 348 KiB，全部产物约 941 KiB（预算 1100 KiB）。Markdown 渲染栈不参与手动分块，否则 Vite 会把它预加载回入口，反而丢掉懒加载。
 
 从一次导出的 trajectory 生成重放夹具：
 
@@ -525,7 +596,7 @@ npm run trajectory:fixture -- <trajectory.json>
 - OpenAI 兼容与 Responses API 请求体构造、响应解析和网络客户端错误处理。
 - Docker 本地代理对 `/chat/completions` 与 `/responses` 的转发约束。
 - Agent 单步和连续执行流程。
-- 瞬时设备错误（`device_io` / `device_timeout`）的失败反馈与自动恢复（最多三次尝试后转入 `awaiting_review`；其余失败类别一次即停），以及瞬时模型 API 错误/模型空回复重试。
+- 白名单失败（`action_stale` 与瞬时设备错误 `device_io` / `device_timeout`）的失败反馈与自动恢复（最多三次尝试后转入 `awaiting_review`；其余失败类别一次即停），以及瞬时模型 API 错误/模型空回复重试。
 - 失败分类、trajectory 投影与脱敏，以及动作、坐标、命令夹具与设备时序的离线重放（连续三次 `device_timeout` 后进入 `awaiting_review`；中止运行保留已执行步骤）。
 - 设置持久化和兼容迁移。
 - Agent thread/turn 持久化。
@@ -534,6 +605,13 @@ npm run trajectory:fixture -- <trajectory.json>
 - 运行日志、截图预览和主界面布局组件。
 - 安全策略的风险等级、判定阶梯与强度设置，以及被拦截动作的独立卡片。
 - 全局快捷键、分栏拖拽、对话框焦点陷阱和 body 滚动锁。
+- 动作效果的结构差异判定与 `no_effect` / `place_changed` 的区分，以及树太差时不判定。
+- 稳定元素编号的沿用、退役、找回和过期原因，`tap_ref` 解析与过期后按 `action_stale` 继续。
+- 屏幕诊断的六种状态（含防截屏与单帧黑屏只算加载中）、限流提示只在动作后新出现时成立。
+- 控件树质量分档、不可信包裹与闭合标记转义。
+- 记忆的 BM25 检索与敏感内容过滤（密码、验证码、身份证号、银行卡号、API Key）。
+- 技能起草门槛与匹配，以及技能文本的不可信包裹。
+- 回答接地校验对引文、带单位数字、日期和序号的取舍。
 
 真实设备控制仍需要连接 Android 设备进行手动验证。按 [`docs/device-verification-matrix.md`](docs/device-verification-matrix.md) 逐项执行：暂停时机、恢复不新增用户消息、刷新后能否继续、各家 provider 的流式 token 与安全强度，都在这份矩阵里。
 
@@ -552,6 +630,8 @@ npm run trajectory:fixture -- <trajectory.json>
 - [x] 更系统的失败分类，以及按失败类别重试动作（本次里程碑交付）。
 - [x] 完善任务暂停与恢复体验。
 - [x] 更系统的安全策略与风险分级（风险等级 + 判定阶梯 + 可配置强度，见 `src/lib/actionRisk.ts`）。
+- [x] 屏幕观测与自检：动作效果、稳定元素编号（`tap_ref`）、屏幕诊断、控件树质量分档、自适应等待、限流识别。
+- [x] 记忆检索与敏感内容过滤、技能起草与复用、回答接地校验。
 
 ## 贡献说明
 
