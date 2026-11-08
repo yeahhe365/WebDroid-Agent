@@ -18,7 +18,7 @@ WebDroid Agent 是一个以浏览器为核心的 Android 手机 Agent 实验项�
 
 项目目标不是替代人工长期托管手机，而是提供一个可以在本地浏览器中快速验证「视觉模型 + 手机控制」链路的实验环境。
 
-[历史在线地址（Pages 旧域名）](https://webadb-autoglm.pages.dev/) · [英文版](./README.en-US.md) · [Tango / WebADB](https://github.com/yume-chan/ya-webadb)
+[在线地址](https://webdroid-agent.pages.dev/) · [英文版](./README.en-US.md) · [Tango / WebADB](https://github.com/yume-chan/ya-webadb)
 
 ```text
 Chromium WebUSB -> Tango/WebADB -> Android ADB
@@ -654,7 +654,8 @@ npm run build
 
 项目已创建在 Cloudflare Pages：
 
-- 历史在线地址（Pages 旧域名）：https://webadb-autoglm.pages.dev/
+- 在线地址：https://webdroid-agent.pages.dev/
+- 旧地址：https://webadb-autoglm.pages.dev/（改名前的项目，仍可访问但已弃用）
 - 部署方式：GitHub 绑定自动部署
 
 重新部署：

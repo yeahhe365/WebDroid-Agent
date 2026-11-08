@@ -12,6 +12,8 @@ WebDroid Agent is a browser-first Android phone agent experiment. In static depl
 
 The goal is not to replace long-running human supervision. It is a local browser environment for quickly validating the vision-model-plus-phone-control loop.
 
+[Live site](https://webdroid-agent.pages.dev/) · [中文](./README.md) · [Tango / WebADB](https://github.com/yume-chan/ya-webadb)
+
 ```text
 Chromium WebUSB -> Tango/WebADB -> Android ADB
 Static deployment:
@@ -646,7 +648,8 @@ npm run build
 
 The project is already set up on Cloudflare Pages:
 
-- Historical live site (legacy Pages hostname): https://webadb-autoglm.pages.dev/
+- Live site: https://webdroid-agent.pages.dev/
+- Old URL: https://webadb-autoglm.pages.dev/ (pre-rename project, still reachable but deprecated)
 - Deployment method: automatic deployment from GitHub
 
 Redeploy:
