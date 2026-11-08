@@ -21,6 +21,7 @@ import type { ModelConfig } from './lib/openAiTypes'
 import { OPENAI_PROXY_TOKEN_URL, OPENAI_PROXY_URL } from './lib/openAiRuntimeConfig'
 import { fetchProxyToken } from './lib/proxyToken'
 import { APP_COPY, resolveLocale } from './lib/appCopy'
+import { localizedErrorMessage } from './lib/deviceErrors'
 import {
   createSettingsExportData,
   loadSettings,
@@ -31,6 +32,7 @@ import {
 } from './lib/settings'
 import { createDefaultActionToolRegistry, type ActionToolName } from './lib/toolRegistry'
 import { loadMemoryItems, rememberMemoryItem, saveMemoryItems } from './lib/memory'
+import { sensitiveCategory } from './lib/sensitiveFilter'
 import { downloadJsonFile, pickAndReadJsonFile } from './lib/fileExport'
 import { buildTrajectoryArtifact } from './lib/trajectory'
 import { parseChatHistoryImport } from './lib/agentThread'
@@ -218,11 +220,17 @@ function App() {
     [modelConfig.provider, addLog, copy.streamUsageUnavailable],
   )
   const { dismissToast, pushToast, toasts } = useToasts()
+  // Device failures are raised outside React and carry an English message; the
+  // code they carry is what makes the banner and the log readable.
+  const formatTaskError = useCallback(
+    (caught: unknown) => localizedErrorMessage(caught, copy),
+    [copy],
+  )
   const { busyTask, error, runTask, setError } = useBusyTask(({ label, message }) => {
     // Keep task failures in the persistent banner; toasts are for short-lived
     // confirmations from explicit user actions.
     addLog({ tone: 'error', title: label, detail: message })
-  })
+  }, formatTaskError)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [clearHistoryConfirmOpen, setClearHistoryConfirmOpen] = useState(false)
   const [tutorialOpen, setTutorialOpen] = useState(false)
@@ -425,13 +433,23 @@ function App() {
     clearHistoryConfirmOpen ||
     sensitiveActionRequest !== null
   useBodyOverflow(modalOverlayOpen)
-  const rememberMemory = useCallback((information: string) => {
-    setMemoryItems((current) => {
-      const next = rememberMemoryItem(current, information)
-      saveMemoryItems(next)
-      return next
-    })
-  }, [])
+  const rememberMemory = useCallback(
+    (information: string) => {
+      // Memory is injected into every later prompt, so a credential that lands
+      // here is a credential sent to the model provider for good.
+      const category = sensitiveCategory(information)
+      if (category) {
+        addLog({ tone: 'warn', title: copy.memoryRejectedSensitive, detail: category })
+        return
+      }
+      setMemoryItems((current) => {
+        const next = rememberMemoryItem(current, information)
+        saveMemoryItems(next)
+        return next
+      })
+    },
+    [addLog, copy.memoryRejectedSensitive],
+  )
   const handleTaskNotificationsEnabledChange = useCallback(
     async (enabled: boolean) => {
       if (!enabled) {

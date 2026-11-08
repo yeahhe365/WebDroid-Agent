@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { DeviceBackendError } from './adapters/deviceTypes'
 import { createAgentThread, startThreadTurn } from './lib/agentThread'
 import * as fileExport from './lib/fileExport'
 import type { TrajectoryArtifact } from './lib/trajectory'
@@ -793,6 +794,37 @@ describe('App', () => {
     expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
   })
 
+  it('treats a cancelled device picker as a choice, not an error', async () => {
+    backendMock.connect.mockRejectedValueOnce(
+      new DeviceBackendError('No Android ADB device was selected.', 'io', 'no-device-selected'),
+    )
+
+    render(<App />)
+
+    await connectDeviceFromPanel()
+
+    await waitFor(() => expect(backendMock.connect).toHaveBeenCalled())
+    // Closing the picker must not paint the red banner.
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    await openInspectDrawer()
+    expect(screen.getAllByText('Device selection cancelled').length).toBeGreaterThan(0)
+  })
+
+  it('shows a coded device failure in the active language', async () => {
+    backendMock.connect.mockRejectedValueOnce(
+      new DeviceBackendError('WebUSB is not available in this browser.', 'io', 'webusb-unavailable'),
+    )
+
+    render(<App />)
+
+    await connectDeviceFromPanel()
+
+    // The adapter's own wording ("not available") never reaches the banner.
+    const banner = await screen.findByRole('alert')
+    expect(banner.textContent).toContain('This browser does not support WebUSB')
+  })
+
   it('runs text input from the screenshot preview controls', async () => {
     render(<App />)
 
@@ -1112,7 +1144,7 @@ describe('App', () => {
     const settingsDialog = await screen.findByRole('dialog', { name: /settings/i })
     selectSettingsTab(settingsDialog, /resources/i)
 
-    const tapTool = within(settingsDialog).getByLabelText(/toggle tap/i) as HTMLInputElement
+    const tapTool = within(settingsDialog).getByLabelText(/^toggle tap$/i) as HTMLInputElement
     expect(tapTool.checked).toBe(true)
 
     fireEvent.click(tapTool)
@@ -1160,7 +1192,7 @@ describe('App', () => {
     expect(within(settingsDialog).getByText('No disabled tools.')).toBeTruthy()
 
     fireEvent.click(within(settingsDialog).getByRole('button', { name: /^all$/i }))
-    fireEvent.click(within(settingsDialog).getByLabelText(/toggle tap/i))
+    fireEvent.click(within(settingsDialog).getByLabelText(/^toggle tap$/i))
     fireEvent.click(within(settingsDialog).getByRole('button', { name: /^disabled$/i }))
 
     expect(within(settingsDialog).getByText('Tap')).toBeTruthy()
@@ -1171,7 +1203,7 @@ describe('App', () => {
 
     expect(within(settingsDialog).queryByText('Tap')).toBeNull()
     expect(within(settingsDialog).getByText('Launch')).toBeTruthy()
-    expect(within(settingsDialog).getByText('20/21 enabled')).toBeTruthy()
+    expect(within(settingsDialog).getByText('21/22 enabled')).toBeTruthy()
   })
 
   it('searches action tool toggles in settings', async () => {

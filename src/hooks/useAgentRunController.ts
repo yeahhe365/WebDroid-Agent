@@ -29,11 +29,21 @@ import {
   toLogScreenshot,
 } from '../lib/runLogEntries'
 import type { ActionToolRegistry } from '../lib/toolRegistry'
+import { selectMemoryItems } from '../lib/memoryIndex'
+import { draftSkill } from '../lib/skillDraft'
+import { formatSkillsForPrompt, loadSkills, matchSkills, saveSkills, upsertSkill } from '../lib/skillStore'
 import type { DeviceSnapshotUpdate } from './useDeviceController'
 
 type RunTask = (id: BusyTaskId, label: string, action: () => Promise<void>) => Promise<void>
 
 const COORDINATE_ACTION_PREVIEW_MS = 2000
+
+/**
+ * Retrieval beats dumping the whole store: 48 items injected into every prompt
+ * crowds out the screen, and most of them are irrelevant to the task at hand.
+ */
+const MEMORY_PROMPT_LIMIT = 6
+const MEMORY_PROMPT_MAX_CHARS = 1800
 
 export type RunEndNotification = {
   status: AgentRunStatus | 'error'
@@ -278,6 +288,9 @@ export function useAgentRunController({
           copy,
           enabled: screenBlackoutDuringAutoControl,
         })
+        // A recipe drafted from a similar earlier run, offered as a suggestion.
+        const matchedSkills = matchSkills(loadSkills(), session.task)
+        const skillPrompt = formatSkillsForPrompt(matchedSkills) ?? undefined
         const runner = createAgentRunner({ device: backend, client, toolRegistry: actionToolRegistry })
         const result = await runner.run({
           modelConfig: { ...modelConfig, stream: streamResponses },
@@ -288,7 +301,11 @@ export function useAgentRunController({
           customTools,
           maxSteps,
           memoryEnabled,
-          memoryItems,
+          ...(skillPrompt ? { skillPrompt } : {}),
+          memoryItems: selectMemoryItems(memoryItems, session.task, {
+            limit: MEMORY_PROMPT_LIMIT,
+            maxChars: MEMORY_PROMPT_MAX_CHARS,
+          }),
           session,
           secrets,
           signal: abortController.signal,
@@ -329,6 +346,31 @@ export function useAgentRunController({
 
         if (result.status === 'done') {
           addLog({ tone: 'ok', title: copy.taskComplete, detail: result.finalResponse })
+          // A run that finished is the only evidence worth turning into a
+          // skill; drafting from a half-finished trace teaches the wrong path.
+          const drafted = draftSkill({
+            task: session.task,
+            steps: result.steps.map((step) => ({
+              action: step.action.action,
+              ...(step.executionResult ? { summary: step.executionResult } : {}),
+              app: step.currentApp,
+              ...(step.failureClass ? { success: false } : {}),
+            })),
+          })
+          if (drafted && saveSkills(upsertSkill(loadSkills(), drafted))) {
+            addLog({ tone: 'info', title: copy.skillDrafted(drafted.title) })
+          }
+          if (result.grounding && !result.grounding.ok) {
+            // The answer asserted something the run never read. Cheap code
+            // check, so it is reported rather than silently trusted.
+            addLog({
+              tone: 'warn',
+              title: copy.groundingWarning(result.grounding.violations.length),
+              detail: result.grounding.violations
+                .map((violation) => `${violation.kind}: ${violation.value}`)
+                .join('\n'),
+            })
+          }
           recordThreadStatus(session, 'done', result.finalResponse)
         }
         if (result.status === 'max_steps') {
