@@ -485,6 +485,7 @@ function App() {
     pauseCurrentRun,
     queuedChatMessageCount,
     resumeRun,
+    runPausing,
     stopCurrentRun,
     submitChatMessage,
   } = useAgentRunController({
@@ -880,6 +881,7 @@ function App() {
           onReadinessClick={showSetupHome ? undefined : handleReadinessClick}
           onPauseRun={handlePauseRun}
           onStopRun={handleStopRun}
+          runPausing={runPausing}
           onToggleTutorial={toggleTutorial}
         />
 
@@ -1059,6 +1061,7 @@ function App() {
                 onOpenRunLog={() => setRunLogOpen(true)}
                 onPauseRun={handlePauseRun}
                 onResumeRun={handleResumeRun}
+                runPausing={runPausing}
                 onSelectThread={(threadId) => {
                   void selectHistoryThread(threadId)
                 }}

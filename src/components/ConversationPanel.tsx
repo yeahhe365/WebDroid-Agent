@@ -31,6 +31,7 @@ export type ConversationPanelProps = {
   onStopRun: () => void
   onSubmitChatMessage: (message: string) => void
   onToggleHistorySidebar: () => void
+  runPausing?: boolean
 }
 
 export function ConversationPanel({
@@ -54,6 +55,7 @@ export function ConversationPanel({
   onStopRun,
   onSubmitChatMessage,
   onToggleHistorySidebar,
+  runPausing,
   pendingStep,
   queuedChatMessageCount,
   sessionSummary,
@@ -82,6 +84,7 @@ export function ConversationPanel({
         onResumeRun={onResumeRun}
         onSelectThread={onSelectThread}
         onStartNewChat={onStartNewChat}
+        runPausing={runPausing}
         onStopRun={onStopRun}
         onSubmitChatMessage={onSubmitChatMessage}
         onToggleHistorySidebar={onToggleHistorySidebar}

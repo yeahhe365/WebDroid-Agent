@@ -527,6 +527,9 @@ export const EN_US_COPY = {
   maxStepsReached: 'Max steps reached',
   send: 'Send',
   pauseRun: 'Pause run',
+  pauseRunPending: 'Pausing…',
+  pauseRunPendingHint:
+    'The step that is already running finishes first, then the run pauses right after it.',
   stopRun: 'Stop run',
   scrollToLatest: 'Scroll to latest',
   newChat: 'New chat',

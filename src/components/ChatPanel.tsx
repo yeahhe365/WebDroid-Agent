@@ -61,6 +61,8 @@ type ChatPanelProps = {
   onStopRun: () => void
   onSubmitChatMessage: (message: string) => void
   onToggleHistorySidebar: () => void
+  /** A pause has been requested but the in-flight step has not finished yet. */
+  runPausing?: boolean
 }
 
 const ChatHistorySidebar = lazyWithRetry(() =>
@@ -103,6 +105,7 @@ export function ChatPanel({
   onToggleHistorySidebar,
   sessionSummary,
   queuedChatMessageCount,
+  runPausing = false,
 }: ChatPanelProps) {
   const copy = useAppCopy()
   const chatInputId = useId()
@@ -506,12 +509,13 @@ export function ChatPanel({
                 <IconButton
                   size="md"
                   variant="secondary"
+                  disabled={runPausing}
                   onClick={onPauseRun}
-                  title={copy.pauseRun}
-                  aria-label={copy.pauseRun}
+                  title={runPausing ? copy.pauseRunPendingHint : copy.pauseRun}
+                  aria-label={runPausing ? copy.pauseRunPending : copy.pauseRun}
                   className="chat-send chat-pause"
                 >
-                  <Pause size={14} />
+                  {runPausing ? <LoaderCircle size={14} className="spin" /> : <Pause size={14} />}
                 </IconButton>
                 <IconButton
                   size="md"

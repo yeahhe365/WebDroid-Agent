@@ -114,6 +114,10 @@ export function useAgentRunController({
   const abortRef = useRef<AbortController | null>(null)
   const pendingAbortRef = useRef<AbortController | null>(null)
   const pauseRequestedRef = useRef(false)
+  // Mirrors `pauseRequestedRef` for the UI: the request is cooperative, so the
+  // click has no visible effect until the in-flight step finishes. Without this
+  // the pause button looks broken for the length of that step.
+  const [runPausing, setRunPausing] = useState(false)
   const flushingQueuedMessageRef = useRef(false)
   const queuedMessagesRef = useRef<string[]>([])
   const [queuedChatMessages, setQueuedChatMessages] = useState<string[]>([])
@@ -261,6 +265,7 @@ export function useAgentRunController({
     const abortController = new AbortController()
     abortRef.current = abortController
     pauseRequestedRef.current = false
+    setRunPausing(false)
 
     await runTask('run-agent', copy.runAgentTask, async () => {
       let screenBlackoutActive = false
@@ -381,6 +386,7 @@ export function useAgentRunController({
           abortRef.current = null
         }
         pauseRequestedRef.current = false
+        setRunPausing(false)
       }
     })
   }, [
@@ -475,15 +481,19 @@ export function useAgentRunController({
 
   const stopCurrentRun = useCallback(() => {
     pauseRequestedRef.current = false
+    setRunPausing(false)
     abortRef.current?.abort()
     pendingAbortRef.current?.abort()
   }, [])
 
   const pauseCurrentRun = useCallback(() => {
-    if (!abortRef.current) {
+    // Nothing to pause outside an automatic run: a single step is already
+    // bounded by its own action, so requesting a pause there would be a lie.
+    if (!abortRef.current || pauseRequestedRef.current) {
       return
     }
     pauseRequestedRef.current = true
+    setRunPausing(true)
   }, [])
 
   const resumeRun = useCallback(async () => {
@@ -498,6 +508,7 @@ export function useAgentRunController({
     queuedChatMessageCount: queuedChatMessages.length,
     pauseCurrentRun,
     resumeRun,
+    runPausing,
     stopCurrentRun,
     submitChatMessage,
   }

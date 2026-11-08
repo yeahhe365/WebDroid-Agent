@@ -259,6 +259,92 @@ describe('useAgentRunController', () => {
     expect(session.messages.filter((message) => message.role === 'user')).toHaveLength(1)
   })
 
+  it('reports a pending pause while the in-flight step is still finishing', async () => {
+    const backend = createDevice()
+    const session = createAgentSession('')
+    let releaseModel: (value: string) => void = () => {}
+    const client: OpenAiClient = {
+      completeAction: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            releaseModel = resolve
+          }),
+      ),
+      completeFinalResponse: vi.fn(async () => 'ok'),
+    }
+
+    const { result } = renderHook(() =>
+      useAgentRunController({
+        actionProtocol: 'webdroid_json',
+        actionToolRegistry: createDefaultActionToolRegistry(),
+        addLog: vi.fn(),
+        appCards: createDefaultAppCards(),
+        backend,
+        busyTask: null,
+        canRunAgent: true,
+        client,
+        copy: APP_COPY['en-US'],
+        customTools: [],
+        device: {
+          applyDeviceSnapshot: vi.fn(),
+          confirmSensitiveAction: vi.fn(() => true),
+          refreshDisplayedSnapshot: vi.fn(async () => ({
+            deviceState: { app: 'Chrome' },
+            screenshot: {
+              bytes: new Uint8Array(),
+              dataUrl: 'data:image/png;base64,abc',
+              screen: { width: 1080, height: 2400 },
+            },
+          })),
+        },
+        ensureSession: () => session,
+        maxSteps: 3,
+        memoryEnabled: false,
+        memoryItems: [],
+        modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+        onMemoryItem: vi.fn(),
+        pendingStep: null,
+        runTask: async (_id, _label, action) => {
+          await action()
+        },
+        screenBlackoutDuringAutoControl: false,
+        secrets: [],
+        setError: vi.fn(),
+        setPendingStep: vi.fn(),
+        streamResponses: false,
+        syncConversation: vi.fn(),
+        unrestrictedMode: false,
+      }),
+    )
+
+    // No automatic run in flight: the click must not claim a pause is pending.
+    act(() => result.current.pauseCurrentRun())
+    expect(result.current.runPausing).toBe(false)
+
+    let runPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      runPromise = result.current.submitChatMessage('Tap once.')
+    })
+    // Let the loop reach the model call, then pause mid-step.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => result.current.pauseCurrentRun())
+    expect(result.current.runPausing).toBe(true)
+
+    // A second click while the request is pending must change nothing.
+    act(() => result.current.pauseCurrentRun())
+    expect(result.current.runPausing).toBe(true)
+
+    await act(async () => {
+      releaseModel('{"action":"tap","x":540,"y":1200}')
+      await runPromise
+    })
+
+    expect(session.status).toBe('paused')
+    expect(result.current.runPausing).toBe(false)
+  })
+
   it('classifies a thrown run failure on the thread status event', async () => {
     const backend = createDevice()
     const session = createAgentSession('')

@@ -28,6 +28,8 @@ type AppTopbarProps = {
   onReadinessClick?: () => void
   onPauseRun?: () => void
   onStopRun?: () => void
+  /** A pause has been requested; the in-flight step still has to finish. */
+  runPausing?: boolean
   onToggleTutorial: () => void
 }
 
@@ -48,6 +50,7 @@ export function AppTopbar({
   onReadinessClick,
   onPauseRun,
   onStopRun,
+  runPausing = false,
   onToggleTutorial,
 }: AppTopbarProps) {
   const copy = useAppCopy()
@@ -84,17 +87,23 @@ export function AppTopbar({
         {isAgentRunning ? (
           <div className="run-strip" role="status">
             <LoaderCircle size={15} className="spin" aria-hidden="true" />
-            <span className="run-strip-label">{runningLabel}</span>
+            <span className="run-strip-label">{runPausing ? copy.pauseRunPending : runningLabel}</span>
             {onPauseRun ? (
               <Button
                 variant="secondary"
                 size="sm"
                 className="run-strip-pause"
-                aria-label={copy.pauseRun}
+                disabled={runPausing}
+                title={runPausing ? copy.pauseRunPendingHint : undefined}
+                aria-label={runPausing ? copy.pauseRunPending : copy.pauseRun}
                 onClick={onPauseRun}
               >
-                <Pause size={12} />
-                <span>{copy.pauseRun}</span>
+                {runPausing ? (
+                  <LoaderCircle size={12} className="spin" aria-hidden="true" />
+                ) : (
+                  <Pause size={12} aria-hidden="true" />
+                )}
+                <span>{runPausing ? copy.pauseRunPending : copy.pauseRun}</span>
               </Button>
             ) : null}
             {onStopRun ? (

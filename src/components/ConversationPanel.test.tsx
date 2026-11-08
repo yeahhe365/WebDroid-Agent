@@ -115,6 +115,20 @@ describe('ConversationPanel', () => {
     expect(onStopRun).toHaveBeenCalledTimes(1)
   })
 
+  it('shows the pause control as pending once a pause has been requested', () => {
+    const onPauseRun = vi.fn()
+    renderConversationPanel({
+      busyTask: { id: 'run-agent', label: 'Run agent', startedAt: 1000 },
+      onPauseRun,
+      runPausing: true,
+    })
+
+    const pause = screen.getByRole('button', { name: 'Pausing…' })
+    expect(pause).toHaveProperty('disabled', true)
+    fireEvent.click(pause)
+    expect(onPauseRun).not.toHaveBeenCalled()
+  })
+
   it('opens the AMC-style chat history sidebar and routes history actions', async () => {
     const onCloseHistorySidebar = vi.fn()
     const onDeleteThread = vi.fn()
